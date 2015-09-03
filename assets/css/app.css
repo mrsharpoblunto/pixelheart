@@ -1,0 +1,51 @@
+@font-face {
+    font-family: visitor;
+    src: url('/fonts/visitor.ttf');
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    font-family: 'visitor';
+    font-smooth: never;
+    text-rendering: geometricPrecision;
+    padding: 0;
+    margin: 0;
+}
+
+h1,h2,h3,h4,h5 {
+    margin: 0;
+    padding: 0;
+}
+
+.scene__container {
+    position: relative;
+    background-color: #000;
+}
+
+.scene__container canvas {
+    display: block;
+    margin: 0 auto;
+}
+
+.scene__loading {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    position: absolute;
+    color: #fff;
+    background: #000;
+    visibility: visible;
+    opacity: 1;
+    transition: visibility 0.5s ease-in-out 0s,opacity 0.5s ease-in-out 0s;
+}
+
+.scene__loading h2 {
+    padding: 10px;
+}
+
+.scene__loading--running {
+    visibility: hidden;
+    opacity: 0;
+}

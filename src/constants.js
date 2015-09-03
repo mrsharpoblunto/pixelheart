@@ -1,0 +1,5 @@
+module.exports = {
+    APP_PORT: 3000,
+    WEBPACK_PORT: 3001,
+    RESOURCE_CACHE_TIME: 31536000
+};
