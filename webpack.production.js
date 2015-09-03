@@ -29,7 +29,9 @@ module.exports = {
     },
     module: {
         loaders: [
-            { test: /\.jsx?$/, loaders: ['babel?stage=0'], exclude: /node_modules/ }
+            { test: /\.jsx?$/, loaders: ['babel?stage=0'], exclude: /node_modules/ },
+            { test: /\.js$/, loaders: ['transform/cacheable?brfs'], include: /node_modules\/pixi\.js/ },
+            { test: /\.json$/, loader: 'json' }
         ]
     }
 };

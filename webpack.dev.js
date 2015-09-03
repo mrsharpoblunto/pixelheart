@@ -3,7 +3,7 @@ var path = require('path');
 
 module.exports = {
     debug: true,
-    devtool: 'source-map',
+    devtool: 'inline-source-map',
     entry: {
         app: [
             path.join(__dirname,'assets/css/app.css'),
@@ -37,8 +37,9 @@ module.exports = {
     module: {
         loaders: [
             { test: /\.jsx?$/, loaders: ['react-hot','babel?stage=0'], exclude: /node_modules/ },
-            { test: /\.css$/, loader: 'style!css?importLoaders=1' }
-
+            { test: /\.js$/, loaders: ['transform/cacheable?brfs'], include: /node_modules\/pixi\.js/ },
+            { test: /\.css$/, loader: 'style!css?importLoaders=1' },
+            { test: /\.json$/, loader: 'json' }
         ]
     }
 };

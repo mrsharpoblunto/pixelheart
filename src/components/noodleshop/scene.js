@@ -1,4 +1,5 @@
 import React from 'react';
+import PIXI from 'pixi.js';
 import Scene from '../scene';
 
 export default class NoodleShopScene extends Scene {
@@ -6,9 +7,20 @@ export default class NoodleShopScene extends Scene {
         super(props);
     }
     init(e,cb) {
-        // initialize the scene
-        // fire the callback when all scene assets are loaded
-        cb();
+        let texture = PIXI.Texture.fromImage('/img/test.png');
+
+        let onComplete = () => {
+            let sprite = new PIXI.Sprite(texture);
+            sprite.anchor.x = sprite.anchor.y = 0;
+            sprite.position.x = sprite.position.y = 0;
+            this.state.container.addChild(bunny);
+            cb();
+        }
+        if (!texture.baseTexture.hasLoaded) {
+            texture.on('update',() => onComplete());
+        } else {
+            onComplete();
+        }
     }
     update(e) {
         // update the scene each frame

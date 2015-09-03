@@ -1,5 +1,5 @@
 import React from 'react';
-import THREE from 'three';
+import PIXI from 'pixi.js';
 
 const INITIAL = 0;
 const LOADING = 1;
@@ -19,27 +19,24 @@ export default class Scene extends React.Component {
     constructor(props) {
         super(props);
 
-        let scene = new THREE.Scene();
-  
-        let renderer = new THREE.WebGLRenderer({ antialias: true });
+        PIXI.SCALE_MODES.DEFAULT = PIXI.SCALE_MODES.NEAREST;
+        let container = new PIXI.Container();
+        container.scale.x = container.scale.y = 1;
 
-        // TODO configurable camera
-        let camera = new THREE.PerspectiveCamera(45,16/9,0.1,20000);
-        scene.add(camera);
+        let renderer = PIXI.autoDetectRenderer(this.props.targetWidth,this.props.targetHeight);
 
         this.state = {
             _state: INITIAL,
             _accumulatedTime: 0,
             _step: 1000 / this.props.simFps,
-            scene: scene,
-            renderer: renderer,
-            camera: camera
+            _renderer: renderer,
+            container: container
         };
     }
     componentDidMount() {
         this._requestedFrame = window.requestAnimationFrame(this._update);
         let node = React.findDOMNode(this);
-        node.appendChild(this.state.renderer.domElement);
+        node.appendChild(this.state._renderer.view);
 
         window.addEventListener('resize',this._resize); 
         this._resize();
@@ -67,9 +64,8 @@ export default class Scene extends React.Component {
         let width = this.props.targetWidth * multiplier;
         let height = this.props.targetHeight * multiplier;
 
-        this.state.renderer.setSize(width,height);
-        this.state.camera.aspect = width / height;
-        this.state.camera.updateProjectionMatrix();
+        this.state._renderer.resize(width,height);
+        this.state.container.scale.x = this.state.container.scale.y = multiplier;
 
         this.setState({
             pixelWidth: width,
@@ -88,8 +84,7 @@ export default class Scene extends React.Component {
                 }
                 this.setState({ _state: LOADING });
                 this.init({
-                    scene: this.state.scene,
-                    camera: this.state.camera
+                    container: this.state.container
                 },() => {
                     this.setState({ _state: RUNNING });
                 });
@@ -106,8 +101,7 @@ export default class Scene extends React.Component {
                         // run the current frame 
                         let start = performance.now();
                         this.update({
-                            scene: this.state.scene,
-                            camera: this.state.camera,
+                            container: this.state.container,
                             delta: this.state._step
                         });
                         let end = performance.now();
@@ -121,11 +115,11 @@ export default class Scene extends React.Component {
                         }
                     }
 
-                    if (!this.render) {
+                    if (!this.renderScene) {
                         console.warn('No renderScene function defined');
                     } else {
                         this.renderScene({ lerp: Math.min(1, acc / this.state._step) });
-                        this.state.renderer.render(this.state.scene,this.state.camera);
+                        this.state._renderer.render(this.state.container);
                     }
                     this.setState({ 
                         _accumulatedTime: acc,
