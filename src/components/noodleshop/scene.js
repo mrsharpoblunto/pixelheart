@@ -13,7 +13,7 @@ export default class NoodleShopScene extends Scene {
             let sprite = new PIXI.Sprite(texture);
             sprite.anchor.x = sprite.anchor.y = 0;
             sprite.position.x = sprite.position.y = 0;
-            this.state.container.addChild(bunny);
+            this.state.container.addChild(sprite);
             cb();
         }
         if (!texture.baseTexture.hasLoaded) {
