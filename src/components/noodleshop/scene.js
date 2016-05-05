@@ -7,13 +7,13 @@ export default class NoodleShopScene extends Scene {
         super(props);
     }
     init(e,cb) {
+        // runs only once
         let texture = PIXI.Texture.fromImage('/img/test.png');
 
         let onComplete = () => {
-            let sprite = new PIXI.Sprite(texture);
-            sprite.anchor.x = sprite.anchor.y = 0;
-            sprite.position.x = sprite.position.y = 0;
-            this.state.container.addChild(sprite);
+            this.sprite = new PIXI.Sprite(texture);
+            this.blurFilter = new PIXI.filters.BlurFilter();
+            e.container.addChild(this.sprite);
             cb();
         }
         if (!texture.baseTexture.hasLoaded) {
@@ -24,6 +24,14 @@ export default class NoodleShopScene extends Scene {
     }
     update(e) {
         // update the scene each frame
+    }
+    beforeRenderScene(e) {
+        // executes once after initialization and every time the react component re-renders
+        this.sprite.filters = [this.blurFilter];
+        this.sprite.anchor.x = this.sprite.anchor.y = 0;
+        this.sprite.position.x = this.sprite.position.y = 10;
+        this.blurFilter.blur = 10;
+        this.blurFilter.passes = 10;
     }
     renderScene(e) {
         // render the scene

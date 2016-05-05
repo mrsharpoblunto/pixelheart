@@ -19,32 +19,27 @@ export default class Scene extends React.Component {
     constructor(props) {
         super(props);
 
-        PIXI.SCALE_MODES.DEFAULT = PIXI.SCALE_MODES.NEAREST;
-        let container = new PIXI.Container();
-        container.scale.x = container.scale.y = 1;
-
-        let renderer = PIXI.autoDetectRenderer(this.props.targetWidth,this.props.targetHeight);
-
         this.state = {
-            _state: INITIAL,
-            _accumulatedTime: 0,
-            _step: 1000 / this.props.simFps,
-            _renderer: renderer,
-            container: container
+            _state: INITIAL
         };
+
+        PIXI.SCALE_MODES.DEFAULT = PIXI.SCALE_MODES.NEAREST;
+
+        this._accumulatedTime = 0;
+        this._step = 1000 / this.props.simFps;
+        this._renderer = PIXI.autoDetectRenderer(this.props.targetWidth,this.props.targetHeight);
+        this._container = new PIXI.Container();
     }
     componentDidMount() {
-        this._requestedFrame = window.requestAnimationFrame(this._update);
         let node = React.findDOMNode(this);
-        node.appendChild(this.state._renderer.view);
+        node.appendChild(this._renderer.view);
 
         window.addEventListener('resize',this._resize); 
         this._resize();
+        this._requestedFrame = window.requestAnimationFrame(this._update);
     }
     componentWillReceiveProps(nextProps) {
-        this.setState({
-            _step: 1000 / nextProps.simFps
-        });
+        this._step = 1000 / nextProps.simFps
     }
     componentWillUnmount() {
         if (this._requestedFrame) {
@@ -54,6 +49,13 @@ export default class Scene extends React.Component {
         window.removeEventListener('resize',this._resize);
     }
     render() {
+        if (this.state._state === RUNNING) {
+            if (!this.beforeRenderScene) {
+                console.warn('No beforeRenderScene function defined');
+            } else {
+                this.beforeRenderScene({ container: this._container });
+            }
+        }
         return <div className='scene__container'>
             <div className={this.state._state === LOADING ? 'scene__loading' : 'scene__loading scene__loading--running'}><h2>Loading...</h2></div>
         </div>;
@@ -64,14 +66,11 @@ export default class Scene extends React.Component {
         let width = this.props.targetWidth * multiplier;
         let height = this.props.targetHeight * multiplier;
 
-        this.state._renderer.resize(width,height);
-        this.state.container.scale.x = this.state.container.scale.y = multiplier;
-
-        this.setState({
-            pixelWidth: width,
-            pixelHeight: height,
-            pixelMultiplier: multiplier
-        });
+        this._renderer.resize(width,height);
+        this._container.scale.x = this._container.scale.y = multiplier;
+        this.pixelWidth = width;
+        this.pixelHeight = height;
+        this.pixelMultiplier = multiplier;
     }
     _update = (t) => {
         this._requestedFrame = window.requestAnimationFrame(this._update);
@@ -84,8 +83,15 @@ export default class Scene extends React.Component {
                 }
                 this.setState({ _state: LOADING });
                 this.init({
-                    container: this.state.container
+                    container: this._container
                 },() => {
+                    if (!this.beforeRenderScene) {
+                        console.warn('No beforeRenderScene function defined');
+                    } else {
+                        this.beforeRenderScene({
+                            container: this._container
+                        });
+                    }
                     this.setState({ _state: RUNNING });
                 });
                 break;
@@ -94,22 +100,22 @@ export default class Scene extends React.Component {
                     console.warn('No update function defined');
                     break;
                 }
-                if (this.state._last) {
-                    let acc = this.state._accumulatedTime + Math.min(1000, t - this.state._last);
-                    while (acc > this.state._step) {
-                        acc -= this.state._step;
+                if (this._last) {
+                    let acc = this._accumulatedTime + Math.min(1000, t - this._last);
+                    while (acc > this._step) {
+                        acc -= this._step;
                         // run the current frame 
                         let start = performance.now();
                         this.update({
-                            container: this.state.container,
-                            delta: this.state._step
+                            container: this._container,
+                            delta: this._step
                         });
                         let end = performance.now();
 
                         // ensure we don't enter a perf death spiral if the update
                         // function takes longer than its alloted time
-                        if (end - start > this.state._step) {
-                            console.warn('Update function could not execute within %d milliseconds', this.state._step);
+                        if (end - start > this._step) {
+                            console.warn('Update function could not execute within %d milliseconds', this._step);
                             acc = 0;
                             break;
                         }
@@ -118,15 +124,13 @@ export default class Scene extends React.Component {
                     if (!this.renderScene) {
                         console.warn('No renderScene function defined');
                     } else {
-                        this.renderScene({ lerp: Math.min(1, acc / this.state._step) });
-                        this.state._renderer.render(this.state.container);
+                        this.renderScene({ lerp: Math.min(1, acc / this._step) });
+                        this._renderer.render(this._container);
                     }
-                    this.setState({ 
-                        _accumulatedTime: acc,
-                        _last: performance.now()
-                    });
+                    this._accumulatedTime = acc;
+                    this._last = performance.now();
                 } else {
-                    this.setState({ _last: t });
+                    this._last = t;
                 }
                 break;
         }

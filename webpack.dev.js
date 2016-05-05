@@ -3,7 +3,7 @@ var path = require('path');
 
 module.exports = {
     debug: true,
-    devtool: 'inline-source-map',
+    devtool: 'eval',//'inline-source-map',
     entry: {
         app: [
             path.join(__dirname,'assets/css/app.css'),
