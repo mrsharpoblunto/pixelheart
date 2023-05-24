@@ -1,0 +1,86 @@
+import React, { useRef, useEffect } from 'react';
+
+export interface RenderContext {
+  gl: WebGLRenderingContext,
+  offscreen: CanvasRenderingContext2D,
+}
+
+interface GameProps<T> {
+  fixedUpdate: number;
+  init: (ctx: RenderContext) => Promise<T>;
+  update: (ctx: RenderContext, state: T, fixedDelta: number)=>void;
+  draw: (ctx: RenderContext, state: T, delta: number)=>void;
+};
+
+function GameComponent<T>(props: GameProps<T>): React.ReactElement {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    if (!canvasRef.current) {
+      return;
+    }
+
+    const gl = canvasRef.current.getContext('webgl');
+
+    if (!gl) {
+      console.error('Unable to initialize WebGL. Your browser or machine may not support it.');
+      return;
+    }
+
+    const offscreenCanvas = document.createElement('canvas');
+    offscreenCanvas.width = 1024;
+    offscreenCanvas.height = 1024;
+    const offscreen = offscreenCanvas.getContext('2d');
+    if (!offscreen) {
+      console.error('Unable to initialize OffscreenCanvas. Your browser or machine may not support it.');
+      return;
+    }
+
+    const context: RenderContext = {
+      gl,
+      offscreen,
+    };
+
+    let lastTime = performance.now();
+    let accumulatedTime = 0;
+    let nextFrame: number | null = null;
+
+    let state: T | null = null;
+    props.init(context).then(s => {
+      lastTime = performance.now();
+      state = s!;
+    });
+
+    const render = () => {
+      if (state) {
+        const currentTime = performance.now();
+        const frameTime = currentTime - lastTime;
+        lastTime = currentTime;
+        accumulatedTime += frameTime;
+
+        while (accumulatedTime >= props.fixedUpdate) {
+          props.update(context, state, props.fixedUpdate);
+          accumulatedTime -= props.fixedUpdate;
+        }
+
+        props.draw(context, state, frameTime);
+      } else {
+        // TODO loading fallback...
+      }
+      nextFrame = requestAnimationFrame(render);
+    };
+
+    nextFrame = requestAnimationFrame(render);
+
+    return () => {
+      if (nextFrame) {
+        cancelAnimationFrame(nextFrame);
+      }
+    };
+  }, [props.fixedUpdate, props.update, props.draw]);
+
+  return <canvas ref={canvasRef} width={window.innerWidth} height={window.innerHeight} />;
+};
+
+export default GameComponent;
+
