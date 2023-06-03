@@ -9,7 +9,7 @@ export interface GameState {
   spriteEffect: SpriteEffect;
   map: CPUReadableTexture;
   character: Character;
-  selectedGamepad: Gamepad | null;
+  selectedGamepadIndex: number | null;
   keys: {[key: string]: boolean };
   world: {width: number, height: number};
 }
@@ -28,15 +28,15 @@ export async function onInit(ctx: RenderContext, world: {width: number, height: 
       speed: 1,
     },
     world,
-    selectedGamepad: null,
+    selectedGamepadIndex: null,
     keys: {},
   };
 
   window.addEventListener('gamepadconnected', (e) => {
-    state.selectedGamepad = e.gamepad;
+    state.selectedGamepadIndex = e.gamepad.index;
   });
   window.addEventListener('gamepaddisconnected', (_) => {
-    state.selectedGamepad = null;
+    state.selectedGamepadIndex = null;
   });
   window.addEventListener('keydown', (e) => {
     state.keys[e.key] = true;
@@ -59,10 +59,10 @@ export function onDraw(_ctx: RenderContext, state: GameState, _delta: number) {
     .setTexture(state.character.texture, state.character.sprite.width, state.character.sprite.height)
     .draw(
       {
-        top: (state.character.position.y - offset.y ) / state.world.height,
-        left: (state.character.position.x - offset.x ) / state.world.width,
-        bottom: (state.character.position.y + offset.y ) / state.world.height,
-        right: (state.character.position.x + offset.x ) / state.world.width,
+        top: Math.floor(state.character.position.y - offset.y) / state.world.height,
+        left: Math.floor(state.character.position.x - offset.x ) / state.world.width,
+        bottom: Math.floor(state.character.position.y + offset.y ) / state.world.height,
+        right: Math.floor(state.character.position.x + offset.x ) / state.world.width,
       },
       { top: anim.top, left: anim.left, bottom: anim.bottom, right: anim.right }
     );
@@ -76,19 +76,21 @@ export function onUpdate(
 
   const direction: {[key: string]: boolean} = {};
   // gamepad input
-  if (state.selectedGamepad!==null) {
-    const gp = state.selectedGamepad;
-    if ((gp.buttons[12].pressed) || Math.min(0.0, gp.axes[1] + CONTROLLER_DEADZONE) < 0) {
-      direction.up = true;
-    }
-    if ((gp.buttons[13].pressed) || Math.max(0.0, gp.axes[1] - CONTROLLER_DEADZONE) > 0) {
-      direction.down = true;
-    }
-    if ((gp.buttons[14].pressed) || Math.min(0.0, gp.axes[0] + CONTROLLER_DEADZONE) < 0) {
-      direction.left = true;
-    }
-    if ((gp.buttons[15].pressed) || Math.max(0.0, gp.axes[0] - CONTROLLER_DEADZONE) > 0) {
-      direction.right = true;
+  if (state.selectedGamepadIndex!==null) {
+    const gp = navigator.getGamepads()[state.selectedGamepadIndex];
+    if (gp) {
+      if ((gp.buttons[12].pressed) || Math.min(0.0, gp.axes[1] + CONTROLLER_DEADZONE) < 0) {
+        direction.up = true;
+      }
+      if ((gp.buttons[13].pressed) || Math.max(0.0, gp.axes[1] - CONTROLLER_DEADZONE) > 0) {
+        direction.down = true;
+      }
+      if ((gp.buttons[14].pressed) || Math.min(0.0, gp.axes[0] + CONTROLLER_DEADZONE) < 0) {
+        direction.left = true;
+      }
+      if ((gp.buttons[15].pressed) || Math.max(0.0, gp.axes[0] - CONTROLLER_DEADZONE) > 0) {
+        direction.right = true;
+      }
     }
   }
   // keyboard input

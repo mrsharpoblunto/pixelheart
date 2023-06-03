@@ -12,8 +12,8 @@ interface GameProps<T> {
   draw: (ctx: RenderContext, state: T, delta: number) => void;
 }
 
-const WIDTH = 640;
-const HEIGHT = 360;
+const WIDTH = 320;
+const HEIGHT = 180;
 
 function GameComponent<T>(props: GameProps<T>): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
