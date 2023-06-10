@@ -48,16 +48,35 @@ export async function onInit(ctx: RenderContext, world: {width: number, height: 
   return state;
 }
 
-export function onDraw(_ctx: RenderContext, state: GameState, _delta: number) {
+export function onDraw(ctx: RenderContext, state: GameState, _delta: number) {
 
   const frame = Math.floor(state.character.currentFrame);
   const anim = state.character.sprite.animations[state.character.direction][frame];
   const offset = { x: (anim.right - anim.left) / 2, y: (anim.bottom - anim.top) / 2 };
 
-  state.spriteEffect
-    .bind()
-    .setTexture(state.character.texture, state.character.sprite.width, state.character.sprite.height)
-    .draw(
+  ctx.gl.enable(ctx.gl.BLEND);
+  ctx.gl.blendFunc(ctx.gl.SRC_ALPHA, ctx.gl.ONE_MINUS_SRC_ALPHA);
+
+  state.spriteEffect.use(s => {
+    s.setTexture(state.map.texture, state.map.width, state.map.height);
+    for (let x = 0;x < state.world.width;x+=16) {
+      for (let y = 0;y < state.world.height;y+=16) {
+        s.draw(
+          {
+            top: y / state.world.height,
+            left: x / state.world.width,
+            bottom: (y + 16) / state.world.height,
+            right: (x + 16) / state.world.width,
+          }, 
+          {
+            top: 0, left: 0, bottom: 16, right: 16 
+          }
+        );
+      }
+    }
+
+    s.setTexture(state.character.texture, state.character.sprite.width, state.character.sprite.height);
+    s.draw(
       {
         top: Math.floor(state.character.position.y - offset.y) / state.world.height,
         left: Math.floor(state.character.position.x - offset.x ) / state.world.width,
@@ -65,8 +84,8 @@ export function onDraw(_ctx: RenderContext, state: GameState, _delta: number) {
         right: Math.floor(state.character.position.x + offset.x ) / state.world.width,
       },
       { top: anim.top, left: anim.left, bottom: anim.bottom, right: anim.right }
-    )
-    .end();
+    );
+  });
 }
 
 export function onUpdate(
