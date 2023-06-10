@@ -65,7 +65,8 @@ export function onDraw(_ctx: RenderContext, state: GameState, _delta: number) {
         right: Math.floor(state.character.position.x + offset.x ) / state.world.width,
       },
       { top: anim.top, left: anim.left, bottom: anim.bottom, right: anim.right }
-    );
+    )
+    .end();
 }
 
 export function onUpdate(
