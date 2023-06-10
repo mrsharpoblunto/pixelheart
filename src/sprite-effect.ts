@@ -1,24 +1,35 @@
-const vertexShaderSource = `
-  attribute vec2 a_position;
-  attribute vec2 a_texCoord;
+import { mat3 } from 'gl-matrix';
 
-  varying vec2 v_texCoord;
+const vertexShaderSource = `#version 300 es
+
+  in vec2 a_position;
+
+  uniform mat3 u_spriteTransform;
+  uniform mat3 u_mvp;
+
+  out vec2 v_texCoord;
 
   void main() {
-    v_texCoord = a_texCoord;
-    gl_Position = vec4(a_position, 0.0, 1.0);
+    vec3 uvPosition = u_spriteTransform * vec3(a_position, 1.0);
+    vec3 clipPosition = u_mvp * vec3(a_position, 1.0);
+
+    v_texCoord = uvPosition.xy;
+    gl_Position = vec4(clipPosition.xy, 0.0, 1.0);
   }
 `;
 
-const fragmentShaderSource = `
+const fragmentShaderSource = `#version 300 es
+
   precision mediump float;
 
-  varying vec2 v_texCoord;
+  in vec2 v_texCoord;
 
   uniform sampler2D u_texture;
 
+  out vec4 outColor;
+
   void main() {
-    gl_FragColor = texture2D(u_texture, v_texCoord);
+    outColor = texture(u_texture, v_texCoord);
   }
 `;
 
@@ -33,10 +44,13 @@ export default class SpriteEffect {
   _gl: WebGL2RenderingContext;
   _program: WebGLProgram;
   _a_position: number;
-  _a_texcoord: number;
   _u_texture: WebGLUniformLocation;
+  _u_spriteTransform: WebGLUniformLocation;
+  _u_mvp: WebGLUniformLocation;
   _textureHeight: number;
   _textureWidth: number;
+  _vertexBuffer: WebGLBuffer;
+  _vp: mat3;
 
   constructor(gl: WebGL2RenderingContext) {
     this._gl = gl;
@@ -59,17 +73,32 @@ export default class SpriteEffect {
     }
 
     this._a_position = this._gl.getAttribLocation(this._program, "a_position");
-    this._a_texcoord = this._gl.getAttribLocation(this._program, "a_texCoord");
     this._u_texture = gl.getUniformLocation(this._program, "u_texture")!;
+    this._u_spriteTransform = gl.getUniformLocation(this._program, "u_spriteTransform")!;
+    this._u_mvp = gl.getUniformLocation(this._program, "u_mvp")!;
 
     this._textureWidth = 0;
     this._textureHeight = 0;
+
+    const vertices = new Float32Array([
+      0, 0,
+      1, 0,
+      0, 1,
+      1, 1,
+    ]);
+    this._vertexBuffer = this._gl.createBuffer()!;
+    this._gl.bindBuffer(this._gl.ARRAY_BUFFER, this._vertexBuffer);
+    this._gl.bufferData(this._gl.ARRAY_BUFFER, vertices, this._gl.STATIC_DRAW);
+
+    this._vp = mat3.create();
+    mat3.scale(this._vp, this._vp, [1.0,-1.0]);
+    mat3.translate(this._vp, this._vp, [-1.0,-1.0]);
+    mat3.scale(this._vp,this._vp, [2.0, 2.0]);
   }
 
   bind(): SpriteEffect {
     this._gl.useProgram(this._program);
     this._gl.enableVertexAttribArray(this._a_position);
-    this._gl.enableVertexAttribArray(this._a_texcoord);
     this._gl.texParameteri(this._gl.TEXTURE_2D, this._gl.TEXTURE_MAG_FILTER, this._gl.NEAREST);
     this._gl.texParameteri(this._gl.TEXTURE_2D, this._gl.TEXTURE_MIN_FILTER, this._gl.NEAREST);
     this._gl.texParameteri(this._gl.TEXTURE_2D, this._gl.TEXTURE_BASE_LEVEL, 0);
@@ -88,44 +117,27 @@ export default class SpriteEffect {
   }
 
   draw(position: Rect, uv: Rect): SpriteEffect {
-    const vertices = new Float32Array([
-      position.left * 2 - 1.0,
-      (1.0 - position.top) * 2 - 1.0,
-      (uv.left) / this._textureWidth,
-      (uv.top) / this._textureHeight, // bottom left corner
-      position.right * 2 - 1.0,
-      (1.0 - position.top) * 2 - 1.0,
-      (uv.right) / this._textureWidth,
-      (uv.top) / this._textureHeight, // bottom right corner
-      position.left * 2 - 1.0,
-      (1.0 - position.bottom) * 2 - 1.0,
-      (uv.left) / this._textureWidth,
-      (uv.bottom) / this._textureHeight, // top left corner
-      position.right * 2 - 1.0,
-      (1.0 - position.bottom) * 2 - 1.0,
-      (uv.right) / this._textureWidth,
-      (uv.bottom) / this._textureHeight, // top right corner
-    ]);
+    const mvp = mat3.create();
+    mat3.translate(mvp, mvp, [position.left, position.top]);
+    mat3.scale(mvp,mvp, [position.right - position.left, position.bottom - position.top]);
+    mat3.multiply(mvp, this._vp, mvp);
 
-    const vertexBuffer = this._gl.createBuffer()!;
-    this._gl.bindBuffer(this._gl.ARRAY_BUFFER, vertexBuffer);
-    this._gl.bufferData(this._gl.ARRAY_BUFFER, vertices, this._gl.STATIC_DRAW);
+    const spriteTransform = mat3.create();
+    mat3.translate(spriteTransform, spriteTransform, [uv.left / this._textureWidth, uv.top / this._textureHeight]);
+    mat3.scale(spriteTransform, spriteTransform, [(uv.right - uv.left) / this._textureWidth, (uv.bottom - uv.top) / this._textureHeight]);
+
+    this._gl.uniformMatrix3fv(this._u_mvp, false, mvp);
+    this._gl.uniformMatrix3fv(this._u_spriteTransform, false, spriteTransform);
+
+    this._gl.bindBuffer(this._gl.ARRAY_BUFFER, this._vertexBuffer);
 
     this._gl.vertexAttribPointer(
       this._a_position,
       2,
       this._gl.FLOAT,
       false,
-      16,
+      0,
       0
-    );
-    this._gl.vertexAttribPointer(
-      this._a_texcoord,
-      2,
-      this._gl.FLOAT,
-      false,
-      16,
-      8
     );
     this._gl.drawArrays(this._gl.TRIANGLE_STRIP, 0, 4);
     return this;
