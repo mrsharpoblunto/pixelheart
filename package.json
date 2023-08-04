@@ -4,20 +4,31 @@
   "description": "A basic WebGL app with TypeScript and React",
   "main": "index.js",
   "scripts": {
-    "build": "esbuild ./src/index.tsx --bundle --minify --platform=browser --outfile=www/js/index.js --define:process.env.NODE_ENV='\"production\"' --sourcemap",
-    "dev": "npm run clean && esbuild ./src/index.tsx --outdir=www/js --servedir=www --bundle --define:process.env.NODE_ENV='\"development\"'",
-    "clean": "rimraf www/js"
+    "dist": "npm run clean && concurrently \"npm:build:*\"",
+    "dev": "npm run clean && concurrently \"npm:watch:*\"",
+    "build:js": "esbuild ./src/index.tsx --bundle --minify --platform=browser --outfile=www/js/index.js --define:process.env.NODE_ENV='\"production\"' --sourcemap",
+    "watch:js": "esbuild ./src/index.tsx --outdir=www/js --servedir=www --bundle --define:process.env.NODE_ENV='\"development\"'",
+    "build:sprites": "ts-node ./build/sprites.ts",
+    "watch:sprites": "ts-node ./build/sprites.ts --watch",
+    "clean": "rimraf www/js && rimraf www/sprites"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@fsouza/prettierd": "^0.24.2",
+    "@parcel/watcher": "^2.2.0",
     "@types/react": "^17.0.0",
     "@types/react-dom": "^17.0.0",
+    "@types/yargs": "^17.0.24",
+    "concurrently": "^8.2.0",
     "esbuild": "^0.12.15",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
-    "typescript": "^4.3.5"
+    "sharp": "^0.32.4",
+    "ts-node": "^10.9.1",
+    "typescript": "^4.3.5",
+    "yargs": "^17.7.2"
   },
   "dependencies": {
     "gl-matrix": "^3.4.3",

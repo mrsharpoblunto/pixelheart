@@ -13,7 +13,7 @@ interface GameProps<T> {
 }
 
 const WIDTH = 320;
-const HEIGHT = 180;
+const HEIGHT = 192;
 
 function GameComponent<T>(props: GameProps<T>): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -35,7 +35,7 @@ function GameComponent<T>(props: GameProps<T>): React.ReactElement {
     const offscreenCanvas = document.createElement("canvas");
     offscreenCanvas.width = 1024;
     offscreenCanvas.height = 1024;
-    const offscreen = offscreenCanvas.getContext("2d");
+    const offscreen = offscreenCanvas.getContext("2d", { willReadFrequently: true });
     if (!offscreen) {
       console.error(
         "Unable to initialize OffscreenCanvas. Your browser or machine may not support it."
