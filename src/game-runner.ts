@@ -195,7 +195,6 @@ export default function GameRunner<T, U>(
       accumulatedTime += frameTime;
 
       while (accumulatedTime >= props.fixedUpdate) {
-        console.log(context.mouse);
         props.update(context, state, props.fixedUpdate);
         context.mouse.clicked = [];
         context.touches.ended.clear();
