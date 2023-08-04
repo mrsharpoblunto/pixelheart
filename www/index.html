@@ -1,19 +1,33 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PixelHeart</title>
-  <style>
-  html, body {
-    margin: 0;
-    padding: 0;
-  }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script src="js/index.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PixelHeart</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #222;
+      }
+      #root {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      #root div {
+        display: flex;
+        justify-content: center;
+      }
+      #root div canvas {
+        box-shadow: #000 0px 0px 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="js/index.js"></script>
+  </body>
 </html>
-

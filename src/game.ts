@@ -58,7 +58,10 @@ export async function onStart(
     overworld: overworld,
     character: {
       sprite: character,
-      animator: new SpriteAnimator(character.walk_d, 8 / 1000),
+      animator: new SpriteAnimator(
+        character[previousState ? previousState.character.direction : "walk_d"],
+        8 / 1000
+      ),
       direction: previousState ? previousState.character.direction : "walk_d",
       position: previousState
         ? previousState.character.position
@@ -265,6 +268,7 @@ export function onUpdate(
       state.character.sprite[newDirection],
       fixedDelta
     );
+    state.character.direction = newDirection;
   }
 
   state.water.tick(fixedDelta);
