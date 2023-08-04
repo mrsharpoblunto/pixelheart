@@ -5,9 +5,15 @@ export interface RenderContext {
   offscreen: CanvasRenderingContext2D;
 }
 
-interface GameProps<T> {
+interface GameProps<T, U> {
   fixedUpdate: number;
-  init: (ctx: RenderContext, world: { width: number, height: number}) => Promise<T>;
+  start: (
+    ctx: RenderContext,
+    world: { width: number; height: number },
+    previousState?: U
+  ) => Promise<T>;
+  saveKey: string;
+  save: (state: T) => U;
   update: (ctx: RenderContext, state: T, fixedDelta: number) => void;
   draw: (ctx: RenderContext, state: T, delta: number) => void;
 }
@@ -15,7 +21,7 @@ interface GameProps<T> {
 const WIDTH = 320;
 const HEIGHT = 192;
 
-function GameComponent<T>(props: GameProps<T>): React.ReactElement {
+function GameComponent<T, U>(props: GameProps<T, U>): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -35,7 +41,9 @@ function GameComponent<T>(props: GameProps<T>): React.ReactElement {
     const offscreenCanvas = document.createElement("canvas");
     offscreenCanvas.width = 1024;
     offscreenCanvas.height = 1024;
-    const offscreen = offscreenCanvas.getContext("2d", { willReadFrequently: true });
+    const offscreen = offscreenCanvas.getContext("2d", {
+      willReadFrequently: true,
+    });
     if (!offscreen) {
       console.error(
         "Unable to initialize OffscreenCanvas. Your browser or machine may not support it."
@@ -52,11 +60,27 @@ function GameComponent<T>(props: GameProps<T>): React.ReactElement {
     let accumulatedTime = 0;
     let nextFrame: number | null = null;
 
+    const saveState = localStorage.getItem(props.saveKey);
+
     let state: T | null = null;
-    props.init(context, { width: WIDTH, height: HEIGHT}).then((s) => {
-      lastTime = performance.now();
-      state = s!;
-    });
+    props
+      .start(
+        context,
+        { width: WIDTH, height: HEIGHT },
+        saveState ? (JSON.parse(saveState) as U) : undefined
+      )
+      .then((s) => {
+        lastTime = performance.now();
+        state = s!;
+      })
+      .catch((ex) => {
+        console.warn(ex);
+        // if the saved state fails to load, try again with a fresh state
+        props.start(context, { width: WIDTH, height: HEIGHT }).then((s) => {
+          lastTime = performance.now();
+          state = s!;
+        });
+      });
 
     const render = () => {
       if (state) {
@@ -79,19 +103,30 @@ function GameComponent<T>(props: GameProps<T>): React.ReactElement {
 
     nextFrame = requestAnimationFrame(render);
 
+    const handlePersist = () => {
+      if (state && document.visibilityState === "hidden") {
+        localStorage.setItem(props.saveKey, JSON.stringify(props.save(state)));
+      }
+    };
+    window.addEventListener("visibilitychange", handlePersist);
+
     return () => {
       if (nextFrame) {
         cancelAnimationFrame(nextFrame);
       }
+      window.removeEventListener("visibilitychange", handlePersist);
     };
-  }, [props.fixedUpdate, props.update, props.draw]);
+  }, [props.fixedUpdate, props.update, props.draw, props.save, props.saveKey]);
 
   useEffect(() => {
     const handleResize = () => {
-      const multiplier = Math.max(1, Math.min(
-        Math.floor(window.innerWidth / WIDTH),
-        Math.floor(window.innerHeight / HEIGHT)
-      ));
+      const multiplier = Math.max(
+        1,
+        Math.min(
+          Math.floor(window.innerWidth / WIDTH),
+          Math.floor(window.innerHeight / HEIGHT)
+        )
+      );
       if (canvasRef.current) {
         canvasRef.current.style.width = multiplier * WIDTH + "px";
         canvasRef.current.style.height = multiplier * HEIGHT + "px";

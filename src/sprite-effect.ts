@@ -77,7 +77,10 @@ export async function loadSpriteSheet(
           ...sprite,
           draw: (effect: SpriteEffect, position: Rect, frame: number = 0) => {
             effect.setTexture(texture);
-            effect.draw(position, sprite.frames[frame % sprite.frames.length]);
+            effect.draw(
+              position,
+              sprite.frames[Math.floor(frame) % sprite.frames.length]
+            );
           },
         };
         return p;
@@ -111,6 +114,30 @@ export class SpriteAnimator {
 
   reset() {
     this.#frame = 0;
+  }
+
+  setSprite(sprite: Sprite) {
+    if (sprite !== this.#sprite) {
+      this.#sprite = sprite;
+      this.#frame = 0;
+    }
+  }
+
+  setSpriteOrTick(sprite: Sprite, fixedDelta: number) {
+    if (sprite !== this.#sprite) {
+      this.#sprite = sprite;
+      this.#frame = 0;
+    } else {
+      this.tick(fixedDelta);
+    }
+  }
+
+  getSprite(): Sprite {
+    return this.#sprite;
+  }
+
+  draw(effect: SpriteEffect, position: Rect, offset: number = 0) {
+    this.#sprite.draw(effect, position, this.#frame + offset);
   }
 }
 
