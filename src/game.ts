@@ -1,4 +1,4 @@
-import { RenderContext } from "./game-runner";
+import { GameContext } from "./game-runner";
 import { CPUReadableTexture, loadCPUReadableTextureFromUrl } from "./images";
 import {
   SpriteSheet,
@@ -30,9 +30,6 @@ export interface GameState {
     position: { x: number; y: number };
     speed: number;
   };
-  selectedGamepadIndex: number | null;
-  keys: { [key: string]: boolean };
-  world: { width: number; height: number };
   water: SpriteAnimator;
 }
 
@@ -46,8 +43,7 @@ export function onSave(state: GameState): SerializedGameState {
 }
 
 export async function onStart(
-  ctx: RenderContext,
-  world: { width: number; height: number },
+  ctx: GameContext,
   previousState?: SerializedGameState
 ): Promise<GameState> {
   const overworld = await loadSpriteSheet(ctx, overworldSprite);
@@ -65,13 +61,10 @@ export async function onStart(
       direction: previousState ? previousState.character.direction : "walk_d",
       position: previousState
         ? previousState.character.position
-        : { x: world.width / 2 + 50, y: world.height / 2 },
+        : { x: ctx.screen.width / 2 + 50, y: ctx.screen.height / 2 },
       speed: 1,
     },
     water: new SpriteAnimator(overworld.water, 6 / 1000),
-    world,
-    selectedGamepadIndex: null,
-    keys: {},
   };
 
   // Draw the walkmap offscreen
@@ -83,23 +76,10 @@ export async function onStart(
     state.map.height
   );
 
-  window.addEventListener("gamepadconnected", (e) => {
-    state.selectedGamepadIndex = e.gamepad.index;
-  });
-  window.addEventListener("gamepaddisconnected", (_) => {
-    state.selectedGamepadIndex = null;
-  });
-  window.addEventListener("keydown", (e) => {
-    state.keys[e.key] = true;
-  });
-  window.addEventListener("keyup", (e) => {
-    delete state.keys[e.key];
-  });
-
   return state;
 }
 
-export function onDraw(ctx: RenderContext, state: GameState, _delta: number) {
+export function onDraw(ctx: GameContext, state: GameState, _delta: number) {
   ctx.gl.enable(ctx.gl.BLEND);
   ctx.gl.blendFunc(ctx.gl.SRC_ALPHA, ctx.gl.ONE_MINUS_SRC_ALPHA);
 
@@ -111,27 +91,27 @@ export function onDraw(ctx: RenderContext, state: GameState, _delta: number) {
     const centerOffset = {
       x:
         Math.floor(state.character.position.x / TILE_SIZE) -
-        state.world.width / (TILE_SIZE * 2),
+        ctx.screen.width / (TILE_SIZE * 2),
       y:
         Math.floor(state.character.position.y / TILE_SIZE) -
-        state.world.height / (TILE_SIZE * 2),
+        ctx.screen.height / (TILE_SIZE * 2),
     };
 
-    for (let x = -1; x < (state.world.width + 1) / TILE_SIZE; ++x) {
-      for (let y = -1; y < (state.world.height + 1) / TILE_SIZE; ++y) {
+    for (let x = -1; x < (ctx.screen.width + 1) / TILE_SIZE; ++x) {
+      for (let y = -1; y < (ctx.screen.height + 1) / TILE_SIZE; ++y) {
         const mapX = x + centerOffset.x;
         const mapY = y + centerOffset.y;
         const spatialHash = hash(mapX, mapY);
 
         const position = {
-          top: (y * TILE_SIZE - characterTileOffset.y) / state.world.height,
-          left: (x * TILE_SIZE - characterTileOffset.x) / state.world.width,
+          top: (y * TILE_SIZE - characterTileOffset.y) / ctx.screen.height,
+          left: (x * TILE_SIZE - characterTileOffset.x) / ctx.screen.width,
           bottom:
             (y * TILE_SIZE + TILE_SIZE - characterTileOffset.y) /
-            state.world.height,
+            ctx.screen.height,
           right:
             (x * TILE_SIZE + TILE_SIZE - characterTileOffset.x) /
-            state.world.width,
+            ctx.screen.width,
         };
 
         if (ctx.offscreen.getImageData(mapX, mapY, 1, 1).data[0] === 0) {
@@ -192,62 +172,61 @@ export function onDraw(ctx: RenderContext, state: GameState, _delta: number) {
       y: state.character.animator.getSprite().height / 2,
     };
     state.character.animator.draw(s, {
-      top: Math.floor(state.world.height / 2 - offset.y) / state.world.height,
-      left: Math.floor(state.world.width / 2 - offset.x) / state.world.width,
-      bottom:
-        Math.floor(state.world.height / 2 + offset.y) / state.world.height,
-      right: Math.floor(state.world.width / 2 + offset.x) / state.world.width,
+      top: Math.floor(ctx.screen.height / 2 - offset.y) / ctx.screen.height,
+      left: Math.floor(ctx.screen.width / 2 - offset.x) / ctx.screen.width,
+      bottom: Math.floor(ctx.screen.height / 2 + offset.y) / ctx.screen.height,
+      right: Math.floor(ctx.screen.width / 2 + offset.x) / ctx.screen.width,
     });
   });
 }
 
 export function onUpdate(
-  ctx: RenderContext,
+  ctx: GameContext,
   state: GameState,
   fixedDelta: number
 ) {
   const direction: { [key: string]: boolean } = {};
+
   // gamepad input
-  if (state.selectedGamepadIndex !== null) {
-    const gp = navigator.getGamepads()[state.selectedGamepadIndex];
-    if (gp) {
-      if (
-        gp.buttons[12].pressed ||
-        Math.min(0.0, gp.axes[1] + CONTROLLER_DEADZONE) < 0
-      ) {
-        direction.up = true;
-      }
-      if (
-        gp.buttons[13].pressed ||
-        Math.max(0.0, gp.axes[1] - CONTROLLER_DEADZONE) > 0
-      ) {
-        direction.down = true;
-      }
-      if (
-        gp.buttons[14].pressed ||
-        Math.min(0.0, gp.axes[0] + CONTROLLER_DEADZONE) < 0
-      ) {
-        direction.left = true;
-      }
-      if (
-        gp.buttons[15].pressed ||
-        Math.max(0.0, gp.axes[0] - CONTROLLER_DEADZONE) > 0
-      ) {
-        direction.right = true;
-      }
+  const gp = ctx.getGamepad();
+  if (gp) {
+    if (
+      gp.buttons[12].pressed ||
+      Math.min(0.0, gp.axes[1] + CONTROLLER_DEADZONE) < 0
+    ) {
+      direction.up = true;
+    }
+    if (
+      gp.buttons[13].pressed ||
+      Math.max(0.0, gp.axes[1] - CONTROLLER_DEADZONE) > 0
+    ) {
+      direction.down = true;
+    }
+    if (
+      gp.buttons[14].pressed ||
+      Math.min(0.0, gp.axes[0] + CONTROLLER_DEADZONE) < 0
+    ) {
+      direction.left = true;
+    }
+    if (
+      gp.buttons[15].pressed ||
+      Math.max(0.0, gp.axes[0] - CONTROLLER_DEADZONE) > 0
+    ) {
+      direction.right = true;
     }
   }
+
   // keyboard input
-  if (state.keys["w"] || state.keys["ArrowUp"]) {
+  if (ctx.keys["w"] || ctx.keys["ArrowUp"]) {
     direction.up = true;
   }
-  if (state.keys["s"] || state.keys["ArrowDown"]) {
+  if (ctx.keys["s"] || ctx.keys["ArrowDown"]) {
     direction.down = true;
   }
-  if (state.keys["a"] || state.keys["ArrowLeft"]) {
+  if (ctx.keys["a"] || ctx.keys["ArrowLeft"]) {
     direction.left = true;
   }
-  if (state.keys["d"] || state.keys["ArrowRight"]) {
+  if (ctx.keys["d"] || ctx.keys["ArrowRight"]) {
     direction.right = true;
   }
 
