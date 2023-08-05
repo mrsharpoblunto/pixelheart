@@ -1,6 +1,6 @@
 import { mat3 } from "gl-matrix";
-import { TEXTURE, loadTextureFromUrl } from "./images";
-import { RenderContext } from "./game-runner";
+import { Rect, TEXTURE, loadTextureFromUrl } from "./images";
+import { GameContext } from "./game-runner";
 
 const vertexShaderSource = `#version 300 es
 
@@ -35,21 +35,14 @@ const fragmentShaderSource = `#version 300 es
   }
 `;
 
-export interface Rect {
-  top: number;
-  left: number;
-  bottom: number;
-  right: number;
-}
-
 export interface SpriteConfig {
-  width: number;
-  height: number;
-  frames: Array<{
-    top: number;
-    left: number;
-    bottom: number;
-    right: number;
+  readonly width: number;
+  readonly height: number;
+  readonly frames: Array<{
+    readonly top: number;
+    readonly left: number;
+    readonly bottom: number;
+    readonly right: number;
   }>;
 }
 
@@ -65,7 +58,7 @@ export interface SpriteSheetConfig {
 export interface SpriteSheet extends Record<string, Sprite> {}
 
 export async function loadSpriteSheet(
-  ctx: RenderContext,
+  ctx: GameContext,
   sheet: SpriteSheetConfig
 ): Promise<SpriteSheet> {
   const texture = await loadTextureFromUrl(ctx, sheet.url);
@@ -91,44 +84,20 @@ export async function loadSpriteSheet(
 }
 
 export class SpriteAnimator {
-  #frameRate: number;
   #sprite: Sprite;
-  #frame: number;
+  frameRate: number;
+  frame: number;
 
   constructor(sprite: Sprite, frameRate: number) {
+    this.frameRate = frameRate;
+    this.frame = 0;
     this.#sprite = sprite;
-    this.#frameRate = frameRate;
-    this.#frame = 0;
   }
 
   tick(fixedDelta: number): void {
-    this.#frame += fixedDelta * this.#frameRate;
-    if (this.#frame > this.#sprite.frames.length) {
-      this.#frame -= this.#sprite.frames.length;
-    }
-  }
-
-  getFrame(): number {
-    return Math.floor(this.#frame);
-  }
-
-  reset() {
-    this.#frame = 0;
-  }
-
-  setSprite(sprite: Sprite) {
-    if (sprite !== this.#sprite) {
-      this.#sprite = sprite;
-      this.#frame = 0;
-    }
-  }
-
-  setSpriteOrTick(sprite: Sprite, fixedDelta: number) {
-    if (sprite !== this.#sprite) {
-      this.#sprite = sprite;
-      this.#frame = 0;
-    } else {
-      this.tick(fixedDelta);
+    this.frame += fixedDelta * this.frameRate;
+    if (this.frame > this.#sprite.frames.length) {
+      this.frame -= this.#sprite.frames.length;
     }
   }
 
@@ -136,8 +105,24 @@ export class SpriteAnimator {
     return this.#sprite;
   }
 
+  setSprite(sprite: Sprite) {
+    if (sprite !== this.#sprite) {
+      this.#sprite = sprite;
+      this.frame = 0;
+    }
+  }
+
+  setSpriteOrTick(sprite: Sprite, fixedDelta: number) {
+    if (sprite !== this.#sprite) {
+      this.#sprite = sprite;
+      this.frame = 0;
+    } else {
+      this.tick(fixedDelta);
+    }
+  }
+
   draw(effect: SpriteEffect, position: Rect, offset: number = 0) {
-    this.#sprite.draw(effect, position, this.#frame + offset);
+    this.#sprite.draw(effect, position, this.frame + offset);
   }
 }
 

@@ -3,10 +3,14 @@ export interface GameContext {
   offscreen: CanvasRenderingContext2D;
   canvas: HTMLCanvasElement;
   getGamepad: () => Gamepad | null;
-  keys: { [key: string]: boolean };
+  keys: {
+    down: Set<string>;
+    pressed: Set<string>;
+  };
   mouse: {
     x: number;
     y: number;
+    wheel: { x: number; y: number };
     down: Array<boolean>;
     clicked: Array<boolean>;
   };
@@ -70,10 +74,14 @@ export default function GameRunner<T, U>(
       }
       return null;
     },
-    keys: {},
+    keys: {
+      down: new Set<string>(),
+      pressed: new Set<string>(),
+    },
     mouse: {
       x: 0,
       y: 0,
+      wheel: { x: 0, y: 0 },
       down: [],
       clicked: [],
     },
@@ -91,10 +99,25 @@ export default function GameRunner<T, U>(
     selectedGamepadIndex = null;
   });
   window.addEventListener("keydown", (e) => {
-    context.keys[e.key] = true;
+    context.keys.down.add(e.key);
+    if (e.altKey || e.shiftKey || e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+    }
   });
   window.addEventListener("keyup", (e) => {
-    delete context.keys[e.key];
+    if (context.keys.down.has(e.key)) {
+      context.keys.pressed.add(e.key);
+    }
+    context.keys.down.delete(e.key);
+    if (e.altKey || e.shiftKey || e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+    }
+  });
+  canvas.addEventListener("wheel", (e) => {
+    if (e.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
+      context.mouse.wheel.x = e.deltaX;
+      context.mouse.wheel.y = e.deltaY;
+    }
   });
   canvas.addEventListener("mousemove", (e) => {
     const rect = canvas.getBoundingClientRect();
@@ -197,7 +220,9 @@ export default function GameRunner<T, U>(
       while (accumulatedTime >= props.fixedUpdate) {
         props.update(context, state, props.fixedUpdate);
         context.mouse.clicked = [];
+        context.mouse.wheel.x = context.mouse.wheel.y = 0;
         context.touches.ended.clear();
+        context.keys.pressed.clear();
         accumulatedTime -= props.fixedUpdate;
       }
 

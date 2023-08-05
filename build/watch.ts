@@ -51,6 +51,8 @@ Promise.resolve(
       servedir: path.join(__dirname, "../www"),
     },
     {
+      color: true,
+      logLevel: "info",
       bundle: true,
       outdir: path.join(__dirname, "../www/js"),
       define: {

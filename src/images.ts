@@ -1,5 +1,11 @@
-import { RenderContext } from "./game-runner";
-import SpriteEffect from "./sprite-effect";
+import { GameContext } from "./game-runner";
+
+export interface Rect {
+  top: number;
+  left: number;
+  bottom: number;
+  right: number;
+}
 
 export const TEXTURE = Symbol();
 
@@ -23,7 +29,7 @@ export function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
 }
 
 export async function loadTextureFromUrl(
-  ctx: RenderContext,
+  ctx: GameContext,
   url: string
 ): Promise<GPUTexture> {
   const image = await loadImageFromUrl(url);
@@ -35,7 +41,7 @@ export async function loadTextureFromUrl(
 }
 
 export async function loadCPUReadableTextureFromUrl(
-  ctx: RenderContext,
+  ctx: GameContext,
   url: string
 ): Promise<CPUReadableTexture> {
   const image = await loadImageFromUrl(url);
@@ -48,7 +54,7 @@ export async function loadCPUReadableTextureFromUrl(
 }
 
 export function loadTextureFromImage(
-  ctx: RenderContext,
+  ctx: GameContext,
   img: HTMLImageElement
 ): WebGLTexture {
   const texture = ctx.gl.createTexture();
@@ -85,7 +91,7 @@ export function loadTextureFromImage(
 }
 
 export function getPixelData(
-  ctx: RenderContext,
+  ctx: GameContext,
   image: HTMLImageElement
 ): (x: number, y: number) => Uint8ClampedArray | null {
   ctx.offscreen.canvas.width = Math.max(

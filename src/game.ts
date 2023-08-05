@@ -1,4 +1,5 @@
 import { GameContext } from "./game-runner";
+import { vec4 } from "gl-matrix";
 import { CPUReadableTexture, loadCPUReadableTextureFromUrl } from "./images";
 import {
   SpriteSheet,
@@ -6,6 +7,7 @@ import {
   SpriteAnimator,
   SpriteEffect,
 } from "./sprite-effect";
+import { SolidEffect } from "./solid-effect";
 import overworldSprite from "./sprites/overworld";
 import characterSprite from "./sprites/character";
 
@@ -21,6 +23,7 @@ export interface SerializedGameState {
 
 export interface GameState {
   spriteEffect: SpriteEffect;
+  solidEffect: SolidEffect;
   map: CPUReadableTexture;
   overworld: SpriteSheet;
   character: {
@@ -31,6 +34,9 @@ export interface GameState {
     speed: number;
   };
   water: SpriteAnimator;
+  editor?: {
+    active: boolean;
+  };
 }
 
 export function onSave(state: GameState): SerializedGameState {
@@ -50,6 +56,7 @@ export async function onStart(
   const character = await loadSpriteSheet(ctx, characterSprite);
   const state: GameState = {
     spriteEffect: new SpriteEffect(ctx.gl),
+    solidEffect: new SolidEffect(ctx.gl),
     map: await loadCPUReadableTextureFromUrl(ctx, "/images/walkmap.png"),
     overworld: overworld,
     character: {
@@ -66,6 +73,11 @@ export async function onStart(
     },
     water: new SpriteAnimator(overworld.water, 6 / 1000),
   };
+  if (process.env.NODE_ENV === "development") {
+    state.editor = {
+      active: false,
+    };
+  }
 
   // Draw the walkmap offscreen
   ctx.offscreen.drawImage(
@@ -79,7 +91,120 @@ export async function onStart(
   return state;
 }
 
-export function onDraw(ctx: GameContext, state: GameState, _delta: number) {
+export function onUpdate(
+  ctx: GameContext,
+  state: GameState,
+  fixedDelta: number
+) {
+  const direction: { [key: string]: boolean } = {};
+
+  // gamepad input
+  const gp = ctx.getGamepad();
+  if (gp) {
+    if (
+      gp.buttons[12].pressed ||
+      Math.min(0.0, gp.axes[1] + CONTROLLER_DEADZONE) < 0
+    ) {
+      direction.up = true;
+    }
+    if (
+      gp.buttons[13].pressed ||
+      Math.max(0.0, gp.axes[1] - CONTROLLER_DEADZONE) > 0
+    ) {
+      direction.down = true;
+    }
+    if (
+      gp.buttons[14].pressed ||
+      Math.min(0.0, gp.axes[0] + CONTROLLER_DEADZONE) < 0
+    ) {
+      direction.left = true;
+    }
+    if (
+      gp.buttons[15].pressed ||
+      Math.max(0.0, gp.axes[0] - CONTROLLER_DEADZONE) > 0
+    ) {
+      direction.right = true;
+    }
+  }
+
+  // keyboard input
+  if (ctx.keys.down.has("w") || ctx.keys.down.has("ArrowUp")) {
+    direction.up = true;
+  }
+  if (ctx.keys.down.has("s") || ctx.keys.down.has("ArrowDown")) {
+    direction.down = true;
+  }
+  if (ctx.keys.down.has("a") || ctx.keys.down.has("ArrowLeft")) {
+    direction.left = true;
+  }
+  if (ctx.keys.down.has("d") || ctx.keys.down.has("ArrowRight")) {
+    direction.right = true;
+  }
+
+  let newDirection: keyof typeof characterSprite.sprites | null = null;
+  // direction animations are mutually exclusive
+  if (direction.left) {
+    newDirection = "walk_l";
+  } else if (direction.right) {
+    newDirection = "walk_r";
+  } else if (direction.up) {
+    newDirection = "walk_u";
+  } else if (direction.down) {
+    newDirection = "walk_d";
+  }
+
+  if (newDirection) {
+    state.character.animator.setSpriteOrTick(
+      state.character.sprite[newDirection],
+      fixedDelta
+    );
+    state.character.direction = newDirection;
+  }
+
+  state.water.tick(fixedDelta);
+
+  // but movement is not
+  const movement = { x: 0, y: 0 };
+  if (direction.left) {
+    movement.x -= state.character.speed;
+  }
+  if (direction.right) {
+    movement.x += state.character.speed;
+  }
+  if (direction.up) {
+    movement.y -= state.character.speed;
+  }
+  if (direction.down) {
+    movement.y += state.character.speed;
+  }
+  // make sure angular movement isn't faster than up/down/left/right
+  normalizeVector(movement);
+
+  const newPositionX = state.character.position.x + movement.x;
+  const newPositionY = state.character.position.y + movement.y;
+  const isWater = false; // ctx.offscreen.getImageData(newPositionX / TILE_SIZE, newPositionY / TILE_SIZE, 1, 1).data[0]===0;
+
+  if (
+    newPositionX < state.map.width * TILE_SIZE &&
+    newPositionX >= 0 &&
+    !isWater
+  ) {
+    state.character.position.x = newPositionX;
+  }
+  if (
+    newPositionY < state.map.height * TILE_SIZE &&
+    newPositionY >= 0 &&
+    !isWater
+  ) {
+    state.character.position.y = newPositionY;
+  }
+
+  if (process.env.NODE_ENV === "development") {
+    updateEditor(ctx, state, fixedDelta);
+  }
+}
+
+export function onDraw(ctx: GameContext, state: GameState, delta: number) {
   ctx.gl.enable(ctx.gl.BLEND);
   ctx.gl.blendFunc(ctx.gl.SRC_ALPHA, ctx.gl.ONE_MINUS_SRC_ALPHA);
 
@@ -178,114 +303,34 @@ export function onDraw(ctx: GameContext, state: GameState, _delta: number) {
       right: Math.floor(ctx.screen.width / 2 + offset.x) / ctx.screen.width,
     });
   });
+
+  if (process.env.NODE_ENV === "development") {
+    drawEditor(ctx, state, delta);
+  }
 }
 
-export function onUpdate(
-  ctx: GameContext,
-  state: GameState,
-  fixedDelta: number
-) {
-  const direction: { [key: string]: boolean } = {};
+function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
+  if (!state.editor) return;
 
-  // gamepad input
-  const gp = ctx.getGamepad();
-  if (gp) {
-    if (
-      gp.buttons[12].pressed ||
-      Math.min(0.0, gp.axes[1] + CONTROLLER_DEADZONE) < 0
-    ) {
-      direction.up = true;
-    }
-    if (
-      gp.buttons[13].pressed ||
-      Math.max(0.0, gp.axes[1] - CONTROLLER_DEADZONE) > 0
-    ) {
-      direction.down = true;
-    }
-    if (
-      gp.buttons[14].pressed ||
-      Math.min(0.0, gp.axes[0] + CONTROLLER_DEADZONE) < 0
-    ) {
-      direction.left = true;
-    }
-    if (
-      gp.buttons[15].pressed ||
-      Math.max(0.0, gp.axes[0] - CONTROLLER_DEADZONE) > 0
-    ) {
-      direction.right = true;
-    }
+  if (ctx.keys.pressed.has("e") && ctx.keys.down.has("Control")) {
+    state.editor.active = !state.editor.active;
   }
+}
 
-  // keyboard input
-  if (ctx.keys["w"] || ctx.keys["ArrowUp"]) {
-    direction.up = true;
-  }
-  if (ctx.keys["s"] || ctx.keys["ArrowDown"]) {
-    direction.down = true;
-  }
-  if (ctx.keys["a"] || ctx.keys["ArrowLeft"]) {
-    direction.left = true;
-  }
-  if (ctx.keys["d"] || ctx.keys["ArrowRight"]) {
-    direction.right = true;
-  }
+function drawEditor(ctx: GameContext, state: GameState, _delta: number) {
+  if (!state.editor) return;
 
-  let newDirection: keyof typeof characterSprite.sprites | null = null;
-  // direction animations are mutually exclusive
-  if (direction.left) {
-    newDirection = "walk_l";
-  } else if (direction.right) {
-    newDirection = "walk_r";
-  } else if (direction.up) {
-    newDirection = "walk_u";
-  } else if (direction.down) {
-    newDirection = "walk_d";
-  }
-
-  if (newDirection) {
-    state.character.animator.setSpriteOrTick(
-      state.character.sprite[newDirection],
-      fixedDelta
-    );
-    state.character.direction = newDirection;
-  }
-
-  state.water.tick(fixedDelta);
-
-  // but movement is not
-  const movement = { x: 0, y: 0 };
-  if (direction.left) {
-    movement.x -= state.character.speed;
-  }
-  if (direction.right) {
-    movement.x += state.character.speed;
-  }
-  if (direction.up) {
-    movement.y -= state.character.speed;
-  }
-  if (direction.down) {
-    movement.y += state.character.speed;
-  }
-  // make sure angular movement isn't faster than up/down/left/right
-  normalizeVector(movement);
-
-  const newPositionX = state.character.position.x + movement.x;
-  const newPositionY = state.character.position.y + movement.y;
-  const isWater = false; // ctx.offscreen.getImageData(newPositionX / TILE_SIZE, newPositionY / TILE_SIZE, 1, 1).data[0]===0;
-
-  if (
-    newPositionX < state.map.width * TILE_SIZE &&
-    newPositionX >= 0 &&
-    !isWater
-  ) {
-    state.character.position.x = newPositionX;
-  }
-  if (
-    newPositionY < state.map.height * TILE_SIZE &&
-    newPositionY >= 0 &&
-    !isWater
-  ) {
-    state.character.position.y = newPositionY;
+  if (state.editor.active) {
+    state.solidEffect.use((s) => {
+      s.draw(
+        { top: 0.0, left: 0.0, bottom: 0.5, right: 0.5 },
+        vec4.fromValues(1.0, 1.0, 0, 1.0)
+      );
+      s.draw(
+        { top: 0.5, left: 0.5, bottom: 1.0, right: 1.0 },
+        vec4.fromValues(1.0, 0, 0, 0.5)
+      );
+    });
   }
 }
 
