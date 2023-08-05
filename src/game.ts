@@ -114,27 +114,27 @@ export function onDraw(ctx: GameContext, state: GameState, _delta: number) {
             ctx.screen.width,
         };
 
-        if (ctx.offscreen.getImageData(mapX, mapY, 1, 1).data[0] === 0) {
+        // get the 9 tiles around the player
+        const walkMapData = ctx.offscreen.getImageData(
+          mapX - 1,
+          mapY - 1,
+          3,
+          3
+        );
+
+        if (walkMapData.data[4 * 4] === 0) {
           // water
           state.water.draw(s, position, spatialHash);
         } else {
           // not water
-          const top =
-            ctx.offscreen.getImageData(mapX, mapY - 1, 1, 1).data[0] === 0;
-          const left =
-            ctx.offscreen.getImageData(mapX - 1, mapY, 1, 1).data[0] === 0;
-          const bottom =
-            ctx.offscreen.getImageData(mapX, mapY + 1, 1, 1).data[0] === 0;
-          const right =
-            ctx.offscreen.getImageData(mapX + 1, mapY, 1, 1).data[0] === 0;
-          const topLeft =
-            ctx.offscreen.getImageData(mapX - 1, mapY - 1, 1, 1).data[0] === 0;
-          const topRight =
-            ctx.offscreen.getImageData(mapX + 1, mapY - 1, 1, 1).data[0] === 0;
-          const bottomLeft =
-            ctx.offscreen.getImageData(mapX - 1, mapY + 1, 1, 1).data[0] === 0;
-          const bottomRight =
-            ctx.offscreen.getImageData(mapX + 1, mapY + 1, 1, 1).data[0] === 0;
+          const top = walkMapData.data[4 * 1] === 0;
+          const left = walkMapData.data[4 * 3] === 0;
+          const bottom = walkMapData.data[4 * 7] === 0;
+          const right = walkMapData.data[4 * 5] === 0;
+          const topLeft = walkMapData.data[4 * 0] === 0;
+          const topRight = walkMapData.data[4 * 2] === 0;
+          const bottomLeft = walkMapData.data[4 * 6] === 0;
+          const bottomRight = walkMapData.data[4 * 8] === 0;
 
           if (top && left) {
             state.overworld.grass_tl.draw(s, position);
