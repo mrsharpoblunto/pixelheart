@@ -19,22 +19,6 @@ const PORT = 8000;
 Promise.resolve(
   yargs(hideBin(process.argv)).scriptName("watch").usage("$0 args").argv
 ).then(async (_args) => {
-  // run the esbuild watcher
-  await esbuild.serve(
-    {
-      port: PORT + 1,
-      servedir: path.join(__dirname, "../www"),
-    },
-    {
-      bundle: true,
-      outdir: path.join(__dirname, "../www/js"),
-      define: {
-        ["process.env.NODE_ENV"]: '"development"',
-      },
-      entryPoints: [path.join(__dirname, "../src/index.ts")],
-    }
-  );
-
   await ensurePath(wwwPath);
   await ensurePath(srcPath);
   const sourceSpriteSheets = await fs.readdir(spritePath);
@@ -59,6 +43,22 @@ Promise.resolve(
   await watcher.subscribe(spritePath, async (_err, events) => {
     await processSpriteSheetEvents(events);
   });
+
+  // run the esbuild watcher
+  await esbuild.serve(
+    {
+      port: PORT + 1,
+      servedir: path.join(__dirname, "../www"),
+    },
+    {
+      bundle: true,
+      outdir: path.join(__dirname, "../www/js"),
+      define: {
+        ["process.env.NODE_ENV"]: '"development"',
+      },
+      entryPoints: [path.join(__dirname, "../src/index.ts")],
+    }
+  );
 
   // start the proxy to esbuild & the dev editor API
   const app = express();
