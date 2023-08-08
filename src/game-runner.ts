@@ -92,6 +92,8 @@ export default function GameRunner<T, U>(
     screen: props.screen,
   };
 
+  let pixelMultiplier = 1;
+
   window.addEventListener("gamepadconnected", (e) => {
     selectedGamepadIndex = e.gamepad.index;
   });
@@ -100,7 +102,7 @@ export default function GameRunner<T, U>(
   });
   window.addEventListener("keydown", (e) => {
     context.keys.down.add(e.key);
-    if (e.altKey || e.shiftKey || e.ctrlKey || e.metaKey) {
+    if (e.altKey || e.shiftKey || e.ctrlKey) {
       e.preventDefault();
     }
   });
@@ -109,7 +111,7 @@ export default function GameRunner<T, U>(
       context.keys.pressed.add(e.key);
     }
     context.keys.down.delete(e.key);
-    if (e.altKey || e.shiftKey || e.ctrlKey || e.metaKey) {
+    if (e.altKey || e.shiftKey || e.ctrlKey) {
       e.preventDefault();
     }
   });
@@ -121,8 +123,8 @@ export default function GameRunner<T, U>(
   });
   canvas.addEventListener("mousemove", (e) => {
     const rect = canvas.getBoundingClientRect();
-    context.mouse.x = e.clientX - rect.left;
-    context.mouse.y = e.clientY - rect.top;
+    context.mouse.x = (e.clientX - rect.left) / pixelMultiplier;
+    context.mouse.y = (e.clientY - rect.top) / pixelMultiplier;
   });
   canvas.addEventListener("mousedown", (e) => {
     context.mouse.down[e.button] = true;
@@ -141,8 +143,8 @@ export default function GameRunner<T, U>(
     for (let i = 0; i < e.changedTouches.length; ++i) {
       const touch = e.changedTouches[i];
       const newTouch = {
-        x: touch.clientX - rect.left,
-        y: touch.clientY - rect.top,
+        x: (touch.clientX - rect.left) / pixelMultiplier,
+        y: (touch.clientY - rect.top) / pixelMultiplier,
       };
       if (
         newTouch.x >= 0 &&
@@ -160,8 +162,8 @@ export default function GameRunner<T, U>(
       const touch = e.changedTouches[i];
       const existingTouch = context.touches.down.get(touch.identifier);
       if (existingTouch) {
-        existingTouch.x = touch.clientX - rect.left;
-        existingTouch.y = touch.clientY - rect.top;
+        existingTouch.x = (touch.clientX - rect.left) / pixelMultiplier;
+        existingTouch.y = (touch.clientY - rect.top) / pixelMultiplier;
       }
     }
   });
@@ -171,8 +173,8 @@ export default function GameRunner<T, U>(
       const touch = e.changedTouches[i];
       const existingTouch = context.touches.down.get(touch.identifier);
       if (existingTouch) {
-        existingTouch.x = touch.clientX - rect.left;
-        existingTouch.y = touch.clientY - rect.top;
+        existingTouch.x = (touch.clientX - rect.left) / pixelMultiplier;
+        existingTouch.y = (touch.clientY - rect.top) / pixelMultiplier;
         context.touches.down.delete(touch.identifier);
         context.touches.ended.set(touch.identifier, existingTouch);
       }
@@ -250,7 +252,7 @@ export default function GameRunner<T, U>(
   window.addEventListener("visibilitychange", handlePersist);
 
   const handleResize = () => {
-    const multiplier = Math.max(
+    pixelMultiplier = Math.max(
       1,
       Math.min(
         Math.floor(window.innerWidth / props.screen.width),
@@ -258,8 +260,8 @@ export default function GameRunner<T, U>(
       )
     );
     if (canvas) {
-      canvas.style.width = multiplier * props.screen.width + "px";
-      canvas.style.height = multiplier * props.screen.height + "px";
+      canvas.style.width = pixelMultiplier * props.screen.width + "px";
+      canvas.style.height = pixelMultiplier * props.screen.height + "px";
     }
   };
 

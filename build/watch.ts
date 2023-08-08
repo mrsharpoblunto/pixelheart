@@ -68,7 +68,7 @@ Promise.resolve(
   app.use(
     "/*",
     createProxyMiddleware({
-      target: `http://localhost:${PORT + 1}`,
+      target: `http://127.0.0.1:${PORT + 1}`,
     })
   );
   app.listen(PORT);

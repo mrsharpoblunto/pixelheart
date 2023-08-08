@@ -31,6 +31,9 @@ export interface GameState {
     animator: SpriteAnimator;
     direction: keyof typeof characterSprite.sprites;
     position: { x: number; y: number };
+    screenSpacePosition: { x: number; y: number };
+    screenSpaceTilePosition: { x: number; y: number };
+    screenSpaceTileFragment: { x: number; y: number };
     speed: number;
   };
   water: SpriteAnimator;
@@ -69,6 +72,9 @@ export async function onStart(
       position: previousState
         ? previousState.character.position
         : { x: ctx.screen.width / 2 + 50, y: ctx.screen.height / 2 },
+      screenSpacePosition: { x: 0, y: 0 },
+      screenSpaceTilePosition: { x: 0, y: 0 },
+      screenSpaceTileFragment: { x: 0, y: 0 },
       speed: 1,
     },
     water: new SpriteAnimator(overworld.water, 6 / 1000),
@@ -128,6 +134,13 @@ export function onUpdate(
   }
 
   // keyboard input
+  if (ctx.keys.pressed.has("Enter") && ctx.keys.down.has("Alt")) {
+    if (!document.fullscreenElement) {
+      ctx.canvas.requestFullscreen();
+    } else if (document.exitFullscreen) {
+      document.exitFullscreen();
+    }
+  }
   if (ctx.keys.down.has("w") || ctx.keys.down.has("ArrowUp")) {
     direction.up = true;
   }
@@ -166,38 +179,82 @@ export function onUpdate(
   // but movement is not
   const movement = { x: 0, y: 0 };
   if (direction.left) {
-    movement.x -= state.character.speed;
+    movement.x--;
   }
   if (direction.right) {
-    movement.x += state.character.speed;
+    movement.x++;
   }
   if (direction.up) {
-    movement.y -= state.character.speed;
+    movement.y--;
   }
   if (direction.down) {
-    movement.y += state.character.speed;
+    movement.y++;
   }
   // make sure angular movement isn't faster than up/down/left/right
   normalizeVector(movement);
+  movement.x *= state.character.speed;
+  movement.y *= state.character.speed;
 
   const newPositionX = state.character.position.x + movement.x;
   const newPositionY = state.character.position.y + movement.y;
   const isWater = false; // ctx.offscreen.getImageData(newPositionX / TILE_SIZE, newPositionY / TILE_SIZE, 1, 1).data[0]===0;
 
-  if (
-    newPositionX < state.map.width * TILE_SIZE &&
-    newPositionX >= 0 &&
-    !isWater
-  ) {
-    state.character.position.x = newPositionX;
+  const renderOffset = {
+    x: state.character.animator.getSprite().width / 2,
+    y: state.character.animator.getSprite().height / 2,
+  };
+
+  if (!isWater) {
+    state.character.position.x = Math.max(
+      Math.min(newPositionX, state.map.width * TILE_SIZE - renderOffset.x),
+      renderOffset.x
+    );
+    state.character.position.y = Math.max(
+      Math.min(newPositionY, state.map.height * TILE_SIZE - renderOffset.y),
+      renderOffset.y
+    );
   }
-  if (
-    newPositionY < state.map.height * TILE_SIZE &&
-    newPositionY >= 0 &&
-    !isWater
-  ) {
-    state.character.position.y = newPositionY;
-  }
+
+  // character position relative to the top left of the screen
+  state.character.screenSpacePosition.x =
+    state.character.position.x < ctx.screen.width / 2
+      ? state.character.position.x
+      : state.character.position.x >
+        state.map.width * TILE_SIZE - ctx.screen.width / 2
+      ? state.character.position.x -
+        state.map.width * TILE_SIZE +
+        ctx.screen.width
+      : ctx.screen.width / 2;
+  state.character.screenSpacePosition.y =
+    state.character.position.y < ctx.screen.height / 2
+      ? state.character.position.y
+      : state.character.position.y >
+        state.map.height * TILE_SIZE - ctx.screen.height / 2
+      ? state.character.position.y -
+        state.map.height * TILE_SIZE +
+        ctx.screen.height
+      : ctx.screen.height / 2;
+
+  //character position relative to the top left of the screen in tiles
+  state.character.screenSpaceTilePosition.x = Math.floor(
+    (state.character.position.x - state.character.screenSpacePosition.x) /
+      TILE_SIZE
+  );
+  state.character.screenSpaceTilePosition.y = Math.floor(
+    (state.character.position.y - state.character.screenSpacePosition.y) /
+      TILE_SIZE
+  );
+
+  // fractional remainder because character isn't always located exactly on
+  // tile borders
+  state.character.screenSpaceTileFragment.x =
+    Math.floor(
+      state.character.position.x - state.character.screenSpacePosition.x
+    ) % TILE_SIZE;
+  state.character.screenSpaceTileFragment.y =
+    Math.floor(
+      state.character.position.y - state.character.screenSpacePosition.y
+    ) % TILE_SIZE;
 
   if (process.env.NODE_ENV === "development") {
     updateEditor(ctx, state, fixedDelta);
@@ -209,33 +266,29 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
   ctx.gl.blendFunc(ctx.gl.SRC_ALPHA, ctx.gl.ONE_MINUS_SRC_ALPHA);
 
   state.spriteEffect.use((s) => {
-    const characterTileOffset = {
-      x: Math.floor(state.character.position.x) % TILE_SIZE,
-      y: Math.floor(state.character.position.y) % TILE_SIZE,
-    };
-    const centerOffset = {
-      x:
-        Math.floor(state.character.position.x / TILE_SIZE) -
-        ctx.screen.width / (TILE_SIZE * 2),
-      y:
-        Math.floor(state.character.position.y / TILE_SIZE) -
-        ctx.screen.height / (TILE_SIZE * 2),
-    };
-
+    // overdraw the screen by 1 tile at each edge to prevent tile pop-in
     for (let x = -1; x < (ctx.screen.width + 1) / TILE_SIZE; ++x) {
       for (let y = -1; y < (ctx.screen.height + 1) / TILE_SIZE; ++y) {
-        const mapX = x + centerOffset.x;
-        const mapY = y + centerOffset.y;
+        const mapX = x + state.character.screenSpaceTilePosition.x;
+        const mapY = y + state.character.screenSpaceTilePosition.y;
         const spatialHash = hash(mapX, mapY);
 
         const position = {
-          top: (y * TILE_SIZE - characterTileOffset.y) / ctx.screen.height,
-          left: (x * TILE_SIZE - characterTileOffset.x) / ctx.screen.width,
+          top:
+            (y * TILE_SIZE - state.character.screenSpaceTileFragment.y) /
+            ctx.screen.height,
+          left:
+            (x * TILE_SIZE - state.character.screenSpaceTileFragment.x) /
+            ctx.screen.width,
           bottom:
-            (y * TILE_SIZE + TILE_SIZE - characterTileOffset.y) /
+            (y * TILE_SIZE +
+              TILE_SIZE -
+              state.character.screenSpaceTileFragment.y) /
             ctx.screen.height,
           right:
-            (x * TILE_SIZE + TILE_SIZE - characterTileOffset.x) /
+            (x * TILE_SIZE +
+              TILE_SIZE -
+              state.character.screenSpaceTileFragment.x) /
             ctx.screen.width,
         };
 
@@ -297,10 +350,18 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
       y: state.character.animator.getSprite().height / 2,
     };
     state.character.animator.draw(s, {
-      top: Math.floor(ctx.screen.height / 2 - offset.y) / ctx.screen.height,
-      left: Math.floor(ctx.screen.width / 2 - offset.x) / ctx.screen.width,
-      bottom: Math.floor(ctx.screen.height / 2 + offset.y) / ctx.screen.height,
-      right: Math.floor(ctx.screen.width / 2 + offset.x) / ctx.screen.width,
+      top:
+        Math.floor(state.character.screenSpacePosition.y - offset.y) /
+        ctx.screen.height,
+      left:
+        Math.floor(state.character.screenSpacePosition.x - offset.x) /
+        ctx.screen.width,
+      bottom:
+        Math.floor(state.character.screenSpacePosition.y + offset.y) /
+        ctx.screen.height,
+      right:
+        Math.floor(state.character.screenSpacePosition.x + offset.x) /
+        ctx.screen.width,
     });
   });
 
@@ -312,7 +373,7 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
 function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
   if (!state.editor) return;
 
-  if (ctx.keys.pressed.has("e") && ctx.keys.down.has("Control")) {
+  if (ctx.keys.pressed.has("e")) {
     state.editor.active = !state.editor.active;
   }
 }
@@ -322,12 +383,31 @@ function drawEditor(ctx: GameContext, state: GameState, _delta: number) {
 
   if (state.editor.active) {
     state.solidEffect.use((s) => {
+      const screenSpaceCursorTile = {
+        x: Math.floor(ctx.mouse.x / TILE_SIZE),
+        y: Math.floor(ctx.mouse.y / TILE_SIZE),
+      };
       s.draw(
-        { top: 0.0, left: 0.0, bottom: 0.5, right: 0.5 },
-        vec4.fromValues(1.0, 1.0, 0, 1.0)
-      );
-      s.draw(
-        { top: 0.5, left: 0.5, bottom: 1.0, right: 1.0 },
+        {
+          top:
+            (screenSpaceCursorTile.y * TILE_SIZE -
+              state.character.screenSpaceTileFragment.y) /
+            ctx.screen.height,
+          left:
+            (screenSpaceCursorTile.x * TILE_SIZE -
+              state.character.screenSpaceTileFragment.x) /
+            ctx.screen.width,
+          bottom:
+            (screenSpaceCursorTile.y * TILE_SIZE +
+              TILE_SIZE -
+              state.character.screenSpaceTileFragment.y) /
+            ctx.screen.height,
+          right:
+            (screenSpaceCursorTile.x * TILE_SIZE +
+              TILE_SIZE -
+              state.character.screenSpaceTileFragment.x) /
+            ctx.screen.width,
+        },
         vec4.fromValues(1.0, 0, 0, 0.5)
       );
     });
