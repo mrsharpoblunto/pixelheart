@@ -2,22 +2,26 @@ import { GameContext } from "./game-runner";
 import { vec4 } from "gl-matrix";
 import { CPUReadableTexture, loadCPUReadableTextureFromUrl } from "./images";
 import {
-  SpriteSheet,
   loadSpriteSheet,
   SpriteAnimator,
   SpriteEffect,
+  SpriteSheet,
 } from "./sprite-effect";
 import { SolidEffect } from "./solid-effect";
 import overworldSprite from "./sprites/overworld";
 import characterSprite from "./sprites/character";
+import {
+  TILE_SIZE,
+  toAbsoluteTileFromAbsolute,
+  toRelativeTileFromRelative,
+} from "./coordinates";
 
 const CONTROLLER_DEADZONE = 0.25;
-const TILE_SIZE = 16;
 
 export interface SerializedGameState {
   character: {
     position: { x: number; y: number };
-    direction: keyof typeof characterSprite.sprites;
+    direction: string;
   };
 }
 
@@ -29,12 +33,12 @@ export interface GameState {
   character: {
     sprite: SpriteSheet;
     animator: SpriteAnimator;
-    direction: keyof typeof characterSprite.sprites;
     position: { x: number; y: number };
-    screenSpacePosition: { x: number; y: number };
-    screenSpaceTilePosition: { x: number; y: number };
-    screenSpaceTileFragment: { x: number; y: number };
+    relativePosition: { x: number; y: number };
     speed: number;
+  };
+  screen: {
+    absolutePosition: { x: number; y: number };
   };
   water: SpriteAnimator;
   editor?: {
@@ -46,7 +50,7 @@ export function onSave(state: GameState): SerializedGameState {
   return {
     character: {
       position: state.character.position,
-      direction: state.character.direction,
+      direction: state.character.animator.getSpriteName(),
     },
   };
 }
@@ -65,19 +69,23 @@ export async function onStart(
     character: {
       sprite: character,
       animator: new SpriteAnimator(
-        character[previousState ? previousState.character.direction : "walk_d"],
+        character,
+        previousState ? previousState.character.direction : "walk_d",
         8 / 1000
       ),
-      direction: previousState ? previousState.character.direction : "walk_d",
       position: previousState
         ? previousState.character.position
-        : { x: ctx.screen.width / 2 + 50, y: ctx.screen.height / 2 },
-      screenSpacePosition: { x: 0, y: 0 },
-      screenSpaceTilePosition: { x: 0, y: 0 },
-      screenSpaceTileFragment: { x: 0, y: 0 },
+        : { x: ctx.screen.width / 2, y: ctx.screen.height / 2 },
+      relativePosition: { x: 0, y: 0 },
       speed: 1,
     },
-    water: new SpriteAnimator(overworld.water, 6 / 1000),
+    water: new SpriteAnimator(overworld, "water", 6 / 1000),
+    screen: {
+      absolutePosition: {
+        x: 0,
+        y: 0,
+      },
+    },
   };
   if (process.env.NODE_ENV === "development") {
     state.editor = {
@@ -134,7 +142,7 @@ export function onUpdate(
   }
 
   // keyboard input
-  if (ctx.keys.pressed.has("Enter") && ctx.keys.down.has("Alt")) {
+  if (ctx.keys.pressed.has("f") && ctx.keys.down.has("Control")) {
     if (!document.fullscreenElement) {
       ctx.canvas.requestFullscreen();
     } else if (document.exitFullscreen) {
@@ -167,11 +175,7 @@ export function onUpdate(
   }
 
   if (newDirection) {
-    state.character.animator.setSpriteOrTick(
-      state.character.sprite[newDirection],
-      fixedDelta
-    );
-    state.character.direction = newDirection;
+    state.character.animator.setSpriteOrTick(newDirection, fixedDelta);
   }
 
   state.water.tick(fixedDelta);
@@ -216,7 +220,7 @@ export function onUpdate(
   }
 
   // character position relative to the top left of the screen
-  state.character.screenSpacePosition.x =
+  state.character.relativePosition.x =
     state.character.position.x < ctx.screen.width / 2
       ? state.character.position.x
       : state.character.position.x >
@@ -225,7 +229,7 @@ export function onUpdate(
         state.map.width * TILE_SIZE +
         ctx.screen.width
       : ctx.screen.width / 2;
-  state.character.screenSpacePosition.y =
+  state.character.relativePosition.y =
     state.character.position.y < ctx.screen.height / 2
       ? state.character.position.y
       : state.character.position.y >
@@ -235,26 +239,11 @@ export function onUpdate(
         ctx.screen.height
       : ctx.screen.height / 2;
 
-  //character position relative to the top left of the screen in tiles
-  state.character.screenSpaceTilePosition.x = Math.floor(
-    (state.character.position.x - state.character.screenSpacePosition.x) /
-      TILE_SIZE
-  );
-  state.character.screenSpaceTilePosition.y = Math.floor(
-    (state.character.position.y - state.character.screenSpacePosition.y) /
-      TILE_SIZE
-  );
-
-  // fractional remainder because character isn't always located exactly on
-  // tile borders
-  state.character.screenSpaceTileFragment.x =
-    Math.floor(
-      state.character.position.x - state.character.screenSpacePosition.x
-    ) % TILE_SIZE;
-  state.character.screenSpaceTileFragment.y =
-    Math.floor(
-      state.character.position.y - state.character.screenSpacePosition.y
-    ) % TILE_SIZE;
+  // Record the scroll offset of the screen
+  state.screen.absolutePosition.x =
+    state.character.position.x - state.character.relativePosition.x;
+  state.screen.absolutePosition.y =
+    state.character.position.y - state.character.relativePosition.y;
 
   if (process.env.NODE_ENV === "development") {
     updateEditor(ctx, state, fixedDelta);
@@ -265,32 +254,22 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
   ctx.gl.enable(ctx.gl.BLEND);
   ctx.gl.blendFunc(ctx.gl.SRC_ALPHA, ctx.gl.ONE_MINUS_SRC_ALPHA);
 
+  const ssp = toAbsoluteTileFromAbsolute(state.screen.absolutePosition);
+
   state.spriteEffect.use((s) => {
     // overdraw the screen by 1 tile at each edge to prevent tile pop-in
     for (let x = -1; x < (ctx.screen.width + 1) / TILE_SIZE; ++x) {
       for (let y = -1; y < (ctx.screen.height + 1) / TILE_SIZE; ++y) {
-        const mapX = x + state.character.screenSpaceTilePosition.x;
-        const mapY = y + state.character.screenSpaceTilePosition.y;
+        const mapX = x + ssp[0].x;
+        const mapY = y + ssp[0].y;
         const spatialHash = hash(mapX, mapY);
 
-        const position = {
-          top:
-            (y * TILE_SIZE - state.character.screenSpaceTileFragment.y) /
-            ctx.screen.height,
-          left:
-            (x * TILE_SIZE - state.character.screenSpaceTileFragment.x) /
-            ctx.screen.width,
-          bottom:
-            (y * TILE_SIZE +
-              TILE_SIZE -
-              state.character.screenSpaceTileFragment.y) /
-            ctx.screen.height,
-          right:
-            (x * TILE_SIZE +
-              TILE_SIZE -
-              state.character.screenSpaceTileFragment.x) /
-            ctx.screen.width,
-        };
+        const position = ctx.screen.toScreenSpace({
+          top: y * TILE_SIZE - ssp[1].y,
+          left: x * TILE_SIZE - ssp[1].x,
+          bottom: y * TILE_SIZE + TILE_SIZE - ssp[1].y,
+          right: x * TILE_SIZE + TILE_SIZE - ssp[1].x,
+        });
 
         // get the 9 tiles around the player
         const walkMapData = ctx.offscreen.getImageData(
@@ -349,20 +328,15 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
       x: state.character.animator.getSprite().width / 2,
       y: state.character.animator.getSprite().height / 2,
     };
-    state.character.animator.draw(s, {
-      top:
-        Math.floor(state.character.screenSpacePosition.y - offset.y) /
-        ctx.screen.height,
-      left:
-        Math.floor(state.character.screenSpacePosition.x - offset.x) /
-        ctx.screen.width,
-      bottom:
-        Math.floor(state.character.screenSpacePosition.y + offset.y) /
-        ctx.screen.height,
-      right:
-        Math.floor(state.character.screenSpacePosition.x + offset.x) /
-        ctx.screen.width,
-    });
+    state.character.animator.draw(
+      s,
+      ctx.screen.toScreenSpace({
+        top: state.character.relativePosition.y - offset.y,
+        left: state.character.relativePosition.x - offset.x,
+        bottom: state.character.relativePosition.y + offset.y,
+        right: state.character.relativePosition.x + offset.x,
+      })
+    );
   });
 
   if (process.env.NODE_ENV === "development") {
@@ -383,31 +357,14 @@ function drawEditor(ctx: GameContext, state: GameState, _delta: number) {
 
   if (state.editor.active) {
     state.solidEffect.use((s) => {
-      const screenSpaceCursorTile = {
-        x: Math.floor(ctx.mouse.x / TILE_SIZE),
-        y: Math.floor(ctx.mouse.y / TILE_SIZE),
-      };
+      const rp = toRelativeTileFromRelative(ctx.mouse);
       s.draw(
-        {
-          top:
-            (screenSpaceCursorTile.y * TILE_SIZE -
-              state.character.screenSpaceTileFragment.y) /
-            ctx.screen.height,
-          left:
-            (screenSpaceCursorTile.x * TILE_SIZE -
-              state.character.screenSpaceTileFragment.x) /
-            ctx.screen.width,
-          bottom:
-            (screenSpaceCursorTile.y * TILE_SIZE +
-              TILE_SIZE -
-              state.character.screenSpaceTileFragment.y) /
-            ctx.screen.height,
-          right:
-            (screenSpaceCursorTile.x * TILE_SIZE +
-              TILE_SIZE -
-              state.character.screenSpaceTileFragment.x) /
-            ctx.screen.width,
-        },
+        ctx.screen.toScreenSpace({
+          top: rp[0].y * TILE_SIZE - rp[1].y,
+          left: rp[0].x * TILE_SIZE - rp[1].x,
+          bottom: rp[0].y * TILE_SIZE + TILE_SIZE - rp[1].y,
+          right: rp[0].x * TILE_SIZE + TILE_SIZE - rp[1].x,
+        }),
         vec4.fromValues(1.0, 0, 0, 0.5)
       );
     });

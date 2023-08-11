@@ -4,7 +4,7 @@
   "description": "A basic WebGL app with TypeScript and React",
   "main": "index.js",
   "scripts": {
-    "dist": "npm run clean && npm run build:sprites && npm run build:js",
+    "dist": "npm run clean && tsc && npm run build:sprites && npm run build:js",
     "build:js": "esbuild ./src/index.ts --bundle --minify --platform=browser --outfile=www/js/index.js --define:process.env.NODE_ENV='\"production\"' --sourcemap",
     "build:sprites": "ts-node ./build/sprites.ts",
     "serve": "ts-node ./build/serve.ts",

@@ -84,14 +84,18 @@ export async function loadSpriteSheet(
 }
 
 export class SpriteAnimator {
+  #sheet: SpriteSheet;
   #sprite: Sprite;
+  #spriteName: string;
   frameRate: number;
   frame: number;
 
-  constructor(sprite: Sprite, frameRate: number) {
+  constructor(spriteSheet: SpriteSheet, sprite: string, frameRate: number) {
     this.frameRate = frameRate;
     this.frame = 0;
-    this.#sprite = sprite;
+    this.#sheet = spriteSheet;
+    this.#spriteName = sprite;
+    this.#sprite = spriteSheet[sprite];
   }
 
   tick(fixedDelta: number): void {
@@ -105,16 +109,24 @@ export class SpriteAnimator {
     return this.#sprite;
   }
 
-  setSprite(sprite: Sprite) {
-    if (sprite !== this.#sprite) {
-      this.#sprite = sprite;
+  getSpriteName(): string {
+    return this.#spriteName;
+  }
+
+  setSprite(sprite: string) {
+    const newSprite = this.#sheet[sprite];
+    if (newSprite !== this.#sprite) {
+      this.#sprite = newSprite;
+      this.#spriteName = sprite;
       this.frame = 0;
     }
   }
 
-  setSpriteOrTick(sprite: Sprite, fixedDelta: number) {
-    if (sprite !== this.#sprite) {
-      this.#sprite = sprite;
+  setSpriteOrTick(sprite: string, fixedDelta: number) {
+    const newSprite = this.#sheet[sprite];
+    if (newSprite !== this.#sprite) {
+      this.#sprite = newSprite;
+      this.#spriteName = sprite;
       this.frame = 0;
     } else {
       this.tick(fixedDelta);

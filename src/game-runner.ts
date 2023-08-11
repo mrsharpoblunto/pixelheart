@@ -18,7 +18,21 @@ export interface GameContext {
     down: Map<number, { x: number; y: number }>;
     ended: Map<number, { x: number; y: number }>;
   };
-  screen: { width: number; height: number };
+  screen: {
+    width: number;
+    height: number;
+    toScreenSpace: (relativeRect: {
+      top: number;
+      left: number;
+      bottom: number;
+      right: number;
+    }) => {
+      top: number;
+      left: number;
+      bottom: number;
+      right: number;
+    };
+  };
 }
 
 interface GameProps<T, U> {
@@ -89,7 +103,20 @@ export default function GameRunner<T, U>(
       down: new Map<number, { x: number; y: number }>(),
       ended: new Map<number, { x: number; y: number }>(),
     },
-    screen: props.screen,
+    screen: {
+      ...props.screen,
+      toScreenSpace: (relativeRect: {
+        top: number;
+        left: number;
+        bottom: number;
+        right: number;
+      }) => ({
+        top: relativeRect.top / props.screen.height,
+        left: relativeRect.left / props.screen.width,
+        bottom: relativeRect.bottom / props.screen.height,
+        right: relativeRect.right / props.screen.width,
+      }),
+    },
   };
 
   let pixelMultiplier = 1;
