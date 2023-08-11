@@ -1,3 +1,5 @@
+import { vec4, vec2, ReadonlyVec4 } from "gl-matrix";
+
 export interface GameContext {
   gl: WebGL2RenderingContext;
   offscreen: CanvasRenderingContext2D;
@@ -8,30 +10,19 @@ export interface GameContext {
     pressed: Set<string>;
   };
   mouse: {
-    x: number;
-    y: number;
-    wheel: { x: number; y: number };
+    position: vec2;
+    wheel: vec2;
     down: Array<boolean>;
     clicked: Array<boolean>;
   };
   touches: {
-    down: Map<number, { x: number; y: number }>;
-    ended: Map<number, { x: number; y: number }>;
+    down: Map<number, vec2>;
+    ended: Map<number, vec2>;
   };
   screen: {
     width: number;
     height: number;
-    toScreenSpace: (relativeRect: {
-      top: number;
-      left: number;
-      bottom: number;
-      right: number;
-    }) => {
-      top: number;
-      left: number;
-      bottom: number;
-      right: number;
-    };
+    toScreenSpace: (out: vec4, relativeRect: ReadonlyVec4) => vec4;
   };
 }
 
@@ -93,29 +84,25 @@ export default function GameRunner<T, U>(
       pressed: new Set<string>(),
     },
     mouse: {
-      x: 0,
-      y: 0,
-      wheel: { x: 0, y: 0 },
+      position: vec2.create(),
+      wheel: vec2.create(),
       down: [],
       clicked: [],
     },
     touches: {
-      down: new Map<number, { x: number; y: number }>(),
-      ended: new Map<number, { x: number; y: number }>(),
+      down: new Map(),
+      ended: new Map(),
     },
     screen: {
       ...props.screen,
-      toScreenSpace: (relativeRect: {
-        top: number;
-        left: number;
-        bottom: number;
-        right: number;
-      }) => ({
-        top: relativeRect.top / props.screen.height,
-        left: relativeRect.left / props.screen.width,
-        bottom: relativeRect.bottom / props.screen.height,
-        right: relativeRect.right / props.screen.width,
-      }),
+      toScreenSpace: (out: vec4, relativeRect: ReadonlyVec4) =>
+        vec4.set(
+          out,
+          relativeRect[0] / props.screen.height,
+          relativeRect[1] / props.screen.width,
+          relativeRect[2] / props.screen.height,
+          relativeRect[3] / props.screen.width
+        ),
     },
   };
 
@@ -144,14 +131,16 @@ export default function GameRunner<T, U>(
   });
   canvas.addEventListener("wheel", (e) => {
     if (e.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
-      context.mouse.wheel.x = e.deltaX;
-      context.mouse.wheel.y = e.deltaY;
+      vec2.set(context.mouse.wheel, e.deltaX, e.deltaY);
     }
   });
   canvas.addEventListener("mousemove", (e) => {
     const rect = canvas.getBoundingClientRect();
-    context.mouse.x = (e.clientX - rect.left) / pixelMultiplier;
-    context.mouse.y = (e.clientY - rect.top) / pixelMultiplier;
+    vec2.set(
+      context.mouse.position,
+      (e.clientX - rect.left) / pixelMultiplier,
+      (e.clientY - rect.top) / pixelMultiplier
+    );
   });
   canvas.addEventListener("mousedown", (e) => {
     context.mouse.down[e.button] = true;
@@ -169,15 +158,15 @@ export default function GameRunner<T, U>(
     const rect = canvas.getBoundingClientRect();
     for (let i = 0; i < e.changedTouches.length; ++i) {
       const touch = e.changedTouches[i];
-      const newTouch = {
-        x: (touch.clientX - rect.left) / pixelMultiplier,
-        y: (touch.clientY - rect.top) / pixelMultiplier,
-      };
+      const newTouch = vec2.fromValues(
+        (touch.clientX - rect.left) / pixelMultiplier,
+        (touch.clientY - rect.top) / pixelMultiplier
+      );
       if (
-        newTouch.x >= 0 &&
-        newTouch.y >= 0 &&
-        newTouch.x <= context.screen.width &&
-        newTouch.y <= context.screen.height
+        newTouch[0] >= 0 &&
+        newTouch[1] >= 0 &&
+        newTouch[0] <= context.screen.width &&
+        newTouch[1] <= context.screen.height
       ) {
         context.touches.down.set(touch.identifier, newTouch);
       }
@@ -189,8 +178,11 @@ export default function GameRunner<T, U>(
       const touch = e.changedTouches[i];
       const existingTouch = context.touches.down.get(touch.identifier);
       if (existingTouch) {
-        existingTouch.x = (touch.clientX - rect.left) / pixelMultiplier;
-        existingTouch.y = (touch.clientY - rect.top) / pixelMultiplier;
+        vec2.set(
+          existingTouch,
+          (touch.clientX - rect.left) / pixelMultiplier,
+          (touch.clientY - rect.top) / pixelMultiplier
+        );
       }
     }
   });
@@ -200,8 +192,11 @@ export default function GameRunner<T, U>(
       const touch = e.changedTouches[i];
       const existingTouch = context.touches.down.get(touch.identifier);
       if (existingTouch) {
-        existingTouch.x = (touch.clientX - rect.left) / pixelMultiplier;
-        existingTouch.y = (touch.clientY - rect.top) / pixelMultiplier;
+        vec2.set(
+          existingTouch,
+          (touch.clientX - rect.left) / pixelMultiplier,
+          (touch.clientY - rect.top) / pixelMultiplier
+        );
         context.touches.down.delete(touch.identifier);
         context.touches.ended.set(touch.identifier, existingTouch);
       }
@@ -249,7 +244,7 @@ export default function GameRunner<T, U>(
       while (accumulatedTime >= props.fixedUpdate) {
         props.update(context, state, props.fixedUpdate);
         context.mouse.clicked = [];
-        context.mouse.wheel.x = context.mouse.wheel.y = 0;
+        vec2.set(context.mouse.wheel, 0, 0);
         context.touches.ended.clear();
         context.keys.pressed.clear();
         accumulatedTime -= props.fixedUpdate;

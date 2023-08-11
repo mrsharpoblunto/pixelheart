@@ -10,17 +10,14 @@ import {
 import { SolidEffect } from "./solid-effect";
 import overworldSprite from "./sprites/overworld";
 import characterSprite from "./sprites/character";
-import {
-  TILE_SIZE,
-  toAbsoluteTileFromAbsolute,
-  toRelativeTileFromRelative,
-} from "./coordinates";
+import * as coords from "./coordinates";
+import { vec2 } from "gl-matrix";
 
 const CONTROLLER_DEADZONE = 0.25;
 
 export interface SerializedGameState {
   character: {
-    position: { x: number; y: number };
+    position: [number, number];
     direction: string;
   };
 }
@@ -33,23 +30,25 @@ export interface GameState {
   character: {
     sprite: SpriteSheet;
     animator: SpriteAnimator;
-    position: { x: number; y: number };
-    relativePosition: { x: number; y: number };
+    position: vec2;
+    relativePosition: vec2;
     speed: number;
   };
   screen: {
-    absolutePosition: { x: number; y: number };
+    absolutePosition: vec2;
   };
   water: SpriteAnimator;
-  editor?: {
-    active: boolean;
-  };
+  editor?: EditorState;
+}
+
+export interface EditorState {
+  active: boolean;
 }
 
 export function onSave(state: GameState): SerializedGameState {
   return {
     character: {
-      position: state.character.position,
+      position: [state.character.position[0], state.character.position[1]],
       direction: state.character.animator.getSpriteName(),
     },
   };
@@ -74,17 +73,17 @@ export async function onStart(
         8 / 1000
       ),
       position: previousState
-        ? previousState.character.position
-        : { x: ctx.screen.width / 2, y: ctx.screen.height / 2 },
-      relativePosition: { x: 0, y: 0 },
+        ? vec2.fromValues(
+            previousState.character.position[0],
+            previousState.character.position[1]
+          )
+        : vec2.fromValues(ctx.screen.width / 2, ctx.screen.height / 2),
+      relativePosition: vec2.create(),
       speed: 1,
     },
     water: new SpriteAnimator(overworld, "water", 6 / 1000),
     screen: {
-      absolutePosition: {
-        x: 0,
-        y: 0,
-      },
+      absolutePosition: vec2.create(),
     },
   };
   if (process.env.NODE_ENV === "development") {
@@ -181,69 +180,66 @@ export function onUpdate(
   state.water.tick(fixedDelta);
 
   // but movement is not
-  const movement = { x: 0, y: 0 };
+  const movement = vec2.create();
   if (direction.left) {
-    movement.x--;
+    movement[0]--;
   }
   if (direction.right) {
-    movement.x++;
+    movement[0]++;
   }
   if (direction.up) {
-    movement.y--;
+    movement[1]--;
   }
   if (direction.down) {
-    movement.y++;
+    movement[1]++;
   }
   // make sure angular movement isn't faster than up/down/left/right
-  normalizeVector(movement);
-  movement.x *= state.character.speed;
-  movement.y *= state.character.speed;
+  vec2.normalize(movement, movement);
+  vec2.scale(movement, movement, state.character.speed);
+  vec2.add(movement, movement, state.character.position);
 
-  const newPositionX = state.character.position.x + movement.x;
-  const newPositionY = state.character.position.y + movement.y;
   const isWater = false; // ctx.offscreen.getImageData(newPositionX / TILE_SIZE, newPositionY / TILE_SIZE, 1, 1).data[0]===0;
 
-  const renderOffset = {
-    x: state.character.animator.getSprite().width / 2,
-    y: state.character.animator.getSprite().height / 2,
-  };
-
   if (!isWater) {
-    state.character.position.x = Math.max(
-      Math.min(newPositionX, state.map.width * TILE_SIZE - renderOffset.x),
-      renderOffset.x
+    const renderOffset = vec2.fromValues(
+      state.character.animator.getSprite().width / 2,
+      state.character.animator.getSprite().height / 2
     );
-    state.character.position.y = Math.max(
-      Math.min(newPositionY, state.map.height * TILE_SIZE - renderOffset.y),
-      renderOffset.y
+    const mapSize = vec2.fromValues(
+      state.map.width * coords.TILE_SIZE,
+      state.map.height * coords.TILE_SIZE
     );
+    vec2.subtract(mapSize, mapSize, renderOffset);
+    vec2.min(state.character.position, movement, mapSize);
+    vec2.max(state.character.position, state.character.position, renderOffset);
   }
 
   // character position relative to the top left of the screen
-  state.character.relativePosition.x =
-    state.character.position.x < ctx.screen.width / 2
-      ? state.character.position.x
-      : state.character.position.x >
-        state.map.width * TILE_SIZE - ctx.screen.width / 2
-      ? state.character.position.x -
-        state.map.width * TILE_SIZE +
+  state.character.relativePosition[0] =
+    state.character.position[0] < ctx.screen.width / 2
+      ? state.character.position[0]
+      : state.character.position[0] >
+        state.map.width * coords.TILE_SIZE - ctx.screen.width / 2
+      ? state.character.position[0] -
+        state.map.width * coords.TILE_SIZE +
         ctx.screen.width
       : ctx.screen.width / 2;
-  state.character.relativePosition.y =
-    state.character.position.y < ctx.screen.height / 2
-      ? state.character.position.y
-      : state.character.position.y >
-        state.map.height * TILE_SIZE - ctx.screen.height / 2
-      ? state.character.position.y -
-        state.map.height * TILE_SIZE +
+  state.character.relativePosition[1] =
+    state.character.position[1] < ctx.screen.height / 2
+      ? state.character.position[1]
+      : state.character.position[1] >
+        state.map.height * coords.TILE_SIZE - ctx.screen.height / 2
+      ? state.character.position[1] -
+        state.map.height * coords.TILE_SIZE +
         ctx.screen.height
       : ctx.screen.height / 2;
 
   // Record the scroll offset of the screen
-  state.screen.absolutePosition.x =
-    state.character.position.x - state.character.relativePosition.x;
-  state.screen.absolutePosition.y =
-    state.character.position.y - state.character.relativePosition.y;
+  vec2.subtract(
+    state.screen.absolutePosition,
+    state.character.position,
+    state.character.relativePosition
+  );
 
   if (process.env.NODE_ENV === "development") {
     updateEditor(ctx, state, fixedDelta);
@@ -254,22 +250,28 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
   ctx.gl.enable(ctx.gl.BLEND);
   ctx.gl.blendFunc(ctx.gl.SRC_ALPHA, ctx.gl.ONE_MINUS_SRC_ALPHA);
 
-  const ssp = toAbsoluteTileFromAbsolute(state.screen.absolutePosition);
+  const ssp = coords.toAbsoluteTileFromAbsolute(
+    vec4.create(),
+    state.screen.absolutePosition
+  );
 
   state.spriteEffect.use((s) => {
     // overdraw the screen by 1 tile at each edge to prevent tile pop-in
-    for (let x = -1; x < (ctx.screen.width + 1) / TILE_SIZE; ++x) {
-      for (let y = -1; y < (ctx.screen.height + 1) / TILE_SIZE; ++y) {
-        const mapX = x + ssp[0].x;
-        const mapY = y + ssp[0].y;
+    for (let x = -1; x < (ctx.screen.width + 1) / coords.TILE_SIZE; ++x) {
+      for (let y = -1; y < (ctx.screen.height + 1) / coords.TILE_SIZE; ++y) {
+        const mapX = x + ssp[0];
+        const mapY = y + ssp[1];
         const spatialHash = hash(mapX, mapY);
 
-        const position = ctx.screen.toScreenSpace({
-          top: y * TILE_SIZE - ssp[1].y,
-          left: x * TILE_SIZE - ssp[1].x,
-          bottom: y * TILE_SIZE + TILE_SIZE - ssp[1].y,
-          right: x * TILE_SIZE + TILE_SIZE - ssp[1].x,
-        });
+        const position = ctx.screen.toScreenSpace(
+          vec4.create(),
+          vec4.fromValues(
+            y * coords.TILE_SIZE - ssp[3],
+            x * coords.TILE_SIZE + coords.TILE_SIZE - ssp[2],
+            y * coords.TILE_SIZE + coords.TILE_SIZE - ssp[3],
+            x * coords.TILE_SIZE - ssp[2]
+          )
+        );
 
         // get the 9 tiles around the player
         const walkMapData = ctx.offscreen.getImageData(
@@ -324,18 +326,22 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
       }
     }
 
-    const offset = {
-      x: state.character.animator.getSprite().width / 2,
-      y: state.character.animator.getSprite().height / 2,
-    };
+    const offset = vec2.fromValues(
+      state.character.animator.getSprite().width / 2,
+      state.character.animator.getSprite().height / 2
+    );
+
     state.character.animator.draw(
       s,
-      ctx.screen.toScreenSpace({
-        top: state.character.relativePosition.y - offset.y,
-        left: state.character.relativePosition.x - offset.x,
-        bottom: state.character.relativePosition.y + offset.y,
-        right: state.character.relativePosition.x + offset.x,
-      })
+      ctx.screen.toScreenSpace(
+        vec4.create(),
+        vec4.fromValues(
+          Math.floor(state.character.relativePosition[1]) - offset[1],
+          Math.floor(state.character.relativePosition[0]) + offset[0],
+          Math.floor(state.character.relativePosition[1]) + offset[1],
+          Math.floor(state.character.relativePosition[0]) - offset[0]
+        )
+      )
     );
   });
 
@@ -347,7 +353,7 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
 function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
   if (!state.editor) return;
 
-  if (ctx.keys.pressed.has("e")) {
+  if (ctx.keys.pressed.has("m") && ctx.keys.down.has("Control")) {
     state.editor.active = !state.editor.active;
   }
 }
@@ -357,14 +363,19 @@ function drawEditor(ctx: GameContext, state: GameState, _delta: number) {
 
   if (state.editor.active) {
     state.solidEffect.use((s) => {
-      const rp = toRelativeTileFromRelative(ctx.mouse);
+      const ap = coords.toAbsoluteTileFromRelative(
+        vec4.create(),
+        ctx.mouse.position,
+        state.screen
+      );
+      const rp = coords.toRelativeTileFromAbsoluteTile(
+        vec4.create(),
+        ap,
+        state.screen
+      );
+
       s.draw(
-        ctx.screen.toScreenSpace({
-          top: rp[0].y * TILE_SIZE - rp[1].y,
-          left: rp[0].x * TILE_SIZE - rp[1].x,
-          bottom: rp[0].y * TILE_SIZE + TILE_SIZE - rp[1].y,
-          right: rp[0].x * TILE_SIZE + TILE_SIZE - rp[1].x,
-        }),
+        ctx.screen.toScreenSpace(rp, coords.toRelativeFromRelativeTile(rp, rp)),
         vec4.fromValues(1.0, 0, 0, 0.5)
       );
     });
@@ -386,15 +397,4 @@ function hash(x: number, y: number): number {
   else y = temp + M;
 
   return x ^ y;
-}
-
-function normalizeVector(v: { x: number; y: number }) {
-  const length = Math.sqrt(v.x * v.x + v.y * v.y);
-  if (length === 0) {
-    v.x = 0;
-    v.y = 0;
-  } else {
-    v.x /= length;
-    v.y /= length;
-  }
 }

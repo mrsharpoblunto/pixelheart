@@ -1,5 +1,5 @@
-import { mat3 } from "gl-matrix";
-import { Rect, TEXTURE, loadTextureFromUrl } from "./images";
+import { ReadonlyVec4, vec4, mat3 } from "gl-matrix";
+import { TEXTURE, loadTextureFromUrl } from "./images";
 import { GameContext } from "./game-runner";
 
 const vertexShaderSource = `#version 300 es
@@ -46,8 +46,11 @@ export interface SpriteConfig {
   }>;
 }
 
-export interface Sprite extends SpriteConfig {
-  draw(effect: SpriteEffect, position: Rect, frame?: number): void;
+export interface Sprite {
+  readonly width: number;
+  readonly height: number;
+  readonly frames: Array<ReadonlyVec4>;
+  draw(effect: SpriteEffect, position: ReadonlyVec4, frame?: number): void;
 }
 
 export interface SpriteSheetConfig {
@@ -66,14 +69,20 @@ export async function loadSpriteSheet(
     ...Object.keys(sheet.sprites).reduce(
       (p: Record<string, Sprite>, n: string) => {
         const sprite = sheet.sprites[n];
+        const frames = sprite.frames.map((f) =>
+          vec4.fromValues(f.top, f.right, f.bottom, f.left)
+        );
         p[n] = {
-          ...sprite,
-          draw: (effect: SpriteEffect, position: Rect, frame: number = 0) => {
+          width: sprite.width,
+          height: sprite.height,
+          frames,
+          draw: (
+            effect: SpriteEffect,
+            position: ReadonlyVec4,
+            frame: number = 0
+          ) => {
             effect.setTexture(texture);
-            effect.draw(
-              position,
-              sprite.frames[Math.floor(frame) % sprite.frames.length]
-            );
+            effect.draw(position, frames[Math.floor(frame) % frames.length]);
           },
         };
         return p;
@@ -133,7 +142,7 @@ export class SpriteAnimator {
     }
   }
 
-  draw(effect: SpriteEffect, position: Rect, offset: number = 0) {
+  draw(effect: SpriteEffect, position: ReadonlyVec4, offset: number = 0) {
     this.#sprite.draw(effect, position, this.frame + offset);
   }
 }
@@ -233,23 +242,20 @@ export class SpriteEffect {
     return this;
   }
 
-  draw(position: Rect, textureCoords: Rect): SpriteEffect {
+  draw(rect: ReadonlyVec4, textureCoords: ReadonlyVec4): SpriteEffect {
     const mvp = mat3.create();
-    mat3.translate(mvp, mvp, [position.left, position.top]);
-    mat3.scale(mvp, mvp, [
-      position.right - position.left,
-      position.bottom - position.top,
-    ]);
+    mat3.translate(mvp, mvp, [rect[3], rect[0]]);
+    mat3.scale(mvp, mvp, [rect[1] - rect[3], rect[2] - rect[0]]);
     mat3.multiply(mvp, this.#vp, mvp);
 
     const uv = mat3.create();
     mat3.translate(uv, uv, [
-      textureCoords.left / this.#textureWidth,
-      textureCoords.top / this.#textureHeight,
+      textureCoords[3] / this.#textureWidth,
+      textureCoords[0] / this.#textureHeight,
     ]);
     mat3.scale(uv, uv, [
-      (textureCoords.right - textureCoords.left) / this.#textureWidth,
-      (textureCoords.bottom - textureCoords.top) / this.#textureHeight,
+      (textureCoords[1] - textureCoords[3]) / this.#textureWidth,
+      (textureCoords[2] - textureCoords[0]) / this.#textureHeight,
     ]);
 
     this.#pending.push({ mvp, uv });

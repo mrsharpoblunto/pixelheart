@@ -1,12 +1,5 @@
 import { GameContext } from "./game-runner";
 
-export interface Rect {
-  top: number;
-  left: number;
-  bottom: number;
-  right: number;
-}
-
 export const TEXTURE = Symbol();
 
 export interface GPUTexture {

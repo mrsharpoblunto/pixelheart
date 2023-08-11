@@ -1,5 +1,4 @@
-import { mat3, vec4 } from "gl-matrix";
-import { Rect } from "./images";
+import { mat3, ReadonlyVec4 } from "gl-matrix";
 
 const vertexShaderSource = `#version 300 es
 
@@ -37,7 +36,7 @@ export class SolidEffect {
   #a_color: number;
   #vertexBuffer: WebGLBuffer;
   #vp: mat3;
-  #pending: Array<{ mvp: mat3; color: vec4 }>;
+  #pending: Array<{ mvp: mat3; color: ReadonlyVec4 }>;
 
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
@@ -82,13 +81,10 @@ export class SolidEffect {
     this.#end();
   }
 
-  draw(position: Rect, color: vec4): SolidEffect {
+  draw(bounds: ReadonlyVec4, color: ReadonlyVec4): SolidEffect {
     const mvp = mat3.create();
-    mat3.translate(mvp, mvp, [position.left, position.top]);
-    mat3.scale(mvp, mvp, [
-      position.right - position.left,
-      position.bottom - position.top,
-    ]);
+    mat3.translate(mvp, mvp, [bounds[3], bounds[0]]);
+    mat3.scale(mvp, mvp, [bounds[1] - bounds[3], bounds[2] - bounds[0]]);
     mat3.multiply(mvp, this.#vp, mvp);
 
     this.#pending.push({ mvp, color });
