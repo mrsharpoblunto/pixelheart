@@ -1,4 +1,4 @@
-import { vec2, vec4 } from "gl-matrix";
+import { vec2, vec4, ReadonlyVec4 } from "gl-matrix";
 
 export const TILE_SIZE = 16;
 
@@ -28,7 +28,7 @@ export function toAbsoluteTileFromAbsolute(out: vec4, absolute: vec2): vec4 {
   );
 }
 
-export function toAbsoluteTileFromRelative(
+export function pickAbsoluteTileFromRelative(
   out: vec4,
   relative: vec2,
   screen: { absolutePosition: vec2 }
@@ -42,6 +42,18 @@ export function toAbsoluteTileFromRelative(
     Math.floor(absolute[0]) % TILE_SIZE,
     Math.floor(absolute[1]) % TILE_SIZE
   );
+}
+
+export function toScreenSpaceFromAbsoluteTile(
+  out: vec4,
+  absoluteTile: vec4,
+  screen: {
+    absolutePosition: vec2;
+    toScreenSpace: (out: vec4, relativeRect: ReadonlyVec4) => vec4;
+  }
+) {
+  toRelativeTileFromAbsoluteTile(out, absoluteTile, screen);
+  return screen.toScreenSpace(out, toRelativeFromRelativeTile(out, out));
 }
 
 export function toRelativeTileFromAbsolute(
@@ -89,7 +101,7 @@ export function toRelativeTileFromRelative(
     screen.absolutePosition
   );
 
-  toAbsoluteTileFromRelative(out, relative, screen);
+  pickAbsoluteTileFromRelative(out, relative, screen);
 
   return vec4.set(out, out[0] - ssp[0], out[1] - ssp[1], ssp[2], ssp[3]);
 }

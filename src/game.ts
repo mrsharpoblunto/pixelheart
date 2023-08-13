@@ -11,7 +11,7 @@ import { SolidEffect } from "./solid-effect";
 import overworldSprite from "./sprites/overworld";
 import characterSprite from "./sprites/character";
 import * as coords from "./coordinates";
-import { vec2 } from "gl-matrix";
+import { vec2, ReadonlyVec4 } from "gl-matrix";
 
 const CONTROLLER_DEADZONE = 0.25;
 
@@ -36,6 +36,7 @@ export interface GameState {
   };
   screen: {
     absolutePosition: vec2;
+    toScreenSpace: (out: vec4, relativeRect: ReadonlyVec4) => vec4;
   };
   water: SpriteAnimator;
   editor?: EditorState;
@@ -83,6 +84,7 @@ export async function onStart(
     },
     water: new SpriteAnimator(overworld, "water", 6 / 1000),
     screen: {
+      ...ctx.screen,
       absolutePosition: vec2.create(),
     },
   };
@@ -363,7 +365,7 @@ function drawEditor(ctx: GameContext, state: GameState, _delta: number) {
 
   if (state.editor.active) {
     state.solidEffect.use((s) => {
-      const ap = coords.toAbsoluteTileFromRelative(
+      const ap = coords.pickAbsoluteTileFromRelative(
         vec4.create(),
         ctx.mouse.position,
         state.screen
@@ -375,7 +377,7 @@ function drawEditor(ctx: GameContext, state: GameState, _delta: number) {
       );
 
       s.draw(
-        ctx.screen.toScreenSpace(rp, coords.toRelativeFromRelativeTile(rp, rp)),
+        coords.toScreenSpaceFromAbsoluteTile(vec4.create(), ap, state.screen),
         vec4.fromValues(1.0, 0, 0, 0.5)
       );
     });
