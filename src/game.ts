@@ -12,6 +12,7 @@ import overworldSprite from "./sprites/overworld";
 import characterSprite from "./sprites/character";
 import * as coords from "./coordinates";
 import { vec2, ReadonlyVec4 } from "gl-matrix";
+import { help } from "yargs";
 
 const CONTROLLER_DEADZONE = 0.25;
 
@@ -26,6 +27,7 @@ export interface GameState {
   spriteEffect: SpriteEffect;
   solidEffect: SolidEffect;
   map: CPUReadableTexture;
+  mapBuffer: ImageData;
   overworld: SpriteSheet;
   character: {
     sprite: SpriteSheet;
@@ -36,6 +38,8 @@ export interface GameState {
   };
   screen: {
     absolutePosition: vec2;
+    width: number;
+    height: number;
     toScreenSpace: (out: vec4, relativeRect: ReadonlyVec4) => vec4;
   };
   water: SpriteAnimator;
@@ -44,6 +48,7 @@ export interface GameState {
 
 export interface EditorState {
   active: boolean;
+  newValue: number | null;
 }
 
 export function onSave(state: GameState): SerializedGameState {
@@ -65,6 +70,10 @@ export async function onStart(
     spriteEffect: new SpriteEffect(ctx.gl),
     solidEffect: new SolidEffect(ctx.gl),
     map: await loadCPUReadableTextureFromUrl(ctx, "/images/walkmap.png"),
+    mapBuffer: new ImageData(
+      ctx.screen.width / coords.TILE_SIZE + 2,
+      ctx.screen.height / coords.TILE_SIZE + 2
+    ),
     overworld: overworld,
     character: {
       sprite: character,
@@ -88,9 +97,11 @@ export async function onStart(
       absolutePosition: vec2.create(),
     },
   };
+
   if (process.env.NODE_ENV === "development") {
     state.editor = {
       active: false,
+      newValue: null,
     };
   }
 
@@ -243,6 +254,19 @@ export function onUpdate(
     state.character.relativePosition
   );
 
+  const ssp = coords.toAbsoluteTileFromAbsolute(
+    vec4.create(),
+    state.screen.absolutePosition
+  );
+
+  // read in all the onscreen tiles
+  state.mapBuffer = ctx.offscreen.getImageData(
+    ssp[0] - 1,
+    ssp[1] - 1,
+    ctx.screen.width / coords.TILE_SIZE + 2,
+    ctx.screen.height / coords.TILE_SIZE + 2
+  );
+
   if (process.env.NODE_ENV === "development") {
     updateEditor(ctx, state, fixedDelta);
   }
@@ -275,27 +299,19 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
           )
         );
 
-        // get the 9 tiles around the player
-        const walkMapData = ctx.offscreen.getImageData(
-          mapX - 1,
-          mapY - 1,
-          3,
-          3
-        );
-
-        if (walkMapData.data[4 * 4] === 0) {
+        if (getMapBufferData(x, y, state) === 0) {
           // water
           state.water.draw(s, position, spatialHash);
         } else {
           // not water
-          const top = walkMapData.data[4 * 1] === 0;
-          const left = walkMapData.data[4 * 3] === 0;
-          const bottom = walkMapData.data[4 * 7] === 0;
-          const right = walkMapData.data[4 * 5] === 0;
-          const topLeft = walkMapData.data[4 * 0] === 0;
-          const topRight = walkMapData.data[4 * 2] === 0;
-          const bottomLeft = walkMapData.data[4 * 6] === 0;
-          const bottomRight = walkMapData.data[4 * 8] === 0;
+          const top = getMapBufferData(x, y - 1, state) === 0;
+          const left = getMapBufferData(x - 1, y, state) === 0;
+          const bottom = getMapBufferData(x, y + 1, state) === 0;
+          const right = getMapBufferData(x + 1, y, state) === 0;
+          const topLeft = getMapBufferData(x - 1, y - 1, state) === 0;
+          const topRight = getMapBufferData(x + 1, y - 1, state) === 0;
+          const bottomLeft = getMapBufferData(x - 1, y + 1, state) === 0;
+          const bottomRight = getMapBufferData(x + 1, y + 1, state) === 0;
 
           if (top && left) {
             state.overworld.grass_tl.draw(s, position);
@@ -358,30 +374,65 @@ function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
   if (ctx.keys.pressed.has("m") && ctx.keys.down.has("Control")) {
     state.editor.active = !state.editor.active;
   }
+
+  if (!state.editor.active) {
+    return;
+  }
+
+  if (ctx.mouse.down[0]) {
+    const rp = coords.toRelativeTileFromRelative(
+      vec4.create(),
+      ctx.mouse.position,
+      state.screen
+    );
+
+    if (state.editor.newValue === null) {
+      state.editor.newValue =
+        getMapBufferData(rp[0], rp[1], state) === 0 ? 1 : 0;
+    }
+    setMapBufferData(rp[0], rp[1], state.editor.newValue, state);
+    const ssp = coords.toAbsoluteTileFromAbsolute(
+      vec4.create(),
+      state.screen.absolutePosition
+    );
+    ctx.offscreen.putImageData(state.mapBuffer, ssp[0] - 1, ssp[1] - 1);
+  } else {
+    state.editor.newValue = null;
+  }
 }
 
 function drawEditor(ctx: GameContext, state: GameState, _delta: number) {
   if (!state.editor) return;
 
   if (state.editor.active) {
-    state.solidEffect.use((s) => {
-      const ap = coords.pickAbsoluteTileFromRelative(
-        vec4.create(),
-        ctx.mouse.position,
-        state.screen
-      );
-      const rp = coords.toRelativeTileFromAbsoluteTile(
-        vec4.create(),
-        ap,
-        state.screen
-      );
+    const ap = coords.pickAbsoluteTileFromRelative(
+      vec4.create(),
+      ctx.mouse.position,
+      state.screen
+    );
 
+    state.solidEffect.use((s) => {
       s.draw(
         coords.toScreenSpaceFromAbsoluteTile(vec4.create(), ap, state.screen),
         vec4.fromValues(1.0, 0, 0, 0.5)
       );
     });
   }
+}
+
+function getMapBufferData(x: number, y: number, state: GameState): number {
+  const width = state.screen.width / coords.TILE_SIZE + 2;
+  return state.mapBuffer.data[4 * (width * (y + 1) + x + 1)];
+}
+
+function setMapBufferData(
+  x: number,
+  y: number,
+  value: number,
+  state: GameState
+) {
+  const width = state.screen.width / coords.TILE_SIZE + 2;
+  state.mapBuffer.data[4 * (width * (y + 1) + x + 1)] = value;
 }
 
 function hash(x: number, y: number): number {
