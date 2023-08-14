@@ -4,7 +4,7 @@ import sharp from "sharp";
 
 export const spritePath = path.join(__dirname, "../sprites");
 export const wwwPath = path.join(__dirname, "../www/sprites");
-export const srcPath = path.join(__dirname, "../src/sprites");
+export const spriteSrcPath = path.join(__dirname, "../src/client/sprites");
 
 const spriteRegex = /([a-zA-Z_][a-zA-Z0-9_]*)-([0-9]+)x([0-9]+)\.png/;
 
@@ -93,7 +93,7 @@ export async function processSpriteSheet(
   }
 
   await fs.writeFile(
-    path.join(srcPath, `${spriteSheet}.ts`),
+    path.join(spriteSrcPath, `${spriteSheet}.ts`),
     `const Sheet = { 
   sprites: {
 ` +

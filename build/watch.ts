@@ -2,25 +2,30 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import express from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
+import { v4 as uuidv4 } from "uuid";
 import fs from "fs/promises";
 import path from "path";
 import watcher from "@parcel/watcher";
 import {
   spritePath,
   wwwPath,
-  srcPath,
+  spriteSrcPath,
   ensurePath,
   processSpriteSheet,
 } from "./sprite-utils";
 import * as esbuild from "esbuild";
+import { Worker } from "worker_threads";
 
 const PORT = 8000;
+
+const srcPath = path.join(__dirname, "../src");
+let editor: Worker | null = null;
 
 Promise.resolve(
   yargs(hideBin(process.argv)).scriptName("watch").usage("$0 args").argv
 ).then(async (_args) => {
   await ensurePath(wwwPath);
-  await ensurePath(srcPath);
+  await ensurePath(spriteSrcPath);
   const sourceSpriteSheets = await fs.readdir(spritePath);
   const destSpriteSheets = await fs.readdir(wwwPath);
 
@@ -58,26 +63,97 @@ Promise.resolve(
       define: {
         ["process.env.NODE_ENV"]: '"development"',
       },
-      entryPoints: [path.join(__dirname, "../src/index.ts")],
+      entryPoints: [path.join(__dirname, "../src/client/index.ts")],
     }
   );
 
   // start the proxy to esbuild & the dev editor API
   const app = express();
-  createEditorAPI(app);
-  app.use(
-    "/*",
-    createProxyMiddleware({
-      target: `http://127.0.0.1:${PORT + 1}`,
-    })
+  app.use(express.json());
+
+  const requestMap = new Map<
+    string,
+    {
+      res: express.Response;
+    }
+  >();
+  createEditor(app, requestMap);
+
+  app.post("/edit", (req, res) => {
+    const requestId = uuidv4();
+    requestMap.set(requestId, { res });
+    if (!editor) {
+      res.status(500).send("Editor not ready");
+    } else {
+      editor.postMessage({
+        requestId,
+        actions: req.body,
+      });
+    }
+  });
+
+  await watcher.subscribe(
+    srcPath,
+    async (_err, _events) => {
+      console.log("Restarting Editor...");
+      editor?.postMessage({ actions: [{ type: "RESTART" }] });
+      editor = null;
+    },
+    {
+      ignore: ["client/**"],
+    }
+  );
+
+  const proxyMiddleware = createProxyMiddleware({
+    target: `http://127.0.0.1:${PORT + 1}`,
+  });
+
+  app.use((req, res, next) =>
+    req.originalUrl.startsWith("/edit")
+      ? next()
+      : proxyMiddleware(req, res, next)
   );
   app.listen(PORT);
 });
 
-function createEditorAPI(app: express.Express) {
-  app.get("/editor", (_req, res) => {
-    // TODO edit & update maps
-    res.json({ foo: "bar" });
+function createEditor(
+  app: express.Express,
+  requestMap: Map<
+    string,
+    {
+      res: express.Response;
+    }
+  >
+) {
+  editor = new Worker(path.join(srcPath, "editor", "worker.ts"), {
+    eval: false,
+    workerData: null,
+    execArgv: ["-r", "ts-node/register"],
+  });
+
+  editor.on("error", (error: any) => {
+    console.error(`Editor: Error - ${error.stack}`);
+  });
+
+  editor.on("exit", (code: number) => {
+    console.log(`Editor: Closed (${code}).`);
+    // clear out pending requests so the client can
+    // be notified of the failure and re-send the requests
+    for (let req of requestMap.values()) {
+      req.res.status(500).send("Editor not ready");
+    }
+    requestMap.clear();
+    createEditor(app, requestMap);
+  });
+
+  editor.on("message", (message: any) => {
+    const request = requestMap.get(message.requestId);
+    if (request) {
+      if (message.response) {
+        requestMap.delete(message.requestId);
+        request.res.json(message.response);
+      }
+    }
   });
 }
 

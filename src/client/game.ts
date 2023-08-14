@@ -12,7 +12,7 @@ import overworldSprite from "./sprites/overworld";
 import characterSprite from "./sprites/character";
 import * as coords from "./coordinates";
 import { vec2, ReadonlyVec4 } from "gl-matrix";
-import { help } from "yargs";
+import { EditorAction } from "../shared/editor-actions";
 
 const CONTROLLER_DEADZONE = 0.25;
 
@@ -49,6 +49,9 @@ export interface GameState {
 export interface EditorState {
   active: boolean;
   newValue: number | null;
+  queued: Array<EditorAction>;
+  pending: Array<EditorAction>;
+  isUpdating: boolean;
 }
 
 export function onSave(state: GameState): SerializedGameState {
@@ -102,6 +105,9 @@ export async function onStart(
     state.editor = {
       active: false,
       newValue: null,
+      queued: [],
+      pending: [],
+      isUpdating: false,
     };
   }
 
@@ -114,7 +120,44 @@ export async function onStart(
     state.map.height
   );
 
+  setInterval(() => {
+    if (!state.editor) {
+      return;
+    }
+    pushEdits(state.editor);
+  }, 1000);
+
   return state;
+}
+
+function pushEdits(editor: EditorState) {
+  if (editor.queued.length && !editor.isUpdating) {
+    fetch("/edit", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(editor.queued),
+    })
+      .then((r) => {
+        if (!r.ok) {
+          throw new Error("Network response was not ok");
+        }
+        return r.json();
+      })
+      .then((_data) => {
+        editor.pending = [];
+        editor.isUpdating = false;
+      })
+      .catch((_err) => {
+        // re-queue events that failed
+        editor.queued = editor.pending.concat(editor.queued);
+        editor.pending = [];
+        editor.isUpdating = false;
+      });
+    editor.pending = editor.queued;
+    editor.queued = [];
+  }
 }
 
 export function onUpdate(
@@ -386,9 +429,15 @@ function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
       state.screen
     );
 
+    const ap = coords.pickAbsoluteTileFromRelative(
+      vec4.create(),
+      ctx.mouse.position,
+      state.screen
+    );
+
     if (state.editor.newValue === null) {
       state.editor.newValue =
-        getMapBufferData(rp[0], rp[1], state) === 0 ? 1 : 0;
+        getMapBufferData(rp[0], rp[1], state) === 0 ? 255 : 0;
     }
     setMapBufferData(rp[0], rp[1], state.editor.newValue, state);
     const ssp = coords.toAbsoluteTileFromAbsolute(
@@ -396,9 +445,37 @@ function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
       state.screen.absolutePosition
     );
     ctx.offscreen.putImageData(state.mapBuffer, ssp[0] - 1, ssp[1] - 1);
+
+    const found = rfind(
+      state.editor.queued,
+      (e) => e.type === "TILE_CHANGE" && e.x === ap[0] && e.y === ap[1]
+    );
+
+    if (found && found.type === "TILE_CHANGE") {
+      found.value = state.editor.newValue;
+    } else {
+      state.editor.queued.push({
+        type: "TILE_CHANGE",
+        x: ap[0],
+        y: ap[1],
+        value: state.editor.newValue,
+      });
+    }
   } else {
     state.editor.newValue = null;
   }
+}
+
+function rfind<T>(
+  arr: Array<T>,
+  predicate: (value: T, index: number, arr: Array<T>) => boolean
+): T | null {
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (predicate(arr[i], i, arr)) {
+      return arr[i];
+    }
+  }
+  return null;
 }
 
 function drawEditor(ctx: GameContext, state: GameState, _delta: number) {
