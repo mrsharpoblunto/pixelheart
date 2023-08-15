@@ -109,6 +109,12 @@ export async function onStart(
       pending: [],
       isUpdating: false,
     };
+    setInterval(() => {
+      if (!state.editor) {
+        return;
+      }
+      pushEdits(state.editor);
+    }, 1000);
   }
 
   // Draw the walkmap offscreen
@@ -119,13 +125,6 @@ export async function onStart(
     state.map.width,
     state.map.height
   );
-
-  setInterval(() => {
-    if (!state.editor) {
-      return;
-    }
-    pushEdits(state.editor);
-  }, 1000);
 
   return state;
 }
@@ -306,8 +305,8 @@ export function onUpdate(
   state.mapBuffer = ctx.offscreen.getImageData(
     ssp[0] - 1,
     ssp[1] - 1,
-    ctx.screen.width / coords.TILE_SIZE + 2,
-    ctx.screen.height / coords.TILE_SIZE + 2
+    ctx.screen.width / coords.TILE_SIZE + 3,
+    ctx.screen.height / coords.TILE_SIZE + 3
   );
 
   if (process.env.NODE_ENV === "development") {
@@ -326,8 +325,8 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
 
   state.spriteEffect.use((s) => {
     // overdraw the screen by 1 tile at each edge to prevent tile pop-in
-    for (let x = -1; x < (ctx.screen.width + 1) / coords.TILE_SIZE; ++x) {
-      for (let y = -1; y < (ctx.screen.height + 1) / coords.TILE_SIZE; ++y) {
+    for (let x = -1; x <= (ctx.screen.width + 2) / coords.TILE_SIZE; ++x) {
+      for (let y = -1; y <= (ctx.screen.height + 2) / coords.TILE_SIZE; ++y) {
         const mapX = x + ssp[0];
         const mapY = y + ssp[1];
         const spatialHash = hash(mapX, mapY);
@@ -498,7 +497,7 @@ function drawEditor(ctx: GameContext, state: GameState, _delta: number) {
 }
 
 function getMapBufferData(x: number, y: number, state: GameState): number {
-  const width = state.screen.width / coords.TILE_SIZE + 2;
+  const width = state.screen.width / coords.TILE_SIZE + 3;
   return state.mapBuffer.data[4 * (width * (y + 1) + x + 1)];
 }
 
@@ -508,7 +507,7 @@ function setMapBufferData(
   value: number,
   state: GameState
 ) {
-  const width = state.screen.width / coords.TILE_SIZE + 2;
+  const width = state.screen.width / coords.TILE_SIZE + 3;
   state.mapBuffer.data[4 * (width * (y + 1) + x + 1)] = value;
 }
 

@@ -24,7 +24,7 @@ export function toAbsoluteTileFromAbsolute(out: vec4, absolute: vec2): vec4 {
     Math.floor(absolute[0] / TILE_SIZE),
     Math.floor(absolute[1] / TILE_SIZE),
     Math.floor(absolute[0]) % TILE_SIZE,
-    Math.floor(absolute[1]) % TILE_SIZE
+    Math.floor(absolute[1]) % TILE_SIZE,
   );
 }
 
