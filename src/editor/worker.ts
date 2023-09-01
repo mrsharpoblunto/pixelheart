@@ -8,22 +8,61 @@ const log = (message: string) => {
   console.log(chalk.dim("[Editor]"), message);
 };
 
+const logError = (message: string) => {
+  console.log(chalk.dim("[Editor]"), chalk.red(message));
+};
+
 if (parentPort) {
   log("Running.");
-  parentPort.on("message", async (message: any) => {
-    const workingImages = new Map<
-      string,
-      {
-        width: number;
-        height: number;
-        channels: sharp.Channels;
-        buffer: Buffer;
-      }
-    >();
 
+  const workingImages = new Map<
+    string,
+    {
+      width: number;
+      height: number;
+      channels: sharp.Channels;
+      buffer: Buffer;
+    }
+  >();
+
+  setInterval(() => {
+    for (const [imagePath, image] of workingImages.entries()) {
+      sharp(image.buffer, {
+        raw: {
+          width: image.width!,
+          height: image.height!,
+          channels: image.channels!,
+        },
+      })
+        .png()
+        .toFile(imagePath)
+        .then(() => {
+          log(`Saved updated image to ${imagePath}`);
+        })
+        .catch((err) => {
+          logError(
+            `Failed to save updated image to ${imagePath} - ${err.toString()}`
+          );
+        });
+    }
+    workingImages.clear();
+  }, 2000);
+
+  parentPort.on("message", async (message: any) => {
     // process the editor action
+    let actionCount = 1;
+    let previousAction = null;
     for (let a of message.actions as Array<EditorAction>) {
-      log(`Processing ${a.type} action`);
+      if (previousAction === a.type) {
+        actionCount++;
+      } else {
+        if (previousAction !== null) {
+          log(`Processing ${actionCount} ${chalk.green(a.type)} action(s)`);
+        }
+        previousAction = a.type;
+        actionCount = 1;
+      }
+
       switch (a.type) {
         case "TILE_CHANGE":
           {
@@ -54,17 +93,8 @@ if (parentPort) {
           throw new Error("Unknown Editor action");
       }
     }
-
-    for (const [imagePath, image] of workingImages.entries()) {
-      await sharp(image.buffer, {
-        raw: {
-          width: image.width!,
-          height: image.height!,
-          channels: image.channels!,
-        },
-      })
-        .png()
-        .toFile(imagePath);
+    if (previousAction) {
+      log(`Processing ${actionCount} ${chalk.green(previousAction)} action(s)`);
     }
 
     if (message.requestId) {

@@ -147,7 +147,7 @@ Promise.resolve(
         console.log(chalk.dim("[Proxy]"), ...args.map((a) => chalk.red(a)));
       return provider;
     },
-    logLevel: "info",
+    logLevel: "warn",
   });
 
   app.use((req, res, next) =>
@@ -155,7 +155,9 @@ Promise.resolve(
       ? next()
       : proxyMiddleware(req, res, next)
   );
-  app.listen(PORT);
+  app.listen(PORT, () => {
+    console.log(chalk.dim("[Server]"), `Listening on port ${PORT}`);
+  });
 });
 
 function createEditor(
@@ -174,7 +176,7 @@ function createEditor(
   });
 
   editor.on("error", (error: any) => {
-    console.error(chalk.dim("[Editor]"), `Error - ${error.stack}`);
+    console.log(chalk.dim("[Editor]"), `Error - ${error.stack}`);
   });
 
   editor.on("exit", (code: number) => {
