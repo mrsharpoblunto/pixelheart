@@ -2,9 +2,14 @@ import { parentPort } from "worker_threads";
 import { EditorAction } from "../shared/editor-actions";
 import path from "path";
 import sharp from "sharp";
+import chalk from "chalk";
+
+const log = (message: string) => {
+  console.log(chalk.dim("[Editor]"), message);
+};
 
 if (parentPort) {
-  console.log("Editor: Running.");
+  log("Running.");
   parentPort.on("message", async (message: any) => {
     const workingImages = new Map<
       string,
@@ -18,7 +23,7 @@ if (parentPort) {
 
     // process the editor action
     for (let a of message.actions as Array<EditorAction>) {
-      console.log(`Editor: processing ${a.type} action`);
+      log(`Processing ${a.type} action`);
       switch (a.type) {
         case "TILE_CHANGE":
           {

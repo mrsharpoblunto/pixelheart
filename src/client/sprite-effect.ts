@@ -54,7 +54,11 @@ export interface Sprite {
 }
 
 export interface SpriteSheetConfig {
-  url: string;
+  urls: {
+    diffuse: string;
+    normalSpecular: string;
+    emissive: string;
+  };
   sprites: Record<string, SpriteConfig>;
 }
 
@@ -64,7 +68,7 @@ export async function loadSpriteSheet(
   ctx: GameContext,
   sheet: SpriteSheetConfig
 ): Promise<SpriteSheet> {
-  const texture = await loadTextureFromUrl(ctx, sheet.url);
+  const texture = await loadTextureFromUrl(ctx, sheet.urls.diffuse);
   return {
     ...Object.keys(sheet.sprites).reduce(
       (p: Record<string, Sprite>, n: string) => {

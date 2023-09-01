@@ -1,9 +1,10 @@
 import fs from "fs/promises";
 import path from "path";
 import sharp from "sharp";
-import { OverlayOptions, Blend } from "sharp";
+import { OverlayOptions } from "sharp";
 import Aseprite from "ase-parser";
 import { vec4 } from "gl-matrix";
+import chalk from "chalk";
 
 export const spritePath = path.join(__dirname, "../sprites");
 export const wwwPath = path.join(__dirname, "../www/sprites");
@@ -26,23 +27,17 @@ interface Sprite {
   }>;
 }
 
-interface SpriteRenderOperations {
-  diffuse: Array<OverlayOptions>;
-  normalSpecular: Array<OverlayOptions>;
-  emissive: Array<OverlayOptions>;
-}
-
-interface SpriteSheetSprite {
-  name: string;
-  sprite: Sprite;
-  render: SpriteRenderOperations;
-}
-
 interface SpriteSheet {
   name: string;
   width: number;
   height: number;
-  sprites: Array<SpriteSheetSprite>;
+  sprites: Map<string, Sprite>;
+}
+
+interface SpriteCompositeQueue {
+  diffuse: Array<OverlayOptions>;
+  normalSpecular: Array<OverlayOptions>;
+  emissive: Array<OverlayOptions>;
 }
 
 export async function ensurePath(pathName: string) {
@@ -55,37 +50,51 @@ export async function ensurePath(pathName: string) {
   }
 }
 
+export function isSpriteSource(p: string): boolean {
+  return path.extname(p) === ".png" || path.extname(p) === ".ase";
+}
+
 export async function processSpriteSheet(
   spriteSheetName: string,
-  showError: (error: string) => void
+  log: (message: string) => void,
+  onError: (error: string) => void
 ): Promise<void> {
   const sheet: SpriteSheet = {
     name: spriteSheetName,
     width: 0,
     height: 0,
-    sprites: [],
+    sprites: new Map(),
   };
 
-  console.log(`Building ${sheet.name}...`);
+  log(`Building sprite sheet ${chalk.green(sheet.name)}...`);
 
   const sprites = await fs.readdir(path.join(spritePath, sheet.name));
+  const compositeQueue = {
+    diffuse: [],
+    normalSpecular: [],
+    emissive: [],
+  };
   for (let sprite of sprites) {
-    console.log(`Processing ${sheet.name}:${sprite}...`);
-
     try {
+      if (isSpriteSource(sprite)) {
+        log(`Processing file ${sprite}...`);
+      } else {
+        continue;
+      }
+
       switch (path.extname(sprite)) {
         case ".png":
-          await processPngSprite(sprite, sheet, showError);
+          await processPngSprite(sprite, sheet, compositeQueue, log, onError);
           break;
 
         case ".ase":
-          await processAseSprite(sprite, sheet, showError);
+          await processAseSprite(sprite, sheet, compositeQueue, log, onError);
           break;
         default:
-          showError(`Invalid sprite format: ${sprite}`);
+          onError(`Invalid sprite format: ${sprite}`);
       }
     } catch (ex: any) {
-      return showError(`Unexpected sprite error: ${ex.toString()}`);
+      return onError(`Unexpected sprite error: ${ex.toString()}`);
     }
   }
 
@@ -94,79 +103,79 @@ export async function processSpriteSheet(
     `const Sheet = { 
   sprites: {
 ` +
-      sheet.sprites
-        .map((sprite) => `   ${sprite.name}: ${JSON.stringify(sprite.sprite)},`)
+      [...sheet.sprites]
+        .map(([name, sprite]) => `   ${name}: ${JSON.stringify(sprite)},`)
         .join("\n") +
       `
   },
-  url: "./sprites/${sheet.name}.png"
+  urls: {
+    diffuse: "./sprites/${sheet.name}-diffuse.png",
+    normalSpecular: "./sprites/${sheet.name}-normal.png",
+    emissive: "./sprites/${sheet.name}-emissive.png",
+  }
 };
 export default Sheet;`
   );
 
-  if (sheet.width && sheet.height) {
+  if (sheet.sprites.size) {
     try {
-      //await Promise.all([
-      await writeSpriteSheetLayer(sheet, (s) => s.diffuse, "-diffuse", {
-        r: 0,
-        g: 0,
-        b: 0,
-        alpha: 0,
-      });
-      await writeSpriteSheetLayer(sheet, (s) => s.normalSpecular, "-normal", {
-        r: 0,
-        g: 0,
-        b: 255,
-        alpha: 0,
-      });
-      await writeSpriteSheetLayer(sheet, (s) => s.emissive, "-emissive", {
-        r: 0,
-        g: 0,
-        b: 0,
-        alpha: 0,
-      });
-      //]);
-    } catch (ex: any) {
-      console.log("caught", ex.stack);
+      await Promise.all([
+        writeSpriteSheetLayer(sheet, "-diffuse", compositeQueue.diffuse, {
+          r: 0,
+          g: 0,
+          b: 0,
+          alpha: 0,
+        }),
+        writeSpriteSheetLayer(sheet, "-normal", compositeQueue.normalSpecular, {
+          r: 0,
+          g: 0,
+          b: 255,
+          alpha: 0,
+        }),
+        writeSpriteSheetLayer(sheet, "-emissive", compositeQueue.emissive, {
+          r: 0,
+          g: 0,
+          b: 0,
+          alpha: 0,
+        }),
+      ]);
+    } catch (err: any) {
+      onError(`Failed to write spritesheet: ${err.toString()}`);
     }
   }
 
-  console.log(`Completed ${sheet.name}.\n`);
+  log(`Completed ${chalk.green(sheet.name)}.`);
 }
 
 async function writeSpriteSheetLayer(
   sheet: SpriteSheet,
-  extractLayer: (s: SpriteRenderOperations) => Array<OverlayOptions>,
-  layerSuffix: string,
+  sheetSuffix: string,
+  compositeQueue: Array<OverlayOptions>,
   background: { r: number; g: number; b: number; alpha: number }
 ): Promise<void> {
-  const combined = sharp({
+  await sharp({
     create: {
       width: sheet.width,
       height: sheet.height,
       channels: 4,
       background,
     },
-  });
-  const composites: OverlayOptions[] = [];
-  for (let s of sheet.sprites) {
-    const renderOperations = extractLayer(s.render);
-    composites.push.apply(composites, renderOperations);
-  }
-  combined.composite(composites);
-  await combined
+  })
+    .composite(compositeQueue)
     .png()
-    .toFile(path.join(wwwPath, `${sheet.name}${layerSuffix}.png`));
+    .toFile(path.join(wwwPath, `${sheet.name}${sheetSuffix}.png`));
 }
 
 async function processPngSprite(
   sprite: string,
   sheet: SpriteSheet,
-  showError: (error: string) => void
+  compositeQueue: SpriteCompositeQueue,
+  log: (message: string) => void,
+  onError: (error: string) => void
 ): Promise<void> {
   const result = PNG_REGEX.exec(sprite);
   if (!result) {
-    return showError("Invalid sprite metadata");
+    return onError("Invalid sprite metadata");
   }
 
   const name = result[1];
@@ -177,43 +186,46 @@ async function processPngSprite(
   let metadata: { width?: number; height?: number } = {};
   try {
     metadata = await image.metadata();
-  } catch (ex) {}
+  } catch (err: any) {}
 
   if (metadata.width && metadata.height) {
     if (metadata.width !== width && metadata.width % width !== 0) {
-      return showError(
+      return onError(
         `Invalid sprite width ${metadata.width}, must be a multiple of ${width}`
       );
     }
     if (metadata.height !== height) {
-      return showError(
+      return onError(
         `Invalid sprite width ${metadata.height}, must be equal to ${height}`
       );
     }
 
-    const outputSprite: SpriteSheetSprite = {
-      name,
-      sprite: { width, height, frames: [] } as Sprite,
-      render: {
-        diffuse: [
-          {
-            input: await image.ensureAlpha().raw().toBuffer(),
-            left: 0,
-            top: sheet.height,
-            blend: "over",
-            raw: {
-              width: metadata.width,
-              height,
-              channels: 4,
-            },
-          },
-        ],
-        normalSpecular: [],
-        emissive: [],
+    log(
+      `Adding sprite ${chalk.green(sheet.name)}:${chalk.blue(
+        name
+      )} ${width}x${height} ${metadata.width / width} frame(s)...`
+    );
+
+    compositeQueue.diffuse.push({
+      input: await image.ensureAlpha().raw().toBuffer(),
+      left: 0,
+      top: sheet.height,
+      blend: "over",
+      raw: {
+        width: metadata.width,
+        height,
+        channels: 4,
       },
+    });
+
+    const outputSprite: Sprite = {
+      width,
+      height,
+      frames: [],
     };
+
     for (let i = 0; i < metadata.width / width; ++i) {
-      outputSprite.sprite.frames.push({
+      outputSprite.frames.push({
         top: sheet.height,
         left: i * width,
         bottom: sheet.height + height,
@@ -222,16 +234,18 @@ async function processPngSprite(
     }
     sheet.width = Math.max(sheet.width, metadata.width);
     sheet.height += metadata.height;
-    sheet.sprites.push(outputSprite);
+    sheet.sprites.set(name, outputSprite);
   } else {
-    return showError("Invalid sprite metadata");
+    return onError("Invalid sprite metadata");
   }
 }
 
 async function processAseSprite(
   sprite: string,
   sheet: SpriteSheet,
-  showError: (error: string) => void
+  compositeQueue: SpriteCompositeQueue,
+  log: (message: string) => void,
+  onError: (error: string) => void
 ): Promise<void> {
   const buffer = await fs.readFile(path.join(spritePath, sheet.name, sprite));
   const aseFile = new Aseprite(buffer, sprite);
@@ -241,27 +255,21 @@ async function processAseSprite(
   const height = aseFile.height;
   for (let t of aseFile.tags) {
     const frameSlice = aseFile.frames.slice(t.from, t.to + 1);
-    console.log(
-      `Processing ${sheet.name}:${sprite}:${t.name}-${width}x${height} frames ${t.from}->${t.to}...`
+    log(
+      `Adding sprite ${chalk.green(sheet.name)}:${chalk.blue(
+        t.name
+      )} ${width}x${height} ${t.to - t.from} frame(s)...`
     );
 
-    const outputSprite: SpriteSheetSprite = {
-      name: t.name,
-      sprite: {
-        width,
-        height,
-        frames: frameSlice.map((_f, i) => ({
-          top: sheet.height,
-          left: i * width,
-          bottom: sheet.height + height,
-          right: (i + 1) * width,
-        })),
-      },
-      render: {
-        diffuse: [],
-        normalSpecular: [],
-        emissive: [],
-      },
+    const outputSprite: Sprite = {
+      width,
+      height,
+      frames: frameSlice.map((_f, i) => ({
+        top: sheet.height,
+        left: i * width,
+        bottom: sheet.height + height,
+        right: (i + 1) * width,
+      })),
     };
 
     for (let i = 0; i < frameSlice.length; ++i) {
@@ -275,7 +283,7 @@ async function processAseSprite(
         switch (layer.name.toLowerCase()) {
           case DIFFUSE_LAYER:
             hasDiffuse = true;
-            outputSprite.render.diffuse.push({
+            compositeQueue.diffuse.push({
               left: i * width,
               top: sheet.height,
               input: await normalizeCell(c, width, height).toBuffer(),
@@ -288,7 +296,7 @@ async function processAseSprite(
             });
             break;
           case EMISSIVE_LAYER:
-            outputSprite.render.emissive.push({
+            compositeQueue.emissive.push({
               left: i * width,
               top: sheet.height,
               input: await normalizeCell(c, width, height).toBuffer(),
@@ -318,7 +326,7 @@ async function processAseSprite(
       }
 
       if (!hasDiffuse) {
-        return showError('No "diffuse" layer found');
+        return onError('No "diffuse" layer found');
       }
 
       specularLayer =
@@ -345,7 +353,7 @@ async function processAseSprite(
         });
       const normalBuffer = await normalLayer.removeAlpha().toBuffer();
 
-      outputSprite.render.normalSpecular.push({
+      compositeQueue.normalSpecular.push({
         // take the specular channel and merge it with the normal RGB
         input: await sharp(normalBuffer, {
           raw: { width, height, channels: 3 },
@@ -369,12 +377,9 @@ async function processAseSprite(
       });
     }
 
-    sheet.width = Math.max(
-      sheet.width,
-      outputSprite.sprite.width * frameSlice.length
-    );
-    sheet.height += outputSprite.sprite.height;
-    sheet.sprites.push(outputSprite);
+    sheet.width = Math.max(sheet.width, outputSprite.width * frameSlice.length);
+    sheet.height += outputSprite.height;
+    sheet.sprites.set(t.name, outputSprite);
   }
 }
 

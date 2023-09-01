@@ -6,12 +6,14 @@ import { v4 as uuidv4 } from "uuid";
 import fs from "fs/promises";
 import path from "path";
 import watcher from "@parcel/watcher";
+import chalk from "chalk";
 import {
   spritePath,
   wwwPath,
   spriteSrcPath,
   ensurePath,
   processSpriteSheet,
+  isSpriteSource,
 } from "./sprite-utils";
 import * as esbuild from "esbuild";
 import { Worker } from "worker_threads";
@@ -20,6 +22,13 @@ const PORT = 8000;
 
 const srcPath = path.join(__dirname, "../src");
 let editor: Worker | null = null;
+
+const spriteLogDecorator = (message: string) => {
+  console.log(chalk.dim("[Sprites]"), message);
+};
+const spriteErrorDecorator = (error: string) => {
+  console.log(chalk.dim("[Sprites]"), chalk.red(error));
+};
 
 Promise.resolve(
   yargs(hideBin(process.argv)).scriptName("watch").usage("$0 args").argv
@@ -47,10 +56,10 @@ Promise.resolve(
     ) {
       const destStat = await fs.stat(path.join(wwwPath, dest));
       if (srcStat.mtimeMs > destStat.mtimeMs) {
-        await processSpriteSheet(src, console.error);
+        await processSpriteSheet(src, spriteLogDecorator, spriteErrorDecorator);
       }
     } else {
-      await processSpriteSheet(src, console.error);
+      await processSpriteSheet(src, spriteLogDecorator, spriteErrorDecorator);
     }
   }
 
@@ -64,6 +73,15 @@ Promise.resolve(
     {
       port: PORT + 1,
       servedir: path.join(__dirname, "../www"),
+      onRequest: (args) => {
+        console.log(
+          chalk.dim("[Server]"),
+          `[${args.method}] ${args.path} ${(args.status >= 200 &&
+            args.status < 400
+            ? chalk.green
+            : chalk.red)(args.status)}`
+        );
+      },
     },
     {
       color: true,
@@ -105,7 +123,7 @@ Promise.resolve(
   await watcher.subscribe(
     srcPath,
     async (_err, _events) => {
-      console.log("Restarting Editor...");
+      console.log(chalk.dim("[Editor]"), "Restarting...");
       editor?.postMessage({ actions: [{ type: "RESTART" }] });
       editor = null;
     },
@@ -116,6 +134,20 @@ Promise.resolve(
 
   const proxyMiddleware = createProxyMiddleware({
     target: `http://127.0.0.1:${PORT + 1}`,
+    logProvider: (provider) => {
+      provider.log = (...args: any[]) =>
+        console.log(chalk.dim("[Proxy]"), ...args);
+      provider.debug = (...args: any[]) =>
+        console.log(chalk.dim("[Proxy]"), ...args);
+      provider.info = (...args: any[]) =>
+        console.log(chalk.dim("[Proxy]"), ...args);
+      provider.warn = (...args: any[]) =>
+        console.log(chalk.dim("[Proxy]"), ...args.map((a) => chalk.yellow(a)));
+      provider.error = (...args: any[]) =>
+        console.log(chalk.dim("[Proxy]"), ...args.map((a) => chalk.red(a)));
+      return provider;
+    },
+    logLevel: "info",
   });
 
   app.use((req, res, next) =>
@@ -142,11 +174,11 @@ function createEditor(
   });
 
   editor.on("error", (error: any) => {
-    console.error(`Editor: Error - ${error.stack}`);
+    console.error(chalk.dim("[Editor]"), `Error - ${error.stack}`);
   });
 
   editor.on("exit", (code: number) => {
-    console.log(`Editor: Closed (${code}).`);
+    console.log(chalk.dim("[Editor]"), `Closed (${code}).`);
     // clear out pending requests so the client can
     // be notified of the failure and re-send the requests
     for (let req of requestMap.values()) {
@@ -178,7 +210,7 @@ async function processSpriteSheetEvents(events: watcher.Event[]) {
         {
           // if the spritesheet or a png has been added/changed. We ignore
           // other stuff because image editing apps can create tmp files while saving etc..
-          if (components.length === 1 || path.extname(e.path) === ".png") {
+          if (components.length === 1 || isSpriteSource(e.path)) {
             newOrModified.add(components[0]);
           }
         }
@@ -189,9 +221,9 @@ async function processSpriteSheetEvents(events: watcher.Event[]) {
           // if its a toplevel spritesheet directory, remove the spritesheet
           // if its a sprite in a sheet, modify the spritesheet
           if (components.length === 1) {
-            console.log(`Removing ${components[0]}...`);
+            spriteLogDecorator(`Removing sprite sheet ${components[0]}...`);
             deleted.push(components[0]);
-          } else if (path.extname(e.path) === ".png") {
+          } else if (isSpriteSource(e.path)) {
             newOrModified.add(components[0]);
           }
         }
@@ -207,6 +239,6 @@ async function processSpriteSheetEvents(events: watcher.Event[]) {
   }
 
   for (let nom of newOrModified) {
-    await processSpriteSheet(nom, console.error);
+    await processSpriteSheet(nom, spriteLogDecorator, spriteErrorDecorator);
   }
 }
