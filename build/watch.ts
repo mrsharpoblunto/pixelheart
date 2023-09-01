@@ -33,8 +33,18 @@ Promise.resolve(
   // than the source and build them
   for (const src of sourceSpriteSheets) {
     const srcStat = await fs.stat(path.join(spritePath, src));
+    if (srcStat.isFile()) {
+      continue;
+    }
     const dest = `${src}.png`;
-    if (destSpriteSheets.find((d) => d === dest)) {
+    if (
+      destSpriteSheets.find(
+        (d) =>
+          d === `${src}-diffuse.png` ||
+          d === `${src}-normal.png` ||
+          d === `${src}-emissive.png`
+      )
+    ) {
       const destStat = await fs.stat(path.join(wwwPath, dest));
       if (srcStat.mtimeMs > destStat.mtimeMs) {
         await processSpriteSheet(src, console.error);

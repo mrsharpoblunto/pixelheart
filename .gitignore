@@ -2,3 +2,4 @@ node_modules/
 public/*
 www/sprites/*
 src/client/sprites/*
+.DS_Store
