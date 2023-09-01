@@ -3,7 +3,7 @@ import path from "path";
 import sharp from "sharp";
 import { OverlayOptions } from "sharp";
 import Aseprite from "ase-parser";
-import { vec4 } from "gl-matrix";
+import { mat3, vec4, vec3 } from "gl-matrix";
 import chalk from "chalk";
 
 export const spritePath = path.join(__dirname, "../sprites");
@@ -15,6 +15,35 @@ const DIFFUSE_LAYER = "diffuse";
 const HEIGHT_LAYER = "height";
 const SPECULAR_LAYER = "specular";
 const EMISSIVE_LAYER = "emissive";
+
+const TANGENT = vec3.set(vec3.create(), 0, 0, 1);
+const BINORMAL = vec3.set(vec3.create(), -1, 0, 0);
+const NORMAL = vec3.set(vec3.create(), 0, -1, 0);
+const TBN = mat3.set(
+  mat3.create(),
+  TANGENT[0],
+  BINORMAL[0],
+  NORMAL[0],
+  TANGENT[1],
+  BINORMAL[1],
+  NORMAL[1],
+  TANGENT[2],
+  BINORMAL[2],
+  NORMAL[2]
+);
+
+const DEFAULT_TANGENT_NORMAL = vec3.normalize(
+  vec3.create(),
+  vec3.transformMat3(vec3.create(), NORMAL, TBN)
+);
+const DEFAULT_NORMAL_BG = vec4.set(
+  vec4.create(),
+  DEFAULT_TANGENT_NORMAL[0] * 128 + 127,
+  DEFAULT_TANGENT_NORMAL[1] * 128 + 127,
+  DEFAULT_TANGENT_NORMAL[2] * 128 + 127,
+  255
+);
+const NORMAL_ROUGHNESS = 0.001;
 
 interface Sprite {
   width: number;
@@ -127,9 +156,9 @@ export default Sheet;`
           alpha: 0,
         }),
         writeSpriteSheetLayer(sheet, "-normal", compositeQueue.normalSpecular, {
-          r: 0,
-          g: 0,
-          b: 255,
+          r: DEFAULT_NORMAL_BG[0],
+          g: DEFAULT_NORMAL_BG[1],
+          b: DEFAULT_NORMAL_BG[2],
           alpha: 0,
         }),
         writeSpriteSheetLayer(sheet, "-emissive", compositeQueue.emissive, {
@@ -286,7 +315,12 @@ async function processAseSprite(
             compositeQueue.diffuse.push({
               left: i * width,
               top: sheet.height,
-              input: await normalizeCell(c, width, height).toBuffer(),
+              input: await normalizeCell(c, width, height, {
+                r: 0,
+                g: 0,
+                b: 0,
+                alpha: 0,
+              }).toBuffer(),
               blend: "over",
               raw: {
                 width,
@@ -299,7 +333,12 @@ async function processAseSprite(
             compositeQueue.emissive.push({
               left: i * width,
               top: sheet.height,
-              input: await normalizeCell(c, width, height).toBuffer(),
+              input: await normalizeCell(c, width, height, {
+                r: 0,
+                g: 0,
+                b: 0,
+                alpha: 0,
+              }).toBuffer(),
               blend: "over",
               raw: {
                 width,
@@ -313,14 +352,22 @@ async function processAseSprite(
               c,
               width,
               height,
-              (x: number, y: number, px: (xp: number, yp: number) => vec4) => {
-                // TODO calculate TBN basis & the normal vector from the heights around the pixel using a sobel kernel
-                return px(x, y);
-              }
+              {
+                r: DEFAULT_NORMAL_BG[0],
+                g: DEFAULT_NORMAL_BG[1],
+                b: DEFAULT_NORMAL_BG[2],
+                alpha: 255,
+              },
+              toTangentNormal()
             );
             break;
           case SPECULAR_LAYER:
-            specularLayer = normalizeCell(c, width, height);
+            specularLayer = normalizeCell(c, width, height, {
+              r: 0,
+              g: 0,
+              b: 0,
+              alpha: 0,
+            });
             break;
         }
       }
@@ -348,7 +395,7 @@ async function processAseSprite(
             width,
             height,
             channels: 4,
-            background: { r: 0, g: 0, b: 255, alpha: 0 },
+            background: { r: 0, g: 0, b: 255, alpha: 255 },
           },
         });
       const normalBuffer = await normalLayer.removeAlpha().toBuffer();
@@ -383,6 +430,98 @@ async function processAseSprite(
   }
 }
 
+type PixelProcessor = (
+  x: number,
+  y: number,
+  px: (xp: number, yp: number) => vec4
+) => vec4;
+
+// converts the heightmap to a tangent space normal map by taking the
+// heights around each pixel, using a sobel kernel to calculate edge gradients,
+// calculating a new normal based off that and then converting that normal into
+// tangent space
+function toTangentNormal(): PixelProcessor {
+  const vecStorage = [
+    vec3.create(),
+    vec3.create(),
+    vec3.create(),
+    vec3.create(),
+    vec3.create(),
+    vec3.create(),
+  ];
+
+  return (x, y, px) => {
+    const vh00 = px(x - 1, y - 1);
+    const vh10 = px(x, y - 1);
+    const vh20 = px(x + 1, y - 1);
+    const vh01 = px(x - 1, y);
+    const vh21 = px(x + 1, y);
+    const vh02 = px(x - 1, y + 1);
+    const vh12 = px(x, y + 1);
+    const vh22 = px(x + 1, y + 1);
+
+    // transparent pixels have a height of 0
+    const h00 = Math.min(vh00[0], vh00[3]);
+    const h10 = Math.min(vh10[0], vh10[3]);
+    const h20 = Math.min(vh20[0], vh20[3]);
+    const h01 = Math.min(vh01[0], vh01[3]);
+    const h21 = Math.min(vh21[0], vh21[3]);
+    const h02 = Math.min(vh02[0], vh02[3]);
+    const h12 = Math.min(vh12[0], vh12[3]);
+    const h22 = Math.min(vh22[0], vh22[3]);
+
+    // The Sobel X kernel is:
+    // [ 1.0  0.0  -1.0 ]
+    // [ 2.0  0.0  -2.0 ]
+    // [ 1.0  0.0  -1.0 ]
+    const gx = 2 * (h00 - h20 + 2.0 * h01 - 2.0 * h21 + h02 - h22);
+
+    // The Sobel Z kernel is:
+    // [  1.0    2.0    1.0 ]
+    // [  0.0    0.0    0.0 ]
+    // [ -1.0   -2.0   -1.0 ]
+    const gz = 2 * (h00 + 2.0 * h10 + h20 - h02 - 2.0 * h12 - h22);
+
+    const scaledZNormal = vec3.scale(
+      vecStorage[0],
+      NORMAL,
+      gz * NORMAL_ROUGHNESS
+    );
+    const scaledXNormal = vec3.scale(
+      vecStorage[1],
+      NORMAL,
+      gx * NORMAL_ROUGHNESS
+    );
+    const tangentDisplacement = vec3.subtract(
+      vecStorage[2],
+      TANGENT,
+      scaledZNormal
+    );
+    const binormalDisplacement = vec3.subtract(
+      vecStorage[3],
+      BINORMAL,
+      scaledXNormal
+    );
+    const localNormal = vec3.cross(
+      vecStorage[4],
+      tangentDisplacement,
+      binormalDisplacement
+    );
+    const tangentNormal = vec3.normalize(
+      vecStorage[5],
+      vec3.transformMat3(vec3.create(), localNormal, TBN)
+    );
+
+    return vec4.set(
+      vec4.create(),
+      tangentNormal[0] * 128 + 127,
+      tangentNormal[1] * 128 + 127,
+      tangentNormal[2] * 128 + 127,
+      255
+    );
+  };
+}
+
 /**
  * Resize a cell such that it is widthxheight and and only the data
  * from the cell in the viewport 0,0 -> widthxheight is present
@@ -391,6 +530,7 @@ function normalizeCell(
   c: Aseprite.Cel,
   width: number,
   height: number,
+  background: { r: number; g: number; b: number; alpha: number },
   process?: (x: number, y: number, px: (xp: number, yp: number) => vec4) => vec4
 ): sharp.Sharp {
   let src = c.rawCelData;
@@ -420,8 +560,14 @@ function normalizeCell(
     src = dest;
   }
 
-  const extractWidth = Math.min(c.w + Math.min(c.xpos, 0), width);
-  const extractHeight = Math.min(c.h + Math.min(c.ypos, 0), height);
+  const extractWidth = Math.min(
+    c.w + Math.min(c.xpos, 0),
+    width - Math.max(c.xpos, 0)
+  );
+  const extractHeight = Math.min(
+    c.h + Math.min(c.ypos, 0),
+    height - Math.max(c.ypos, 0)
+  );
   const topPadding = Math.max(0, c.ypos);
   const leftPadding = Math.max(0, c.xpos);
 
@@ -439,6 +585,6 @@ function normalizeCell(
       left: leftPadding,
       bottom: Math.max(0, height - extractHeight - topPadding),
       right: Math.max(0, width - extractWidth - leftPadding),
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
+      background,
     });
 }
