@@ -287,7 +287,7 @@ async function processAseSprite(
     log(
       `Adding sprite ${chalk.green(sheet.name)}:${chalk.blue(
         t.name
-      )} ${width}x${height} ${t.to - t.from} frame(s)...`
+      )} ${width}x${height} ${t.to - t.from + 1} frame(s)...`
     );
 
     const outputSprite: Sprite = {
