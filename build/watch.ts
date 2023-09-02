@@ -7,6 +7,7 @@ import fs from "fs/promises";
 import path from "path";
 import watcher from "@parcel/watcher";
 import chalk from "chalk";
+import { spawn } from "child_process";
 import {
   spritePath,
   wwwPath,
@@ -17,6 +18,7 @@ import {
 } from "./sprite-utils";
 import * as esbuild from "esbuild";
 import { Worker } from "worker_threads";
+import { codeFrameColumns, SourceLocation } from "@babel/code-frame";
 
 const PORT = 8000;
 
@@ -94,6 +96,51 @@ Promise.resolve(
       entryPoints: [path.join(__dirname, "../src/client/index.ts")],
     }
   );
+
+  // avoid having to constantly reload files to display TSC errors
+  const fileCache = new Map<string, string>();
+  setInterval(() => {
+    fileCache.clear();
+  }, 5000);
+
+  const TS_ERROR_REGEX = /(.*)\(([0-9]*),([0-9]*)\): error (TS[0-9]*): (.*)/m;
+
+  // run tsc watcher
+  const tsc = spawn("./node_modules/.bin/tsc", ["--watch", "--noEmit"]);
+  tsc.stdout.on("data", async (data) => {
+    const str = data.toString().replace(/\x1Bc/g, "").trim();
+    const match = TS_ERROR_REGEX.exec(str);
+    if (match) {
+      const filePath = path.join(__dirname, "..", match[1]);
+      const cachedLines = fileCache.get(filePath);
+      const rawLines =
+        cachedLines ||
+        (await fs.readFile(path.join(__dirname, "..", match[1]), "utf-8"));
+      if (!cachedLines) {
+        fileCache.set(filePath, rawLines);
+      }
+      const location: SourceLocation = {
+        start: { line: parseInt(match[2], 10), column: parseInt(match[3], 10) },
+      };
+      const result = codeFrameColumns(rawLines, location, {
+        highlightCode: true,
+        message: match[5],
+      });
+      console.log(
+        chalk.dim("[TSC]"),
+        chalk.red(`Error ${match[4]} in ${match[1]}`)
+      );
+      console.log(result);
+    } else {
+      console.log(chalk.dim("[TSC]"), str);
+    }
+  });
+  tsc.stderr.on("data", (data) => {
+    console.log(chalk.dim("[TSC]"), chalk.red(data.toString()));
+  });
+  tsc.on("close", (code) => {
+    console.log(chalk.dim("[TSC]"), `TSC closed ${code}`);
+  });
 
   // start the proxy to esbuild & the dev editor API
   const app = express();

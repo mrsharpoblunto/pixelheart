@@ -1,12 +1,11 @@
 import { ReadonlyVec4, mat3 } from "gl-matrix";
-import { GPUTexture, TEXTURE } from "./images";
+import { TEXTURE, GPUTexture, loadTextureFromUrl } from "./images";
 import { GameContext } from "./game-runner";
-import { loadTextureFromUrl } from "./images";
 import {
+  SpriteEffect,
   SpriteSheet,
   SpriteAnimator,
   SpriteSheetConfig,
-  SpriteEffect,
 } from "./sprite-common";
 
 const vertexShaderSource = `#version 300 es
@@ -42,18 +41,34 @@ const fragmentShaderSource = `#version 300 es
   }
 `;
 
-export type SimpleSpriteTextures = GPUTexture;
-export type SimpleSpriteSheet = SpriteSheet<SimpleSpriteTextures>;
-export class SimpleSpriteAnimator extends SpriteAnimator<SimpleSpriteTextures> {}
+export type DeferredSpriteTextures = {
+  diffuseTexture: GPUTexture;
+  normalSpecularTexture: GPUTexture;
+  emissiveTexture: GPUTexture;
+};
+export type DeferredSpriteSheet = SpriteSheet<DeferredSpriteTextures>;
+export class SimpleSpriteAnimator extends SpriteAnimator<DeferredSpriteTextures> {}
 
-export async function simpleTextureLoader(
+export async function defferredTextureLoader(
   ctx: GameContext,
   sheet: SpriteSheetConfig
-): Promise<SimpleSpriteTextures> {
-  return await loadTextureFromUrl(ctx, sheet.urls.diffuse);
+): Promise<DeferredSpriteTextures> {
+  const [diffuseTexture, normalSpecularTexture, emissiveTexture] =
+    await Promise.all([
+      loadTextureFromUrl(ctx, sheet.urls.diffuse),
+      loadTextureFromUrl(ctx, sheet.urls.normalSpecular),
+      loadTextureFromUrl(ctx, sheet.urls.emissive),
+    ]);
+  return {
+    diffuseTexture,
+    normalSpecularTexture,
+    emissiveTexture,
+  };
 }
 
-export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
+export class DeferredSpriteEffect
+  implements SpriteEffect<DeferredSpriteTextures>
+{
   #gl: WebGL2RenderingContext;
   #program: WebGLProgram;
   #a_position: number;
@@ -109,25 +124,25 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
     this.#texture = null;
   }
 
-  use(scope: (s: SimpleSpriteEffect) => void) {
+  use(scope: (s: DeferredSpriteEffect) => void) {
     this.#gl.useProgram(this.#program);
     scope(this);
     this.#end();
   }
 
-  setTextures(param: SimpleSpriteTextures): SimpleSpriteEffect {
-    if (param[TEXTURE] === this.#texture) {
+  setTextures(param: DeferredSpriteTextures): DeferredSpriteEffect {
+    if (param.diffuseTexture[TEXTURE] === this.#texture) {
       return this;
     } else if (this.#pending.length) {
       this.#end();
     }
 
-    this.#texture = param[TEXTURE];
-    this.#textureWidth = param.width;
-    this.#textureHeight = param.height;
+    this.#texture = param.diffuseTexture[TEXTURE];
+    this.#textureWidth = param.diffuseTexture.width;
+    this.#textureHeight = param.diffuseTexture.height;
     // Bind the texture to texture unit 0
     this.#gl.activeTexture(this.#gl.TEXTURE0);
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, param[TEXTURE]);
+    this.#gl.bindTexture(this.#gl.TEXTURE_2D, param.diffuseTexture[TEXTURE]);
     this.#gl.uniform1i(this.#u_texture, 0);
     this.#gl.texParameteri(
       this.#gl.TEXTURE_2D,
@@ -144,7 +159,7 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
     return this;
   }
 
-  draw(rect: ReadonlyVec4, textureCoords: ReadonlyVec4): SimpleSpriteEffect {
+  draw(rect: ReadonlyVec4, textureCoords: ReadonlyVec4): DeferredSpriteEffect {
     const mvp = mat3.create();
     mat3.translate(mvp, mvp, [rect[3], rect[0]]);
     mat3.scale(mvp, mvp, [rect[1] - rect[3], rect[2] - rect[0]]);

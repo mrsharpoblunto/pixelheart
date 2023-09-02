@@ -3,9 +3,12 @@ import { vec4 } from "gl-matrix";
 import { CPUReadableTexture, loadCPUReadableTextureFromUrl } from "./images";
 import {
   loadSpriteSheet,
-  SpriteAnimator,
-  SpriteEffect,
-  SpriteSheet,
+} from "./sprite-common";
+import {
+  simpleTextureLoader,
+  SimpleSpriteSheet,
+  SimpleSpriteAnimator,
+  SimpleSpriteEffect,
 } from "./sprite-effect";
 import { SolidEffect } from "./solid-effect";
 import overworldSprite from "./sprites/overworld";
@@ -24,14 +27,14 @@ export interface SerializedGameState {
 }
 
 export interface GameState {
-  spriteEffect: SpriteEffect;
+  spriteEffect: SimpleSpriteEffect;
   solidEffect: SolidEffect;
   map: CPUReadableTexture;
   mapBuffer: ImageData;
-  overworld: SpriteSheet;
+  overworld: SimpleSpriteSheet;
   character: {
-    sprite: SpriteSheet;
-    animator: SpriteAnimator;
+    sprite: SimpleSpriteSheet;
+    animator: SimpleSpriteAnimator;
     position: vec2;
     relativePosition: vec2;
     speed: number;
@@ -42,7 +45,7 @@ export interface GameState {
     height: number;
     toScreenSpace: (out: vec4, relativeRect: ReadonlyVec4) => vec4;
   };
-  water: SpriteAnimator;
+  water: SimpleSpriteAnimator;
   editor?: EditorState;
 }
 
@@ -67,10 +70,10 @@ export async function onStart(
   ctx: GameContext,
   previousState?: SerializedGameState
 ): Promise<GameState> {
-  const overworld = await loadSpriteSheet(ctx, overworldSprite);
-  const character = await loadSpriteSheet(ctx, characterSprite);
+  const overworld = await loadSpriteSheet(ctx, overworldSprite, simpleTextureLoader);
+  const character = await loadSpriteSheet(ctx, characterSprite, simpleTextureLoader);
   const state: GameState = {
-    spriteEffect: new SpriteEffect(ctx.gl),
+    spriteEffect: new SimpleSpriteEffect(ctx.gl),
     solidEffect: new SolidEffect(ctx.gl),
     map: await loadCPUReadableTextureFromUrl(ctx, "/images/walkmap.png"),
     mapBuffer: new ImageData(
@@ -80,7 +83,7 @@ export async function onStart(
     overworld: overworld,
     character: {
       sprite: character,
-      animator: new SpriteAnimator(
+      animator: new SimpleSpriteAnimator(
         character,
         previousState ? previousState.character.direction : "walk_d",
         8 / 1000
@@ -94,7 +97,7 @@ export async function onStart(
       relativePosition: vec2.create(),
       speed: 1,
     },
-    water: new SpriteAnimator(overworld, "water", 6 / 1000),
+    water: new SimpleSpriteAnimator(overworld, "water", 6 / 1000),
     screen: {
       ...ctx.screen,
       absolutePosition: vec2.create(),
