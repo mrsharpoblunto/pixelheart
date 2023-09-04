@@ -8,39 +8,8 @@ import {
   SpriteSheetConfig,
   SpriteEffect,
 } from "./sprite-common";
-
-const vertexShaderSource = `#version 300 es
-
-  in vec2 a_position;
-
-  in mat3 a_uv;
-  in mat3 a_mvp;
-
-  out vec2 v_texCoord;
-
-  void main() {
-    vec3 uvPosition = a_uv * vec3(a_position, 1.0);
-    vec3 clipPosition = a_mvp * vec3(a_position, 1.0);
-
-    v_texCoord = uvPosition.xy;
-    gl_Position = vec4(clipPosition.xy, 0.0, 1.0);
-  }
-`;
-
-const fragmentShaderSource = `#version 300 es
-
-  precision mediump float;
-
-  in vec2 v_texCoord;
-
-  uniform sampler2D u_texture;
-
-  out vec4 outColor;
-
-  void main() {
-    outColor = texture(u_texture, v_texCoord);
-  }
-`;
+import vertexShaderSource from "./shaders/sprite.vert";
+import fragmentShaderSource from "./shaders/sprite.frag";
 
 export type SimpleSpriteTextures = GPUTexture;
 export type SimpleSpriteSheet = SpriteSheet<SimpleSpriteTextures>;
@@ -60,9 +29,7 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   #u_texture: WebGLUniformLocation;
   #a_uv: number;
   #a_mvp: number;
-  #texture: WebGLTexture | null;
-  #textureHeight: number;
-  #textureWidth: number;
+  #texture: GPUTexture | null;
   #vertexBuffer: WebGLBuffer;
   #vp: mat3;
   #pending: Array<{ mvp: mat3; uv: mat3 }>;
@@ -92,9 +59,6 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
     this.#a_uv = gl.getAttribLocation(this.#program, "a_uv")!;
     this.#a_mvp = gl.getAttribLocation(this.#program, "a_mvp")!;
 
-    this.#textureWidth = 0;
-    this.#textureHeight = 0;
-
     const vertices = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
     this.#vertexBuffer = this.#gl.createBuffer()!;
     this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#vertexBuffer);
@@ -116,15 +80,13 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   }
 
   setTextures(param: SimpleSpriteTextures): SimpleSpriteEffect {
-    if (param[TEXTURE] === this.#texture) {
+    if (param === this.#texture) {
       return this;
     } else if (this.#pending.length) {
       this.#end();
     }
 
-    this.#texture = param[TEXTURE];
-    this.#textureWidth = param.width;
-    this.#textureHeight = param.height;
+    this.#texture = param;
     // Bind the texture to texture unit 0
     this.#gl.activeTexture(this.#gl.TEXTURE0);
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, param[TEXTURE]);
@@ -145,22 +107,24 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   }
 
   draw(rect: ReadonlyVec4, textureCoords: ReadonlyVec4): SimpleSpriteEffect {
-    const mvp = mat3.create();
-    mat3.translate(mvp, mvp, [rect[3], rect[0]]);
-    mat3.scale(mvp, mvp, [rect[1] - rect[3], rect[2] - rect[0]]);
-    mat3.multiply(mvp, this.#vp, mvp);
+    if (this.#texture) {
+      const mvp = mat3.create();
+      mat3.translate(mvp, mvp, [rect[3], rect[0]]);
+      mat3.scale(mvp, mvp, [rect[1] - rect[3], rect[2] - rect[0]]);
+      mat3.multiply(mvp, this.#vp, mvp);
 
-    const uv = mat3.create();
-    mat3.translate(uv, uv, [
-      textureCoords[3] / this.#textureWidth,
-      textureCoords[0] / this.#textureHeight,
-    ]);
-    mat3.scale(uv, uv, [
-      (textureCoords[1] - textureCoords[3]) / this.#textureWidth,
-      (textureCoords[2] - textureCoords[0]) / this.#textureHeight,
-    ]);
+      const uv = mat3.create();
+      mat3.translate(uv, uv, [
+        textureCoords[3] / this.#texture.width,
+        textureCoords[0] / this.#texture.height,
+      ]);
+      mat3.scale(uv, uv, [
+        (textureCoords[1] - textureCoords[3]) / this.#texture.width,
+        (textureCoords[2] - textureCoords[0]) / this.#texture.height,
+      ]);
 
-    this.#pending.push({ mvp, uv });
+      this.#pending.push({ mvp, uv });
+    }
     return this;
   }
 

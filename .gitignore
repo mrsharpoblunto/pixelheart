@@ -1,5 +1,6 @@
 node_modules/
 public/*
 www/sprites/*
+www/js/*
 src/client/sprites/*
 .DS_Store

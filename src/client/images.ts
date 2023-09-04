@@ -80,6 +80,7 @@ export function loadTextureFromImage(
     ctx.gl.UNSIGNED_BYTE,
     img
   );
+  ctx.gl.bindTexture(ctx.gl.TEXTURE_2D, null);
   return texture!;
 }
 
@@ -101,4 +102,33 @@ export function getPixelData(
     const pixelData = ctx.offscreen.getImageData(x, y, 1, 1).data;
     return pixelData;
   };
+}
+
+export function createTexture(
+  gl: WebGL2RenderingContext,
+  internalFormat: number,
+  format: number,
+  type: number,
+  width: number,
+  height: number
+): WebGLTexture {
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    internalFormat,
+    width,
+    height,
+    0,
+    format,
+    type,
+    null
+  );
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  return texture!;
 }

@@ -16,7 +16,8 @@ import {
   processSpriteSheet,
   isSpriteSource,
 } from "./sprite-utils";
-import * as esbuild from "esbuild";
+import { serve } from "esbuild";
+import esbuildConfig from "./esbuild-config";
 import { Worker } from "worker_threads";
 import { codeFrameColumns, SourceLocation } from "@babel/code-frame";
 
@@ -71,7 +72,7 @@ Promise.resolve(
   });
 
   // run the esbuild watcher
-  await esbuild.serve(
+  await serve(
     {
       port: PORT + 1,
       servedir: path.join(__dirname, "../www"),
@@ -88,12 +89,7 @@ Promise.resolve(
     {
       color: true,
       logLevel: "info",
-      bundle: true,
-      outdir: path.join(__dirname, "../www/js"),
-      define: {
-        ["process.env.NODE_ENV"]: '"development"',
-      },
-      entryPoints: [path.join(__dirname, "../src/client/index.ts")],
+      ...esbuildConfig(false),
     }
   );
 

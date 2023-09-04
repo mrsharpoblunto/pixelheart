@@ -1,15 +1,13 @@
 import { GameContext } from "./game-runner";
 import { vec4 } from "gl-matrix";
 import { CPUReadableTexture, loadCPUReadableTextureFromUrl } from "./images";
+import { loadSpriteSheet } from "./sprite-common";
 import {
-  loadSpriteSheet,
-} from "./sprite-common";
-import {
-  simpleTextureLoader,
-  SimpleSpriteSheet,
-  SimpleSpriteAnimator,
-  SimpleSpriteEffect,
-} from "./sprite-effect";
+  deferredTextureLoader,
+  DeferredSpriteSheet,
+  DeferredSpriteAnimator,
+  DeferredSpriteEffect,
+} from "./deferred-sprite-effect";
 import { SolidEffect } from "./solid-effect";
 import overworldSprite from "./sprites/overworld";
 import characterSprite from "./sprites/character";
@@ -27,14 +25,14 @@ export interface SerializedGameState {
 }
 
 export interface GameState {
-  spriteEffect: SimpleSpriteEffect;
+  spriteEffect: DeferredSpriteEffect;
   solidEffect: SolidEffect;
   map: CPUReadableTexture;
   mapBuffer: ImageData;
-  overworld: SimpleSpriteSheet;
+  overworld: DeferredSpriteSheet;
   character: {
-    sprite: SimpleSpriteSheet;
-    animator: SimpleSpriteAnimator;
+    sprite: DeferredSpriteSheet;
+    animator: DeferredSpriteAnimator;
     position: vec2;
     relativePosition: vec2;
     speed: number;
@@ -45,7 +43,7 @@ export interface GameState {
     height: number;
     toScreenSpace: (out: vec4, relativeRect: ReadonlyVec4) => vec4;
   };
-  water: SimpleSpriteAnimator;
+  water: DeferredSpriteAnimator;
   editor?: EditorState;
 }
 
@@ -70,10 +68,18 @@ export async function onStart(
   ctx: GameContext,
   previousState?: SerializedGameState
 ): Promise<GameState> {
-  const overworld = await loadSpriteSheet(ctx, overworldSprite, simpleTextureLoader);
-  const character = await loadSpriteSheet(ctx, characterSprite, simpleTextureLoader);
+  const overworld = await loadSpriteSheet(
+    ctx,
+    overworldSprite,
+    deferredTextureLoader
+  );
+  const character = await loadSpriteSheet(
+    ctx,
+    characterSprite,
+    deferredTextureLoader
+  );
   const state: GameState = {
-    spriteEffect: new SimpleSpriteEffect(ctx.gl),
+    spriteEffect: new DeferredSpriteEffect(ctx.gl),
     solidEffect: new SolidEffect(ctx.gl),
     map: await loadCPUReadableTextureFromUrl(ctx, "/images/walkmap.png"),
     mapBuffer: new ImageData(
@@ -83,7 +89,7 @@ export async function onStart(
     overworld: overworld,
     character: {
       sprite: character,
-      animator: new SimpleSpriteAnimator(
+      animator: new DeferredSpriteAnimator(
         character,
         previousState ? previousState.character.direction : "walk_d",
         8 / 1000
@@ -97,7 +103,7 @@ export async function onStart(
       relativePosition: vec2.create(),
       speed: 1,
     },
-    water: new SimpleSpriteAnimator(overworld, "water", 6 / 1000),
+    water: new DeferredSpriteAnimator(overworld, "water", 6 / 1000),
     screen: {
       ...ctx.screen,
       absolutePosition: vec2.create(),
@@ -326,87 +332,93 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
     state.screen.absolutePosition
   );
 
-  state.spriteEffect.use((s) => {
-    // overdraw the screen by 1 tile at each edge to prevent tile pop-in
-    for (let x = -1; x <= (ctx.screen.width + 2) / coords.TILE_SIZE; ++x) {
-      for (let y = -1; y <= (ctx.screen.height + 2) / coords.TILE_SIZE; ++y) {
-        const mapX = x + ssp[0];
-        const mapY = y + ssp[1];
-        const spatialHash = hash(mapX, mapY);
+  state.spriteEffect.use(
+    {
+      width: ctx.screen.width,
+      height: ctx.screen.height,
+    },
+    (s) => {
+      // overdraw the screen by 1 tile at each edge to prevent tile pop-in
+      for (let x = -1; x <= (ctx.screen.width + 2) / coords.TILE_SIZE; ++x) {
+        for (let y = -1; y <= (ctx.screen.height + 2) / coords.TILE_SIZE; ++y) {
+          const mapX = x + ssp[0];
+          const mapY = y + ssp[1];
+          const spatialHash = hash(mapX, mapY);
 
-        const position = ctx.screen.toScreenSpace(
-          vec4.create(),
-          vec4.fromValues(
-            y * coords.TILE_SIZE - ssp[3],
-            x * coords.TILE_SIZE + coords.TILE_SIZE - ssp[2],
-            y * coords.TILE_SIZE + coords.TILE_SIZE - ssp[3],
-            x * coords.TILE_SIZE - ssp[2]
-          )
-        );
+          const position = ctx.screen.toScreenSpace(
+            vec4.create(),
+            vec4.fromValues(
+              y * coords.TILE_SIZE - ssp[3],
+              x * coords.TILE_SIZE + coords.TILE_SIZE - ssp[2],
+              y * coords.TILE_SIZE + coords.TILE_SIZE - ssp[3],
+              x * coords.TILE_SIZE - ssp[2]
+            )
+          );
 
-        if (getMapBufferData(x, y, state) === 0) {
-          // water
-          state.water.draw(s, position, spatialHash);
-        } else {
-          // not water
-          const top = getMapBufferData(x, y - 1, state) === 0;
-          const left = getMapBufferData(x - 1, y, state) === 0;
-          const bottom = getMapBufferData(x, y + 1, state) === 0;
-          const right = getMapBufferData(x + 1, y, state) === 0;
-          const topLeft = getMapBufferData(x - 1, y - 1, state) === 0;
-          const topRight = getMapBufferData(x + 1, y - 1, state) === 0;
-          const bottomLeft = getMapBufferData(x - 1, y + 1, state) === 0;
-          const bottomRight = getMapBufferData(x + 1, y + 1, state) === 0;
-
-          if (top && left) {
-            state.overworld.grass_tl.draw(s, position);
-          } else if (top && right) {
-            state.overworld.grass_tr.draw(s, position);
-          } else if (top && !left && !right) {
-            state.overworld.grass_t.draw(s, position);
-          } else if (topLeft && !left && !top) {
-            state.overworld.grass_i_tl.draw(s, position);
-          } else if (topRight && !right && !top) {
-            state.overworld.grass_i_tr.draw(s, position);
-          } else if (left && !top && !bottom) {
-            state.overworld.grass_l.draw(s, position);
-          } else if (bottom && left) {
-            state.overworld.grass_bl.draw(s, position);
-          } else if (bottom && right) {
-            state.overworld.grass_br.draw(s, position);
-          } else if (bottom && !left && !right) {
-            state.overworld.grass_b.draw(s, position);
-          } else if (bottomLeft && !left && !bottom) {
-            state.overworld.grass_i_bl.draw(s, position);
-          } else if (bottomRight && !right && !bottom) {
-            state.overworld.grass_i_br.draw(s, position);
-          } else if (right && !top && !bottom) {
-            state.overworld.grass_r.draw(s, position);
+          if (getMapBufferData(x, y, state) === 0) {
+            // water
+            state.water.draw(s, position, spatialHash);
           } else {
-            state.overworld.grass.draw(s, position, spatialHash);
+            // not water
+            const top = getMapBufferData(x, y - 1, state) === 0;
+            const left = getMapBufferData(x - 1, y, state) === 0;
+            const bottom = getMapBufferData(x, y + 1, state) === 0;
+            const right = getMapBufferData(x + 1, y, state) === 0;
+            const topLeft = getMapBufferData(x - 1, y - 1, state) === 0;
+            const topRight = getMapBufferData(x + 1, y - 1, state) === 0;
+            const bottomLeft = getMapBufferData(x - 1, y + 1, state) === 0;
+            const bottomRight = getMapBufferData(x + 1, y + 1, state) === 0;
+
+            if (top && left) {
+              state.overworld.grass_tl.draw(s, position);
+            } else if (top && right) {
+              state.overworld.grass_tr.draw(s, position);
+            } else if (top && !left && !right) {
+              state.overworld.grass_t.draw(s, position);
+            } else if (topLeft && !left && !top) {
+              state.overworld.grass_i_tl.draw(s, position);
+            } else if (topRight && !right && !top) {
+              state.overworld.grass_i_tr.draw(s, position);
+            } else if (left && !top && !bottom) {
+              state.overworld.grass_l.draw(s, position);
+            } else if (bottom && left) {
+              state.overworld.grass_bl.draw(s, position);
+            } else if (bottom && right) {
+              state.overworld.grass_br.draw(s, position);
+            } else if (bottom && !left && !right) {
+              state.overworld.grass_b.draw(s, position);
+            } else if (bottomLeft && !left && !bottom) {
+              state.overworld.grass_i_bl.draw(s, position);
+            } else if (bottomRight && !right && !bottom) {
+              state.overworld.grass_i_br.draw(s, position);
+            } else if (right && !top && !bottom) {
+              state.overworld.grass_r.draw(s, position);
+            } else {
+              state.overworld.grass.draw(s, position, spatialHash);
+            }
           }
         }
       }
-    }
 
-    const offset = vec2.fromValues(
-      state.character.animator.getSprite().width / 2,
-      state.character.animator.getSprite().height / 2
-    );
+      const offset = vec2.fromValues(
+        state.character.animator.getSprite().width / 2,
+        state.character.animator.getSprite().height / 2
+      );
 
-    state.character.animator.draw(
-      s,
-      ctx.screen.toScreenSpace(
-        vec4.create(),
-        vec4.fromValues(
-          Math.floor(state.character.relativePosition[1]) - offset[1],
-          Math.floor(state.character.relativePosition[0]) + offset[0],
-          Math.floor(state.character.relativePosition[1]) + offset[1],
-          Math.floor(state.character.relativePosition[0]) - offset[0]
+      state.character.animator.draw(
+        s,
+        ctx.screen.toScreenSpace(
+          vec4.create(),
+          vec4.fromValues(
+            Math.floor(state.character.relativePosition[1]) - offset[1],
+            Math.floor(state.character.relativePosition[0]) + offset[0],
+            Math.floor(state.character.relativePosition[1]) + offset[1],
+            Math.floor(state.character.relativePosition[0]) - offset[0]
+          )
         )
-      )
-    );
-  });
+      );
+    }
+  );
 
   if (process.env.NODE_ENV === "development") {
     drawEditor(ctx, state, delta);
