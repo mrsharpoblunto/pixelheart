@@ -3,4 +3,5 @@ public/*
 www/sprites/*
 www/js/*
 src/client/sprites/*
+src/client/shaders/*.d.ts
 .DS_Store

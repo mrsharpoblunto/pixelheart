@@ -8,8 +8,9 @@ import {
   SpriteSheetConfig,
   SpriteEffect,
 } from "./sprite-common";
-import vertexShaderSource from "./shaders/sprite.vert";
-import fragmentShaderSource from "./shaders/sprite.frag";
+import { CompiledWebGLProgram, createProgram, bindInstanceBuffer } from "./gl-utils";
+import vertexShader, { ProgramParameters as VP } from "./shaders/sprite.vert";
+import fragmentShader, { ProgramParameters as FP } from "./shaders/sprite.frag";
 
 export type SimpleSpriteTextures = GPUTexture;
 export type SimpleSpriteSheet = SpriteSheet<SimpleSpriteTextures>;
@@ -24,11 +25,7 @@ export async function simpleTextureLoader(
 
 export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   #gl: WebGL2RenderingContext;
-  #program: WebGLProgram;
-  #a_position: number;
-  #u_texture: WebGLUniformLocation;
-  #a_uv: number;
-  #a_mvp: number;
+  #program: CompiledWebGLProgram<VP, FP>;
   #texture: GPUTexture | null;
   #vertexBuffer: WebGLBuffer;
   #vp: mat3;
@@ -37,27 +34,12 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
 
-    const vertexShader = this.#gl.createShader(this.#gl.VERTEX_SHADER)!;
-    this.#gl.shaderSource(vertexShader, vertexShaderSource);
-    this.#gl.compileShader(vertexShader);
-
-    const fragmentShader = this.#gl.createShader(this.#gl.FRAGMENT_SHADER)!;
-    this.#gl.shaderSource(fragmentShader, fragmentShaderSource);
-    this.#gl.compileShader(fragmentShader);
-
-    this.#program = this.#gl.createProgram()!;
-    this.#gl.attachShader(this.#program, vertexShader);
-    this.#gl.attachShader(this.#program, fragmentShader);
-    this.#gl.linkProgram(this.#program);
-    if (!this.#gl.getProgramParameter(this.#program, this.#gl.LINK_STATUS)) {
-      console.log(this.#gl.getShaderInfoLog(vertexShader));
-      console.log(this.#gl.getShaderInfoLog(fragmentShader));
-    }
-
-    this.#a_position = this.#gl.getAttribLocation(this.#program, "a_position");
-    this.#u_texture = gl.getUniformLocation(this.#program, "u_texture")!;
-    this.#a_uv = gl.getAttribLocation(this.#program, "a_uv")!;
-    this.#a_mvp = gl.getAttribLocation(this.#program, "a_mvp")!;
+    this.#program = createProgram(
+      this.#gl,
+      vertexShader,
+      fragmentShader,
+      (error: string) => console.log(error)
+    )!;
 
     const vertices = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
     this.#vertexBuffer = this.#gl.createBuffer()!;
@@ -74,7 +56,7 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   }
 
   use(scope: (s: SimpleSpriteEffect) => void) {
-    this.#gl.useProgram(this.#program);
+    this.#gl.useProgram(this.#program.program);
     scope(this);
     this.#end();
   }
@@ -90,19 +72,7 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
     // Bind the texture to texture unit 0
     this.#gl.activeTexture(this.#gl.TEXTURE0);
     this.#gl.bindTexture(this.#gl.TEXTURE_2D, param[TEXTURE]);
-    this.#gl.uniform1i(this.#u_texture, 0);
-    this.#gl.texParameteri(
-      this.#gl.TEXTURE_2D,
-      this.#gl.TEXTURE_MAG_FILTER,
-      this.#gl.NEAREST
-    );
-    this.#gl.texParameteri(
-      this.#gl.TEXTURE_2D,
-      this.#gl.TEXTURE_MIN_FILTER,
-      this.#gl.NEAREST
-    );
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_BASE_LEVEL, 0);
-    this.#gl.texParameteri(this.#gl.TEXTURE_2D, this.#gl.TEXTURE_MAX_LEVEL, 2);
+    this.#gl.uniform1i(this.#program.uniforms.u_texture, 0);
     return this;
   }
 
@@ -129,90 +99,10 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   }
 
   #end() {
-    const b = new Float32Array(this.#pending.length * 9 * 2);
-    let offset = 0;
-    for (let i = 0; i < this.#pending.length; ++i) {
-      b.set(this.#pending[i].mvp, offset);
-      offset += 9;
-      b.set(this.#pending[i].uv, offset);
-      offset += 9;
-    }
-    const instanceBuffer = this.#gl.createBuffer();
-    this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, instanceBuffer);
-    this.#gl.bufferData(this.#gl.ARRAY_BUFFER, b, this.#gl.STATIC_DRAW);
-
-    this.#gl.enableVertexAttribArray(this.#a_mvp);
-    this.#gl.vertexAttribPointer(
-      this.#a_mvp,
-      3,
-      this.#gl.FLOAT,
-      false,
-      9 * 4 * 2,
-      0 * 3 * 4
-    );
-    this.#gl.vertexAttribDivisor(this.#a_mvp, 1);
-    this.#gl.enableVertexAttribArray(this.#a_mvp + 1);
-    this.#gl.vertexAttribPointer(
-      this.#a_mvp + 1,
-      3,
-      this.#gl.FLOAT,
-      false,
-      9 * 4 * 2,
-      1 * 3 * 4
-    );
-    this.#gl.vertexAttribDivisor(this.#a_mvp + 1, 1);
-    this.#gl.enableVertexAttribArray(this.#a_mvp + 2);
-    this.#gl.vertexAttribPointer(
-      this.#a_mvp + 2,
-      3,
-      this.#gl.FLOAT,
-      false,
-      9 * 4 * 2,
-      2 * 3 * 4
-    );
-    this.#gl.vertexAttribDivisor(this.#a_mvp + 2, 1);
-
-    this.#gl.enableVertexAttribArray(this.#a_uv);
-    this.#gl.vertexAttribPointer(
-      this.#a_uv,
-      3,
-      this.#gl.FLOAT,
-      false,
-      9 * 4 * 2,
-      3 * 3 * 4
-    );
-    this.#gl.vertexAttribDivisor(this.#a_uv, 1);
-    this.#gl.enableVertexAttribArray(this.#a_uv + 1);
-    this.#gl.vertexAttribPointer(
-      this.#a_uv + 1,
-      3,
-      this.#gl.FLOAT,
-      false,
-      9 * 4 * 2,
-      4 * 3 * 4
-    );
-    this.#gl.vertexAttribDivisor(this.#a_uv + 1, 1);
-    this.#gl.enableVertexAttribArray(this.#a_uv + 2);
-    this.#gl.vertexAttribPointer(
-      this.#a_uv + 2,
-      3,
-      this.#gl.FLOAT,
-      false,
-      9 * 4 * 2,
-      5 * 3 * 4
-    );
-    this.#gl.vertexAttribDivisor(this.#a_uv + 2, 1);
-
-    this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#vertexBuffer);
-    this.#gl.enableVertexAttribArray(this.#a_position);
-    this.#gl.vertexAttribPointer(
-      this.#a_position,
-      2,
-      this.#gl.FLOAT,
-      false,
-      0,
-      0
-    );
+    bindInstanceBuffer(this.#gl, this.#program, this.#pending, [
+      ["a_mvp", (instance) => instance.mvp],
+      ["a_uv", (instance) => instance.uv],
+    ]);
 
     this.#gl.drawArraysInstanced(
       this.#gl.TRIANGLE_STRIP,

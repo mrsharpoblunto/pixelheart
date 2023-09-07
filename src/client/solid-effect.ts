@@ -1,14 +1,16 @@
 import { mat3, ReadonlyVec4 } from "gl-matrix";
+import {
+  CompiledWebGLProgram,
+  createProgram,
+  bindInstanceBuffer,
+} from "./gl-utils";
 
-import vertexShaderSource from "./shaders/solid.vert";
-import fragmentShaderSource from "./shaders/solid.frag";
+import vertexShader, { ProgramParameters as VP } from "./shaders/solid.vert";
+import fragmentShader, { ProgramParameters as FP } from "./shaders/solid.frag";
 
 export class SolidEffect {
-    #gl: WebGL2RenderingContext;
-  #program: WebGLProgram;
-  #a_position: number;
-  #a_mvp: number;
-  #a_color: number;
+  #gl: WebGL2RenderingContext;
+  #program: CompiledWebGLProgram<VP, FP>;
   #vertexBuffer: WebGLBuffer;
   #vp: mat3;
   #pending: Array<{ mvp: mat3; color: ReadonlyVec4 }>;
@@ -16,26 +18,12 @@ export class SolidEffect {
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
 
-    const vertexShader = this.#gl.createShader(this.#gl.VERTEX_SHADER)!;
-    this.#gl.shaderSource(vertexShader, vertexShaderSource);
-    this.#gl.compileShader(vertexShader);
-
-    const fragmentShader = this.#gl.createShader(this.#gl.FRAGMENT_SHADER)!;
-    this.#gl.shaderSource(fragmentShader, fragmentShaderSource);
-    this.#gl.compileShader(fragmentShader);
-
-    this.#program = this.#gl.createProgram()!;
-    this.#gl.attachShader(this.#program, vertexShader);
-    this.#gl.attachShader(this.#program, fragmentShader);
-    this.#gl.linkProgram(this.#program);
-    if (!this.#gl.getProgramParameter(this.#program, this.#gl.LINK_STATUS)) {
-      console.log(this.#gl.getShaderInfoLog(vertexShader));
-      console.log(this.#gl.getShaderInfoLog(fragmentShader));
-    }
-
-    this.#a_position = this.#gl.getAttribLocation(this.#program, "a_position");
-    this.#a_color = gl.getAttribLocation(this.#program, "a_color")!;
-    this.#a_mvp = gl.getAttribLocation(this.#program, "a_mvp")!;
+    this.#program = createProgram(
+      this.#gl,
+      vertexShader,
+      fragmentShader,
+      (error: string) => console.log(error)
+    )!;
 
     const vertices = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
     this.#vertexBuffer = this.#gl.createBuffer()!;
@@ -51,7 +39,7 @@ export class SolidEffect {
   }
 
   use(scope: (s: SolidEffect) => void) {
-    this.#gl.useProgram(this.#program);
+    this.#gl.useProgram(this.#program.program);
     scope(this);
     this.#end();
   }
@@ -67,64 +55,15 @@ export class SolidEffect {
   }
 
   #end() {
-    const b = new Float32Array(this.#pending.length * (9 + 4));
-    let offset = 0;
-    for (let i = 0; i < this.#pending.length; ++i) {
-      b.set(this.#pending[i].mvp, offset);
-      offset += 9;
-      b.set(this.#pending[i].color, offset);
-      offset += 4;
-    }
-    const instanceBuffer = this.#gl.createBuffer();
-    this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, instanceBuffer);
-    this.#gl.bufferData(this.#gl.ARRAY_BUFFER, b, this.#gl.STATIC_DRAW);
-
-    this.#gl.enableVertexAttribArray(this.#a_mvp);
-    this.#gl.vertexAttribPointer(
-      this.#a_mvp,
-      3,
-      this.#gl.FLOAT,
-      false,
-      (9 + 4) * 4,
-      0 * 3 * 4
-    );
-    this.#gl.vertexAttribDivisor(this.#a_mvp, 1);
-    this.#gl.enableVertexAttribArray(this.#a_mvp + 1);
-    this.#gl.vertexAttribPointer(
-      this.#a_mvp + 1,
-      3,
-      this.#gl.FLOAT,
-      false,
-      (9 + 4) * 4,
-      1 * 3 * 4
-    );
-    this.#gl.vertexAttribDivisor(this.#a_mvp + 1, 1);
-    this.#gl.enableVertexAttribArray(this.#a_mvp + 2);
-    this.#gl.vertexAttribPointer(
-      this.#a_mvp + 2,
-      3,
-      this.#gl.FLOAT,
-      false,
-      (9 + 4) * 4,
-      2 * 3 * 4
-    );
-    this.#gl.vertexAttribDivisor(this.#a_mvp + 2, 1);
-
-    this.#gl.enableVertexAttribArray(this.#a_color);
-    this.#gl.vertexAttribPointer(
-      this.#a_color,
-      4,
-      this.#gl.FLOAT,
-      false,
-      (9 + 4) * 4,
-      3 * 3 * 4
-    );
-    this.#gl.vertexAttribDivisor(this.#a_color, 1);
+    bindInstanceBuffer(this.#gl, this.#program, this.#pending, [
+      ["a_mvp", (instance) => instance.mvp],
+      ["a_color", (instance) => ({ vec4: instance.color })],
+    ]);
 
     this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#vertexBuffer);
-    this.#gl.enableVertexAttribArray(this.#a_position);
+    this.#gl.enableVertexAttribArray(this.#program.attributes.a_position);
     this.#gl.vertexAttribPointer(
-      this.#a_position,
+      this.#program.attributes.a_position,
       2,
       this.#gl.FLOAT,
       false,

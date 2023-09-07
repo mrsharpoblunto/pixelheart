@@ -1,5 +1,5 @@
 import { GameContext } from "./game-runner";
-import { vec4 } from "gl-matrix";
+import { vec4, vec3 } from "gl-matrix";
 import { CPUReadableTexture, loadCPUReadableTextureFromUrl } from "./images";
 import { loadSpriteSheet } from "./sprite-common";
 import {
@@ -8,6 +8,7 @@ import {
   DeferredSpriteAnimator,
   DeferredSpriteEffect,
 } from "./deferred-sprite-effect";
+import { SimpleSpriteEffect } from "./sprite-effect";
 import { SolidEffect } from "./solid-effect";
 import overworldSprite from "./sprites/overworld";
 import characterSprite from "./sprites/character";
@@ -18,7 +19,7 @@ import { EditorAction } from "../shared/editor-actions";
 const CONTROLLER_DEADZONE = 0.25;
 
 export interface SerializedGameState {
-  character: {
+    character: {
     position: [number, number];
     direction: string;
   };
@@ -26,6 +27,7 @@ export interface SerializedGameState {
 
 export interface GameState {
   spriteEffect: DeferredSpriteEffect;
+  simpleSpriteEffect: SimpleSpriteEffect;
   solidEffect: SolidEffect;
   map: CPUReadableTexture;
   mapBuffer: ImageData;
@@ -80,6 +82,7 @@ export async function onStart(
   );
   const state: GameState = {
     spriteEffect: new DeferredSpriteEffect(ctx.gl),
+    simpleSpriteEffect: new SimpleSpriteEffect(ctx.gl),
     solidEffect: new SolidEffect(ctx.gl),
     map: await loadCPUReadableTextureFromUrl(ctx, "/images/walkmap.png"),
     mapBuffer: new ImageData(
@@ -417,8 +420,27 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
           )
         )
       );
+
+      s.addLight({
+        type: "direction",
+        ambient: vec4.fromValues(0.1, 0.1, 0.1, 1.0),
+        direction: vec3.fromValues(0.5, 0.5, 0.5),
+        color: vec3.fromValues(1.0, 1.0, 1.0),
+      });
     }
   );
+
+  // draw the accumulated deferred lighting texture to the screen
+  state.simpleSpriteEffect.use((s) => {
+    const lightingTexture = state.spriteEffect.getLightingTexture();
+    if (lightingTexture) {
+      s.setTextures(lightingTexture);
+      s.draw(
+        vec4.fromValues(1.0, 1.0, 0, 0),
+        vec4.fromValues(0, lightingTexture.width, lightingTexture.height, 0)
+      );
+    }
+  });
 
   if (process.env.NODE_ENV === "development") {
     drawEditor(ctx, state, delta);

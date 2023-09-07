@@ -16,14 +16,16 @@ import {
   processSpriteSheet,
   isSpriteSource,
 } from "./sprite-utils";
+import { processShaderTypeDefinition, isShader } from "./shader-utils";
 import { serve } from "esbuild";
 import esbuildConfig from "./esbuild-config";
 import { Worker } from "worker_threads";
 import { codeFrameColumns, SourceLocation } from "@babel/code-frame";
 
 const PORT = 8000;
+const srcPath = path.join(__dirname, "..", "src");
+const shaderPath = path.join(srcPath, "client", "shaders");
 
-const srcPath = path.join(__dirname, "../src");
 let editor: Worker | null = null;
 
 const spriteLogDecorator = (message: string) => {
@@ -32,17 +34,23 @@ const spriteLogDecorator = (message: string) => {
 const spriteErrorDecorator = (error: string) => {
   console.log(chalk.dim("[Sprites]"), chalk.red(error));
 };
+const shaderLogDecorator = (message: string) => {
+  console.log(chalk.dim("[Shaders]"), message);
+};
+const shaderErrorDecorator = (error: string) => {
+  console.log(chalk.dim("[Shaders]"), chalk.red(error));
+};
 
 Promise.resolve(
   yargs(hideBin(process.argv)).scriptName("watch").usage("$0 args").argv
 ).then(async (_args) => {
   await ensurePath(wwwPath);
   await ensurePath(spriteSrcPath);
-  const sourceSpriteSheets = await fs.readdir(spritePath);
-  const destSpriteSheets = await fs.readdir(wwwPath);
 
   // on first run, check if any sprites are missing or older
   // than the source and build them
+  const sourceSpriteSheets = await fs.readdir(spritePath);
+  const destSpriteSheets = await fs.readdir(wwwPath);
   for (const src of sourceSpriteSheets) {
     const srcStat = await fs.stat(path.join(spritePath, src));
     if (srcStat.isFile()) {
@@ -50,18 +58,17 @@ Promise.resolve(
     }
     const dest = `${src}.png`;
     if (
-      destSpriteSheets.find(
+      // doesn't exist
+      !destSpriteSheets.find(
         (d) =>
           d === `${src}-diffuse.png` ||
           d === `${src}-normal.png` ||
           d === `${src}-emissive.png`
-      )
+      ) ||
+      // or is older than the source
+      srcStat.mtimeMs > (await fs.stat(path.join(wwwPath, dest))).mtimeMs
     ) {
-      const destStat = await fs.stat(path.join(wwwPath, dest));
-      if (srcStat.mtimeMs > destStat.mtimeMs) {
-        await processSpriteSheet(src, spriteLogDecorator, spriteErrorDecorator);
-      }
-    } else {
+      await processSpriteSheet(src, spriteLogDecorator, spriteErrorDecorator);
       await processSpriteSheet(src, spriteLogDecorator, spriteErrorDecorator);
     }
   }
@@ -71,11 +78,46 @@ Promise.resolve(
     await processSpriteSheetEvents(events);
   });
 
+  // on first run, check if any shader type definitions are missing or older
+  // than the source and build them
+  const sourceShaders = await fs.readdir(shaderPath);
+  const shadersToType = [];
+  for (const src of sourceShaders) {
+    const srcStat = await fs.stat(path.join(shaderPath, src));
+    if (!isShader(src)) {
+      continue;
+    }
+
+    const dest = `${src}.d.ts`;
+    if (
+      // doesn't exist
+      sourceShaders.indexOf(dest) < 0 ||
+      // or is older than the source
+      srcStat.mtimeMs > (await fs.stat(path.join(shaderPath, dest))).mtimeMs
+    ) {
+      shadersToType.push(src);
+    }
+  }
+  await Promise.all(
+    shadersToType.map((s) =>
+      processShaderTypeDefinition(
+        path.join(shaderPath, s),
+        shaderLogDecorator,
+        shaderErrorDecorator
+      )
+    )
+  );
+
+  // then await other changes as they come
+  await watcher.subscribe(shaderPath, async (_err, events) => {
+    await processShaderEvents(events);
+  });
+
   // run the esbuild watcher
   await serve(
     {
       port: PORT + 1,
-      servedir: path.join(__dirname, "../www"),
+      servedir: path.join(__dirname, "..", "www"),
       onRequest: (args) => {
         console.log(
           chalk.dim("[Server]"),
@@ -285,5 +327,33 @@ async function processSpriteSheetEvents(events: watcher.Event[]) {
 
   for (let nom of newOrModified) {
     await processSpriteSheet(nom, spriteLogDecorator, spriteErrorDecorator);
+  }
+}
+
+async function processShaderEvents(events: watcher.Event[]) {
+  for (let e of events) {
+    if (!isShader(e.path)) {
+      continue;
+    }
+
+    switch (e.type) {
+      case "create":
+      case "update":
+        {
+          await processShaderTypeDefinition(
+            e.path,
+            shaderLogDecorator,
+            shaderErrorDecorator
+          );
+        }
+        break;
+
+      case "delete":
+        {
+          await fs.rm(e.path);
+          await fs.rm(`${e.path}.d.ts`);
+        }
+        break;
+    }
   }
 }

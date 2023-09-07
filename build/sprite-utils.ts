@@ -36,8 +36,7 @@ const DEFAULT_TANGENT_NORMAL = vec3.normalize(
   vec3.create(),
   vec3.transformMat3(vec3.create(), NORMAL, TBN)
 );
-const DEFAULT_NORMAL_BG = vec4.set(
-  vec4.create(),
+const DEFAULT_NORMAL_BG = vec4.fromValues(
   DEFAULT_TANGENT_NORMAL[0] * 128 + 127,
   DEFAULT_TANGENT_NORMAL[1] * 128 + 127,
   DEFAULT_TANGENT_NORMAL[2] * 128 + 127,
@@ -437,7 +436,7 @@ type PixelProcessor = (
 ) => vec4;
 
 // converts the heightmap to a tangent space normal map by taking the
-// heights around each pixel, using a sobel kernel to calculate edge gradients,
+// heights around each pixel, using a sobel operator to calculate edge gradients,
 // calculating a new normal based off that and then converting that normal into
 // tangent space
 function toTangentNormal(): PixelProcessor {
@@ -470,13 +469,13 @@ function toTangentNormal(): PixelProcessor {
     const h12 = Math.min(vh12[0], vh12[3]);
     const h22 = Math.min(vh22[0], vh22[3]);
 
-    // The Sobel X kernel is:
+    // The Sobel operator X kernel is:
     // [ 1.0  0.0  -1.0 ]
     // [ 2.0  0.0  -2.0 ]
     // [ 1.0  0.0  -1.0 ]
     const gx = 2 * (h00 - h20 + 2.0 * h01 - 2.0 * h21 + h02 - h22);
 
-    // The Sobel Z kernel is:
+    // The Sobel operator Z kernel is:
     // [  1.0    2.0    1.0 ]
     // [  0.0    0.0    0.0 ]
     // [ -1.0   -2.0   -1.0 ]
@@ -512,8 +511,7 @@ function toTangentNormal(): PixelProcessor {
       vec3.transformMat3(vec3.create(), localNormal, TBN)
     );
 
-    return vec4.set(
-      vec4.create(),
+    return vec4.fromValues(
       tangentNormal[0] * 128 + 127,
       tangentNormal[1] * 128 + 127,
       tangentNormal[2] * 128 + 127,
@@ -540,8 +538,7 @@ function normalizeCell(
       if (x >= c.w || x < 0 || y >= c.h || y < 0) {
         return vec4.create();
       }
-      return vec4.set(
-        vec4.create(),
+      return vec4.fromValues(
         src[y * c.w * 4 + x * 4],
         src[y * c.w * 4 + x * 4 + 1],
         src[y * c.w * 4 + x * 4 + 2],
