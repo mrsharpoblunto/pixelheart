@@ -68,15 +68,15 @@ Promise.resolve(
     if (srcStat.isFile()) {
       continue;
     }
-    const dest = `${src}.png`;
+    const dest = destSpriteSheets.find(
+      (d) =>
+        d === `${src}-diffuse.png` ||
+        d === `${src}-normal.png` ||
+        d === `${src}-emissive.png`
+    );
     if (
       // doesn't exist
-      !destSpriteSheets.find(
-        (d) =>
-          d === `${src}-diffuse.png` ||
-          d === `${src}-normal.png` ||
-          d === `${src}-emissive.png`
-      ) ||
+      !dest ||
       // or is older than the source
       srcStat.mtimeMs > (await fs.stat(path.join(wwwPath, dest))).mtimeMs
     ) {
