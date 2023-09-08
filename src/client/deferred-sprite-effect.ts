@@ -13,12 +13,8 @@ import {
   createTexture,
   bindInstanceBuffer,
 } from "./gl-utils";
-import vertexShader, {
-  ProgramParameters as VParams,
-} from "./shaders/deferred-sprite.vert";
-import fragmentShader, {
-  ProgramParameters as FParams,
-} from "./shaders/deferred-sprite.frag";
+import vertexShader from "./shaders/deferred-sprite.vert";
+import fragmentShader from "./shaders/deferred-sprite.frag";
 //import lightVertexShader from "./shaders/deferred-sprite-lighting.vert";
 //import lightFragmentShader from "./shaders/deferred-sprite-lighting.frag";
 
@@ -28,7 +24,7 @@ export type DeferredSpriteTextures = {
   emissiveTexture: GPUTexture;
 };
 export type DeferredSpriteSheet = SpriteSheet<DeferredSpriteTextures>;
-export class DeferredSpriteAnimator extends SpriteAnimator<DeferredSpriteTextures> {}
+export class DeferredSpriteAnimator extends SpriteAnimator<DeferredSpriteTextures> { }
 
 export async function deferredTextureLoader(
   ctx: GameContext,
@@ -49,23 +45,26 @@ export async function deferredTextureLoader(
 
 export type DeferredLight =
   | {
-      type: "direction";
-      color: vec3;
-      ambient: vec4;
-      direction: vec3;
-    }
+    type: "direction";
+    color: vec3;
+    ambient: vec4;
+    direction: vec3;
+  }
   | {
-      type: "point";
-      color: vec3;
-      position?: vec3;
-      radius?: number;
-    };
+    type: "point";
+    color: vec3;
+    position?: vec3;
+    radius?: number;
+  };
 
 export class DeferredSpriteEffect
   implements SpriteEffect<DeferredSpriteTextures>
 {
   #gl: WebGL2RenderingContext;
-  #gBufferProgram: CompiledWebGLProgram<VParams, FParams>;
+  #gBufferProgram: CompiledWebGLProgram<
+    typeof vertexShader,
+    typeof fragmentShader
+  >;
   //#lightProgram: WebGLProgram;
   #texture: DeferredSpriteTextures | null;
   #vertexBuffer: WebGLBuffer;
@@ -87,11 +86,10 @@ export class DeferredSpriteEffect
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
 
-    this.#gBufferProgram = createProgram<VParams, FParams>(
+    this.#gBufferProgram = createProgram(
       gl,
       vertexShader,
       fragmentShader,
-      (error: string) => console.log(error)
     )!;
 
     /**
@@ -330,9 +328,9 @@ export class DeferredSpriteEffect
       ]);
       mat3.scale(uv, uv, [
         (textureCoords[1] - textureCoords[3]) /
-          this.#texture.diffuseTexture.width,
+        this.#texture.diffuseTexture.width,
         (textureCoords[2] - textureCoords[0]) /
-          this.#texture.diffuseTexture.height,
+        this.#texture.diffuseTexture.height,
       ]);
 
       this.#pending.push({ mvp, uv });

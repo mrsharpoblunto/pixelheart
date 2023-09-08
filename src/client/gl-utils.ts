@@ -7,65 +7,83 @@ import {
   ReadonlyMat4,
 } from "gl-matrix";
 
-export interface BaseProgramParameters {
-  attributes: { [name: string]: number };
-  uniforms: { [name: string]: WebGLUniformLocation };
+type TypeMap = {
+  float: number;
+  vec2: ReadonlyVec2;
+  vec3: ReadonlyVec3;
+  vec4: ReadonlyVec4;
+  mat2: ReadonlyMat2;
+  mat3: ReadonlyMat3;
+  mat4: ReadonlyMat4;
+};
+
+export interface WebGLShaderParameters {
+  attributes: { [name: string]: keyof TypeMap };
+  uniforms: { [name: string]: string };
+}
+
+export interface WebGLShaderSource extends WebGLShaderParameters {
+  src: string;
+  name: string;
+  path: string;
 }
 
 export interface CompiledWebGLProgram<
-  TVertParams extends BaseProgramParameters,
-  TFragParams extends BaseProgramParameters
+  TVertParams extends WebGLShaderParameters,
+  TFragParams extends WebGLShaderParameters
 > {
   program: WebGLProgram;
-  attributes: TVertParams["attributes"];
-  uniforms: TVertParams["uniforms"] & TFragParams["uniforms"];
+  attributeTypes: { [name: string]: keyof TypeMap };
+  attributes: Record<keyof TVertParams["attributes"], number>;
+  uniforms: Record<
+    keyof (TVertParams["uniforms"] & TFragParams["uniforms"]),
+    WebGLUniformLocation
+  >;
 }
 
 export function createProgram<
-  TVertParams extends BaseProgramParameters,
-  TFragParams extends BaseProgramParameters
+  TVert extends WebGLShaderSource,
+  TFrag extends WebGLShaderSource
 >(
   gl: WebGL2RenderingContext,
-  vertexShaderSource: string,
-  fragmentShaderSource: string,
-  onError: (message: string) => void
-): CompiledWebGLProgram<TVertParams, TFragParams> | null {
+  vertexShaderSource: TVert,
+  fragmentShaderSource: TFrag
+): CompiledWebGLProgram<TVert, TFrag> | null {
   const vertexShader = gl.createShader(gl.VERTEX_SHADER)!;
-  gl.shaderSource(vertexShader, vertexShaderSource);
+  gl.shaderSource(vertexShader, vertexShaderSource.src);
   gl.compileShader(vertexShader);
 
-  let hasError = false;
-  const startError = () => {
-    if (!hasError) {
-      hasError = true;
-      onError("Failed to create shader program");
-      console.group("Shader Error(s)");
-    }
-  };
+  let output = "";
 
   if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
     let error = gl.getShaderInfoLog(vertexShader);
     if (error) {
-      startError();
       if (process.env.NODE_ENV !== "production") {
-        decorateError("[Vertex Shader]", vertexShaderSource, error);
+        output += decorateError(
+          `\nVertex Shader: ${vertexShaderSource.path}`,
+          vertexShaderSource.src,
+          error
+        );
       } else {
-        console.error(error);
+        output += error + "\n";
       }
     }
   }
 
   const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!;
-  gl.shaderSource(fragmentShader, fragmentShaderSource);
+  gl.shaderSource(fragmentShader, fragmentShaderSource.src);
   gl.compileShader(fragmentShader);
   if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
     let error = gl.getShaderInfoLog(fragmentShader);
-    startError();
     if (error) {
       if (process.env.NODE_ENV !== "production") {
-        decorateError("[Fragment Shader]", fragmentShaderSource, error);
+        output += decorateError(
+          `\nFragment Shader: ${fragmentShaderSource.path}`,
+          fragmentShaderSource.src,
+          error
+        );
       } else {
-        console.error(error);
+        output += error + "\n";
       }
     }
   }
@@ -76,23 +94,25 @@ export function createProgram<
   gl.linkProgram(program);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     const error = gl.getProgramInfoLog(program);
-    startError();
     if (error) {
-      console.error(`[Linker] ${error}`);
+      output += `\nLinker: (${vertexShaderSource.name}, ${fragmentShaderSource.name}): ${error}`;
     }
   }
 
-  if (hasError) {
-    console.groupEnd();
-    return null;
+  if (output !== "") {
+    throw new Error(
+      `Shader compilation of [${vertexShaderSource.name}, ${fragmentShaderSource.name}] failed:\n${output}`
+    );
   }
 
   const compiled: {
     program: WebGLProgram;
+    attributeTypes: { [name: string]: keyof TypeMap };
     attributes: { [name: string]: number };
     uniforms: { [name: string]: WebGLUniformLocation };
   } = {
     program,
+    attributeTypes: vertexShaderSource.attributes,
     attributes: {},
     uniforms: {},
   };
@@ -112,149 +132,127 @@ export function createProgram<
     }
   }
 
-  return compiled as CompiledWebGLProgram<TVertParams, TFragParams>;
+  return compiled as CompiledWebGLProgram<TVert, TFrag>;
 }
 
+type ValidLoaders<TVertParams extends WebGLShaderParameters, TInstance> = {
+  [K in keyof TVertParams["attributes"]]: [
+    K,
+    (instance: TInstance) => TypeMap[TVertParams["attributes"][K]]
+  ];
+}[keyof TVertParams["attributes"]];
+
 export function bindInstanceBuffer<
-  VP extends BaseProgramParameters,
-  FP extends BaseProgramParameters,
+  TVertParams extends WebGLShaderParameters,
+  TFragParams extends WebGLShaderParameters,
   T
 >(
   gl: WebGL2RenderingContext,
-  program: CompiledWebGLProgram<VP, FP>,
+  program: CompiledWebGLProgram<TVertParams, TFragParams>,
   instances: Array<T>,
-  attributes: Array<
-    [
-      keyof VP["attributes"],
-      (
-        instance: T
-      ) =>
-        | number
-        | ReadonlyVec2
-        | ReadonlyVec3
-        | { vec4: ReadonlyVec4 }
-        | { mat2: ReadonlyMat2 }
-        | ReadonlyMat3
-        | ReadonlyMat4
-    ]
-  >
+  attributes: Array<ValidLoaders<TVertParams, T>>
 ) {
   const instanceBuffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
 
-  if (instances.length) {
-    // get the instance size and its layout from the
-    // first instance in the array
-    let instanceSize = 0;
-    let fieldLayouts: Array<{
-      col: number;
-      row: number;
-      size: number;
-      name: keyof VP["attributes"];
-      load: (buffer: Float32Array, offset: number, instance: T) => void;
-    }> = [];
-    for (let attr of attributes) {
-      const field = attr[1](instances[0]);
-      if (field instanceof Float32Array) {
-        instanceSize += field.length;
-        const partialLayout: {
-          name: keyof VP["attributes"];
-          load: (buffer: Float32Array, offset: number, instance: T) => void;
-        } = {
-          name: attr[0],
-          load: (b, o, i) => b.set(attr[1](i) as Float32Array, o),
-        };
-        switch (field.length) {
-          case 2: // vec2
-            fieldLayouts.push({
-              col: 1,
-              row: 2,
-              size: 2,
-              ...partialLayout,
-            });
-            break;
-          case 3: // vec3
-            fieldLayouts.push({
-              col: 1,
-              row: 3,
-              size: 3,
-              ...partialLayout,
-            });
-            break;
-          case 4: // vec4 or mat2
-            throw new Error("Disambiguate between vec4 and mat2");
-          case 9: // mat3
-            fieldLayouts.push({ col: 3, row: 3, size: 9, ...partialLayout });
-            break;
-          case 16: // mat4
-            fieldLayouts.push({ col: 4, row: 4, size: 16, ...partialLayout });
-            break;
-          default:
-            throw new Error("Unknown instance buffer field type");
-        }
-      } else if (typeof field === "number") {
-        ++instanceSize;
-        fieldLayouts.push({
-          col: 1,
-          row: 1,
-          size: 1,
-          name: attr[0],
-          load: (b, o, i) => (b[o] = attr[1](i) as number),
-        });
-        break;
-      } else if ("mat2" in field && field.mat2 instanceof Float32Array) {
-        fieldLayouts.push({
-          col: 2,
-          row: 2,
-          size: 4,
-          name: attr[0],
-          load: (b, o, i) =>
-            b.set((attr[1](i) as { mat2: ReadonlyMat2 }).mat2, o),
-        });
-        instanceSize += 4;
-      } else if ("vec4" in field && field.vec4 instanceof Float32Array) {
-        fieldLayouts.push({
-          col: 1,
-          row: 4,
-          size: 4,
-          name: attr[0],
-          load: (b, o, i) =>
-            b.set((attr[1](i) as { vec4: ReadonlyVec4 }).vec4, o),
-        });
-        instanceSize += 4;
-      } else {
-        throw new Error("Unknown instance buffer field type");
+  // get the instance size and its layout from the
+  // first instance in the array
+  let instanceSize = 0;
+  let fieldLayouts: Array<{
+    col: number;
+    row: number;
+    size: number;
+    name: keyof TVertParams["attributes"];
+    load: (buffer: Float32Array, offset: number, instance: T) => void;
+  }> = [];
+  for (let attr of attributes) {
+    const field = program.attributeTypes[attr[0] as string];
+    if (field === "float") {
+      fieldLayouts.push({
+        col: 1,
+        row: 1,
+        size: 1,
+        name: attr[0],
+        load: (b, o, i) => {
+          b[o] = attr[1](i) as number;
+        },
+      });
+    } else {
+      const partialLayout: {
+        name: keyof TVertParams["attributes"];
+        load: (buffer: Float32Array, offset: number, instance: T) => void;
+      } = {
+        name: attr[0],
+        load: (b, o, i) => b.set(attr[1](i) as Float32Array, o),
+      };
+      switch (field) {
+        case "vec2":
+          fieldLayouts.push({
+            col: 1,
+            row: 2,
+            size: 2,
+            ...partialLayout,
+          });
+          break;
+        case "vec3":
+          fieldLayouts.push({
+            col: 1,
+            row: 3,
+            size: 3,
+            ...partialLayout,
+          });
+          break;
+        case "vec4":
+          fieldLayouts.push({
+            col: 1,
+            row: 4,
+            size: 4,
+            ...partialLayout,
+          });
+          break;
+        case "mat2":
+          fieldLayouts.push({ col: 2, row: 2, size: 4, ...partialLayout });
+          break;
+        case "mat3":
+          fieldLayouts.push({ col: 3, row: 3, size: 9, ...partialLayout });
+          break;
+        case "mat4":
+          fieldLayouts.push({ col: 4, row: 4, size: 16, ...partialLayout });
+          break;
+        default:
+          throw new Error("Unknown instance buffer field type");
       }
     }
+    instanceSize += fieldLayouts[fieldLayouts.length - 1].size;
+  }
 
-    // then create the instance buffer and load in the data from each instance
-    const b = new Float32Array(instances.length * instanceSize);
-    let offset = 0;
-    for (let i = 0; i < instances.length; ++i) {
-      for (let j = 0; j < fieldLayouts.length; ++j) {
-        fieldLayouts[j].load(b, offset, instances[i]);
-        offset += fieldLayouts[j].size;
-      }
+  // then create the instance buffer and load in the data from each instance
+  const b = new Float32Array(instances.length * instanceSize);
+  let offset = 0;
+  for (let i = 0; i < instances.length; ++i) {
+    for (let j = 0; j < fieldLayouts.length; ++j) {
+      fieldLayouts[j].load(b, offset, instances[i]);
+      offset += fieldLayouts[j].size;
     }
-    gl.bufferData(gl.ARRAY_BUFFER, b, gl.STATIC_DRAW);
+  }
+  gl.bufferData(gl.ARRAY_BUFFER, b, gl.STATIC_DRAW);
 
-    // then set up the shader to read from the instance buffer
-    offset = 0;
-    for (let i = 0; i < fieldLayouts.length; ++i) {
-      for (let col = 0; col < fieldLayouts[i].col; ++col) {
-        const attrPtr = program.attributes[fieldLayouts[i].name] + col;
-        gl.enableVertexAttribArray(attrPtr);
-        gl.vertexAttribPointer(
-          attrPtr,
-          fieldLayouts[i].row,
-          gl.FLOAT,
-          false,
-          instanceSize * 4,
-          offset
-        );
-        gl.vertexAttribDivisor(attrPtr, 1);
-        offset += fieldLayouts[i].row * 4;
-      }
+  // then set up the shader to read from the instance buffer
+  offset = 0;
+  for (let i = 0; i < fieldLayouts.length; ++i) {
+    for (let col = 0; col < fieldLayouts[i].col; ++col) {
+      const attrPtr = program.attributes[fieldLayouts[i].name] + col;
+      gl.enableVertexAttribArray(attrPtr);
+      gl.vertexAttribPointer(
+        attrPtr,
+        fieldLayouts[i].row,
+        gl.FLOAT,
+        false,
+        instanceSize * 4,
+        offset
+      );
+      gl.vertexAttribDivisor(attrPtr, 1);
+      offset += fieldLayouts[i].row * 4;
     }
   }
 }
@@ -309,7 +307,7 @@ export function createTexture(
   return texture!;
 }
 
-function decorateError(section: string, src: string, error: string) {
+function decorateError(section: string, src: string, error: string): string {
   const lines = error.split("\n");
   let output = "";
   for (let line of lines) {
@@ -317,14 +315,13 @@ function decorateError(section: string, src: string, error: string) {
     if (!match) {
       line = line.trim();
       if (line.length && line.codePointAt(0) !== 0) {
-        console.error(section, line);
+        output += `${section} ${line}\n`;
       }
     } else {
       const location = {
         start: { line: parseInt(match[2], 10), column: parseInt(match[1], 10) },
       };
-      const result = codeFrameColumns(section, src, location, match[3]);
-      console.error(result);
+      output += codeFrameColumns(section, src, location, match[3]);
     }
   }
   return output;

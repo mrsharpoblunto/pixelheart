@@ -5,12 +5,12 @@ import {
   bindInstanceBuffer,
 } from "./gl-utils";
 
-import vertexShader, { ProgramParameters as VP } from "./shaders/solid.vert";
-import fragmentShader, { ProgramParameters as FP } from "./shaders/solid.frag";
+import vertexShader from "./shaders/solid.vert";
+import fragmentShader from "./shaders/solid.frag";
 
 export class SolidEffect {
   #gl: WebGL2RenderingContext;
-  #program: CompiledWebGLProgram<VP, FP>;
+  #program: CompiledWebGLProgram<typeof vertexShader, typeof fragmentShader>;
   #vertexBuffer: WebGLBuffer;
   #vp: mat3;
   #pending: Array<{ mvp: mat3; color: ReadonlyVec4 }>;
@@ -22,7 +22,6 @@ export class SolidEffect {
       this.#gl,
       vertexShader,
       fragmentShader,
-      (error: string) => console.log(error)
     )!;
 
     const vertices = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
@@ -57,7 +56,7 @@ export class SolidEffect {
   #end() {
     bindInstanceBuffer(this.#gl, this.#program, this.#pending, [
       ["a_mvp", (instance) => instance.mvp],
-      ["a_color", (instance) => ({ vec4: instance.color })],
+      ["a_color", (instance) => instance.color],
     ]);
 
     this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#vertexBuffer);

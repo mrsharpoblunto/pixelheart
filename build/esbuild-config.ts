@@ -1,4 +1,3 @@
-import { glsl } from "esbuild-plugin-glsl";
 import path from "path";
 import * as esbuild from "esbuild";
 
@@ -15,11 +14,6 @@ export default function (production: boolean): esbuild.BuildOptions {
       }"`,
     },
     entryPoints: [path.join(__dirname, "../src/client/index.ts")],
-    plugins: [
-      glsl({
-        minify: production,
-      }),
-    ],
     platform: "browser",
     sourcemap: true,
   };

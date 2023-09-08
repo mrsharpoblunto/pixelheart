@@ -9,8 +9,8 @@ import {
   SpriteEffect,
 } from "./sprite-common";
 import { CompiledWebGLProgram, createProgram, bindInstanceBuffer } from "./gl-utils";
-import vertexShader, { ProgramParameters as VP } from "./shaders/sprite.vert";
-import fragmentShader, { ProgramParameters as FP } from "./shaders/sprite.frag";
+import vertexShader from "./shaders/sprite.vert";
+import fragmentShader from "./shaders/sprite.frag";
 
 export type SimpleSpriteTextures = GPUTexture;
 export type SimpleSpriteSheet = SpriteSheet<SimpleSpriteTextures>;
@@ -25,7 +25,7 @@ export async function simpleTextureLoader(
 
 export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   #gl: WebGL2RenderingContext;
-  #program: CompiledWebGLProgram<VP, FP>;
+  #program: CompiledWebGLProgram<typeof vertexShader, typeof fragmentShader>;
   #texture: GPUTexture | null;
   #vertexBuffer: WebGLBuffer;
   #vp: mat3;
@@ -38,7 +38,6 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
       this.#gl,
       vertexShader,
       fragmentShader,
-      (error: string) => console.log(error)
     )!;
 
     const vertices = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
