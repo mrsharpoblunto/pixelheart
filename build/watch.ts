@@ -46,8 +46,15 @@ const shaderErrorDecorator = (error: string) => {
 };
 
 Promise.resolve(
-  yargs(hideBin(process.argv)).scriptName("watch").usage("$0 args").argv
-).then(async (_args) => {
+  yargs(hideBin(process.argv))
+    .option("production", {
+      type: "boolean",
+      flag: true,
+      default: false,
+    })
+    .scriptName("watch")
+    .usage("$0 args").argv
+).then(async (args) => {
   await ensurePath(wwwPath);
   await ensurePath(spriteSrcPath);
   await ensurePath(shadersSrcPath);
@@ -106,13 +113,18 @@ Promise.resolve(
   }
   await Promise.all(
     shadersToType.map((s) =>
-      processShader(s, shaderLogDecorator, shaderErrorDecorator)
+      processShader(
+        s,
+        args.production,
+        shaderLogDecorator,
+        shaderErrorDecorator
+      )
     )
   );
 
   // then await other changes as they come
   await watcher.subscribe(shadersPath, async (_err, events) => {
-    await processShaderEvents(events);
+    await processShaderEvents(args.production, events);
   });
 
   // run the esbuild watcher
@@ -133,7 +145,7 @@ Promise.resolve(
     {
       color: true,
       logLevel: "info",
-      ...esbuildConfig(false),
+      ...esbuildConfig(args.production),
     }
   );
 
@@ -184,40 +196,47 @@ Promise.resolve(
 
   // start the proxy to esbuild & the dev editor API
   const app = express();
-  app.use(express.json());
 
-  const requestMap = new Map<
-    string,
-    {
-      res: express.Response;
-    }
-  >();
-  createEditor(app, requestMap);
+  if (!args.production) {
+    app.use(express.json());
 
-  app.post("/edit", (req, res) => {
-    const requestId = uuidv4();
-    requestMap.set(requestId, { res });
-    if (!editor) {
-      res.status(500).send("Editor not ready");
-    } else {
-      editor.postMessage({
-        requestId,
-        actions: req.body,
-      });
-    }
-  });
+    const requestMap = new Map<
+      string,
+      {
+        res: express.Response;
+      }
+    >();
+    createEditor(app, requestMap);
 
-  await watcher.subscribe(
-    srcPath,
-    async (_err, _events) => {
-      console.log(chalk.dim("[Editor]"), "Restarting...");
-      editor?.postMessage({ actions: [{ type: "RESTART" }] });
-      editor = null;
-    },
-    {
-      ignore: ["client/**"],
-    }
-  );
+    app.post("/edit", (req, res) => {
+      const requestId = uuidv4();
+      requestMap.set(requestId, { res });
+      if (!editor) {
+        res.status(500).send("Editor not ready");
+      } else {
+        editor.postMessage({
+          requestId,
+          actions: req.body,
+        });
+      }
+    });
+
+    await watcher.subscribe(
+      srcPath,
+      async (_err, _events) => {
+        console.log(chalk.dim("[Editor]"), "Restarting...");
+        editor?.postMessage({ actions: [{ type: "RESTART" }] });
+        editor = null;
+      },
+      {
+        ignore: ["client/**"],
+      }
+    );
+  } else {
+    console.log(
+      `${chalk.dim("[Editor]")} ${chalk.red("Disabled in production builds")}`
+    );
+  }
 
   const proxyMiddleware = createProxyMiddleware({
     target: `http://127.0.0.1:${PORT + 1}`,
@@ -324,7 +343,7 @@ async function processSpriteSheetEvents(events: watcher.Event[]) {
     try {
       await fs.rm(path.join(srcPath, `${d}.ts`));
       await fs.rm(path.join(wwwPath, `${d}.png`));
-    } catch (ex) { }
+    } catch (ex) {}
   }
 
   for (let nom of newOrModified) {
@@ -332,7 +351,10 @@ async function processSpriteSheetEvents(events: watcher.Event[]) {
   }
 }
 
-async function processShaderEvents(events: watcher.Event[]) {
+async function processShaderEvents(
+  production: boolean,
+  events: watcher.Event[]
+) {
   for (let e of events) {
     if (!isShader(e.path)) {
       continue;
@@ -344,6 +366,7 @@ async function processShaderEvents(events: watcher.Event[]) {
         {
           await processShader(
             path.basename(e.path),
+            production,
             shaderLogDecorator,
             shaderErrorDecorator
           );

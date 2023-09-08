@@ -17,6 +17,7 @@ Promise.resolve(
     }
     await processShader(
       shader,
+      true,
       (message: string) => {
         console.log(chalk.dim("[Shaders]"), message);
       },

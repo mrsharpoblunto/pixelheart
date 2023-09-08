@@ -1,6 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
 import chalk from "chalk";
+import { GlslMinify } from "webpack-glsl-minify/build/minify";
 
 export const shadersPath = path.join(__dirname, "../shaders");
 export const shadersSrcPath = path.join(__dirname, "../src/client/shaders");
@@ -9,18 +10,22 @@ export function isShader(file: string) {
   return path.extname(file) === ".vert" || path.extname(file) === ".frag";
 }
 
-const paramRegex = /^(in|uniform)\s+(.*?)\s+(.*?);/;
+const PARAM_REGEX = /^(in|uniform)\s+(.*?)\s+(.*?);/;
+const NO_MANGLE = ["texture"];
 
 export async function processShader(
   shader: string,
+  production: boolean,
   log: (message: string) => void,
   onError: (error: string) => void
 ): Promise<void> {
-  log(`Building shader ${chalk.green(shader)}...`);
+  log(
+    `Building ${production ? "minified " : ""}shader ${chalk.green(shader)}...`
+  );
 
   try {
     const shaderFile = path.join(shadersPath, shader);
-    const src = await fs.readFile(shaderFile, "utf-8");
+    let src = await fs.readFile(shaderFile, "utf-8");
     const isVertexShader = path.extname(shader) === ".vert";
     const lines = src.split("\n");
 
@@ -28,7 +33,7 @@ export async function processShader(
     const uniforms = new Map<string, string>();
 
     for (const line of lines) {
-      const match = paramRegex.exec(line);
+      const match = PARAM_REGEX.exec(line);
       if (match) {
         switch (match[1]) {
           case "in":
@@ -46,12 +51,19 @@ export async function processShader(
       }
     }
 
-    const output = `import { vec2, vec3, vec4, mat2, mat3, mat4 } from "gl-matrix";
+    if (production) {
+      const minifier = new GlslMinify({
+        preserveUniforms: true,
+        output: "object",
+        nomangle: NO_MANGLE,
+      });
+      src = (await minifier.execute(src)).sourceCode;
+    }
 
-type AttributeTypes = {
+    const output = `type AttributeTypes = {
   ${[...inAttributes]
-        .map(([name, type]) => `   ${name}: "${type}"`)
-        .join(";\n")}
+    .map(([name, type]) => `   ${name}: "${type}"`)
+    .join(";\n")}
 }
 
 type UniformTypes = {
@@ -61,7 +73,6 @@ type UniformTypes = {
 type ShaderSource = {
   src: string;
   name: string;
-  path: string;
   attributes: AttributeTypes;
   uniforms: UniformTypes;
 }
@@ -69,11 +80,10 @@ type ShaderSource = {
 const value: ShaderSource = {
   src: \`${src}\`,
   name: "${shader}",
-  path: "${shaderFile}",
   attributes: {
   ${[...inAttributes]
-        .map(([name, type]) => `   ${name}: "${type}"`)
-        .join(",\n")}
+    .map(([name, type]) => `   ${name}: "${type}"`)
+    .join(",\n")}
   },
   uniforms: {
   ${[...uniforms].map(([name, type]) => `   ${name}: "${type}"`).join(",\n")}

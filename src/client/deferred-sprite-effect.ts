@@ -10,7 +10,6 @@ import {
 import { Quad } from "./geometry";
 import {
   ShaderProgram,
-  ShaderParameters,
   createProgram,
   createTexture,
   InstanceBuffer,

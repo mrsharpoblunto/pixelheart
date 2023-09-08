@@ -34,7 +34,6 @@ export interface ShaderParameters {
 export interface ShaderSource extends ShaderParameters {
   src: string;
   name: string;
-  path: string;
 }
 
 export interface ShaderProgram<
@@ -69,7 +68,7 @@ export function createProgram<
     if (error) {
       if (process.env.NODE_ENV !== "production") {
         output += decorateError(
-          `\nVertex Shader: ${vertexShaderSource.path}`,
+          `\nVertex Shader: ${vertexShaderSource.name}`,
           vertexShaderSource.src,
           error
         );
@@ -87,7 +86,7 @@ export function createProgram<
     if (error) {
       if (process.env.NODE_ENV !== "production") {
         output += decorateError(
-          `\nFragment Shader: ${fragmentShaderSource.path}`,
+          `\nFragment Shader: ${fragmentShaderSource.name}`,
           fragmentShaderSource.src,
           error
         );
@@ -270,7 +269,10 @@ export class InstanceBuffer<TVertParams extends ShaderParameters, T> {
     return this;
   }
 
-  bind(program: ShaderProgram<TVertParams, any>, scope: (instanceCount: number) => void): InstanceBuffer<TVertParams, T> {
+  bind(
+    program: ShaderProgram<TVertParams, any>,
+    scope: (instanceCount: number) => void
+  ): InstanceBuffer<TVertParams, T> {
     if (!this.#buffer) {
       return this;
     }
