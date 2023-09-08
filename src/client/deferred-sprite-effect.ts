@@ -7,11 +7,13 @@ import {
   SpriteAnimator,
   SpriteSheetConfig,
 } from "./sprite-common";
+import { Quad } from "./geometry";
 import {
-  CompiledWebGLProgram,
+  ShaderProgram,
+  ShaderParameters,
   createProgram,
   createTexture,
-  bindInstanceBuffer,
+  InstanceBuffer,
 } from "./gl-utils";
 import vertexShader from "./shaders/deferred-sprite.vert";
 import fragmentShader from "./shaders/deferred-sprite.frag";
@@ -24,7 +26,7 @@ export type DeferredSpriteTextures = {
   emissiveTexture: GPUTexture;
 };
 export type DeferredSpriteSheet = SpriteSheet<DeferredSpriteTextures>;
-export class DeferredSpriteAnimator extends SpriteAnimator<DeferredSpriteTextures> { }
+export class DeferredSpriteAnimator extends SpriteAnimator<DeferredSpriteTextures> {}
 
 export async function deferredTextureLoader(
   ctx: GameContext,
@@ -45,32 +47,43 @@ export async function deferredTextureLoader(
 
 export type DeferredLight =
   | {
-    type: "direction";
-    color: vec3;
-    ambient: vec4;
-    direction: vec3;
-  }
+      type: "direction";
+      color: vec3;
+      ambient: vec4;
+      direction: vec3;
+    }
   | {
-    type: "point";
-    color: vec3;
-    position?: vec3;
-    radius?: number;
-  };
+      type: "point";
+      color: vec3;
+      position?: vec3;
+      radius?: number;
+    };
+
+type SpriteInstance = {
+  mvp: mat3;
+  uv: mat3;
+};
+
+type LightInstance = {
+  ambient: vec3;
+  lightColor: vec3;
+  pointOrDirection: vec3;
+  radius: number;
+};
 
 export class DeferredSpriteEffect
   implements SpriteEffect<DeferredSpriteTextures>
 {
   #gl: WebGL2RenderingContext;
-  #gBufferProgram: CompiledWebGLProgram<
-    typeof vertexShader,
-    typeof fragmentShader
-  >;
-  //#lightProgram: WebGLProgram;
+  #gBufferProgram: ShaderProgram<typeof vertexShader, typeof fragmentShader>;
+  #instanceBuffer: InstanceBuffer<typeof vertexShader, SpriteInstance>;
+  #pending: Array<SpriteInstance>;
+
+  //#lightProgram: ShaderProgram<typeof lightVertexShader, typeof lightFragmentShader>;
   #texture: DeferredSpriteTextures | null;
-  #vertexBuffer: WebGLBuffer;
   #vp: mat3;
-  #pending: Array<{ mvp: mat3; uv: mat3 }>;
   #pendingLights: Array<DeferredLight>;
+  #quad: Quad;
 
   #gBuffer: {
     frameBuffer: WebGLFramebuffer;
@@ -85,56 +98,22 @@ export class DeferredSpriteEffect
 
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
-
-    this.#gBufferProgram = createProgram(
-      gl,
-      vertexShader,
-      fragmentShader,
-    )!;
-
-    /**
-    this.#lightProgram = createProgram(
-      gl,
-      lightVertexShader,
-      lightFragmentShader,
-      (error: string) => console.log(error)
-    )!;
-    */
-    //this.#a_position = gl.getAttribLocation(this.#lightProgram, "a_position");
-    //this.#a_light_uv = gl.getAttribLocation(this.#lightProgram, "a_uv");
-    //this.#a_light_mvp = gl.getAttribLocation(this.#lightProgram, "a_mvp");
-
-    // uniforms
-    // gbuffer textures (normal, albedo, specular)
-
-    // params
-    // ambient color
-    // light type (direction or point)
-    // light color
-    // light direction (if direction)
-    // light position (if point)
-    // light radius (if point)
-    //
-    // vec3 color
-    // vec3 pointOrDirection
-    // float radius
-
-    const vertices = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
-    this.#vertexBuffer = gl.createBuffer()!;
-    gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#vertexBuffer);
-    gl.bufferData(this.#gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+    this.#gBufferProgram = createProgram(gl, vertexShader, fragmentShader)!;
+    this.#instanceBuffer = new InstanceBuffer(gl, this.#gBufferProgram, [
+      ["a_mvp", (instance) => instance.mvp],
+      ["a_uv", (instance) => instance.uv],
+    ]);
+    this.#quad = new Quad(gl);
+    this.#pending = [];
+    this.#pendingLights = [];
+    this.#texture = null;
+    this.#gBuffer = null;
+    this.#gBufferWidth = this.#gBufferHeight = 0;
 
     this.#vp = mat3.create();
     mat3.scale(this.#vp, this.#vp, [1.0, -1.0]);
     mat3.translate(this.#vp, this.#vp, [-1.0, -1.0]);
     mat3.scale(this.#vp, this.#vp, [2.0, 2.0]);
-
-    this.#pending = [];
-    this.#pendingLights = [];
-    this.#texture = null;
-
-    this.#gBuffer = null;
-    this.#gBufferWidth = this.#gBufferHeight = 0;
   }
 
   use(
@@ -243,7 +222,6 @@ export class DeferredSpriteEffect
         0
       );
       this.#gl.drawBuffers([this.#gl.COLOR_ATTACHMENT0]);
-
       this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
     }
 
@@ -328,9 +306,9 @@ export class DeferredSpriteEffect
       ]);
       mat3.scale(uv, uv, [
         (textureCoords[1] - textureCoords[3]) /
-        this.#texture.diffuseTexture.width,
+          this.#texture.diffuseTexture.width,
         (textureCoords[2] - textureCoords[0]) /
-        this.#texture.diffuseTexture.height,
+          this.#texture.diffuseTexture.height,
       ]);
 
       this.#pending.push({ mvp, uv });
@@ -343,30 +321,14 @@ export class DeferredSpriteEffect
       return;
     }
 
-    bindInstanceBuffer(this.#gl, this.#gBufferProgram, this.#pending, [
-      ["a_mvp", (instance) => instance.mvp],
-      ["a_uv", (instance) => instance.uv],
-    ]);
+    this.#instanceBuffer
+      .load(this.#pending)
+      .bind(this.#gBufferProgram, (instanceCount) => {
+        this.#quad.bind(this.#gBufferProgram, "a_position", (q) => {
+          q.drawInstanced(instanceCount);
+        });
+      });
 
-    this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#vertexBuffer);
-    this.#gl.enableVertexAttribArray(
-      this.#gBufferProgram.attributes.a_position
-    );
-    this.#gl.vertexAttribPointer(
-      this.#gBufferProgram.attributes.a_position,
-      2,
-      this.#gl.FLOAT,
-      false,
-      0,
-      0
-    );
-
-    this.#gl.drawArraysInstanced(
-      this.#gl.TRIANGLE_STRIP,
-      0,
-      4,
-      this.#pending.length
-    );
     this.#pending = [];
     this.#texture = null;
   }

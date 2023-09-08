@@ -17,20 +17,29 @@ type TypeMap = {
   mat4: ReadonlyMat4;
 };
 
-export interface WebGLShaderParameters {
+export type AttributeType<T, K> = {
+  [P in keyof T]: T[P] extends K ? P : never;
+}[keyof T];
+
+export interface Geometry {
+  draw: () => void;
+  drawInstanced: (instanceCount: number) => void;
+}
+
+export interface ShaderParameters {
   attributes: { [name: string]: keyof TypeMap };
   uniforms: { [name: string]: string };
 }
 
-export interface WebGLShaderSource extends WebGLShaderParameters {
+export interface ShaderSource extends ShaderParameters {
   src: string;
   name: string;
   path: string;
 }
 
-export interface CompiledWebGLProgram<
-  TVertParams extends WebGLShaderParameters,
-  TFragParams extends WebGLShaderParameters
+export interface ShaderProgram<
+  TVertParams extends ShaderParameters,
+  TFragParams extends ShaderParameters
 > {
   program: WebGLProgram;
   attributeTypes: { [name: string]: keyof TypeMap };
@@ -42,13 +51,13 @@ export interface CompiledWebGLProgram<
 }
 
 export function createProgram<
-  TVert extends WebGLShaderSource,
-  TFrag extends WebGLShaderSource
+  TVert extends ShaderSource,
+  TFrag extends ShaderSource
 >(
   gl: WebGL2RenderingContext,
   vertexShaderSource: TVert,
   fragmentShaderSource: TFrag
-): CompiledWebGLProgram<TVert, TFrag> | null {
+): ShaderProgram<TVert, TFrag> | null {
   const vertexShader = gl.createShader(gl.VERTEX_SHADER)!;
   gl.shaderSource(vertexShader, vertexShaderSource.src);
   gl.compileShader(vertexShader);
@@ -132,128 +141,160 @@ export function createProgram<
     }
   }
 
-  return compiled as CompiledWebGLProgram<TVert, TFrag>;
+  return compiled as ShaderProgram<TVert, TFrag>;
 }
 
-type ValidLoaders<TVertParams extends WebGLShaderParameters, TInstance> = {
+type InstanceAttributeMap<TVertParams extends ShaderParameters, TInstance> = {
   [K in keyof TVertParams["attributes"]]: [
     K,
     (instance: TInstance) => TypeMap[TVertParams["attributes"][K]]
   ];
 }[keyof TVertParams["attributes"]];
 
-export function bindInstanceBuffer<
-  TVertParams extends WebGLShaderParameters,
-  TFragParams extends WebGLShaderParameters,
-  T
->(
-  gl: WebGL2RenderingContext,
-  program: CompiledWebGLProgram<TVertParams, TFragParams>,
-  instances: Array<T>,
-  attributes: Array<ValidLoaders<TVertParams, T>>
-) {
-  const instanceBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, instanceBuffer);
-
-  // get the instance size and its layout from the
-  // first instance in the array
-  let instanceSize = 0;
-  let fieldLayouts: Array<{
+export class InstanceBuffer<TVertParams extends ShaderParameters, T> {
+  #buffer: WebGLBuffer | null;
+  #gl: WebGL2RenderingContext;
+  #instanceSize: number;
+  #instanceCount: number;
+  #attributeLayouts: Array<{
     col: number;
     row: number;
     size: number;
     name: keyof TVertParams["attributes"];
     load: (buffer: Float32Array, offset: number, instance: T) => void;
   }> = [];
-  for (let attr of attributes) {
-    const field = program.attributeTypes[attr[0] as string];
-    if (field === "float") {
-      fieldLayouts.push({
-        col: 1,
-        row: 1,
-        size: 1,
-        name: attr[0],
-        load: (b, o, i) => {
-          b[o] = attr[1](i) as number;
-        },
-      });
-    } else {
-      const partialLayout: {
-        name: keyof TVertParams["attributes"];
-        load: (buffer: Float32Array, offset: number, instance: T) => void;
-      } = {
-        name: attr[0],
-        load: (b, o, i) => b.set(attr[1](i) as Float32Array, o),
-      };
-      switch (field) {
-        case "vec2":
-          fieldLayouts.push({
-            col: 1,
-            row: 2,
-            size: 2,
-            ...partialLayout,
-          });
-          break;
-        case "vec3":
-          fieldLayouts.push({
-            col: 1,
-            row: 3,
-            size: 3,
-            ...partialLayout,
-          });
-          break;
-        case "vec4":
-          fieldLayouts.push({
-            col: 1,
-            row: 4,
-            size: 4,
-            ...partialLayout,
-          });
-          break;
-        case "mat2":
-          fieldLayouts.push({ col: 2, row: 2, size: 4, ...partialLayout });
-          break;
-        case "mat3":
-          fieldLayouts.push({ col: 3, row: 3, size: 9, ...partialLayout });
-          break;
-        case "mat4":
-          fieldLayouts.push({ col: 4, row: 4, size: 16, ...partialLayout });
-          break;
-        default:
-          throw new Error("Unknown instance buffer field type");
+
+  constructor(
+    gl: WebGL2RenderingContext,
+    program: ShaderProgram<TVertParams, any>,
+    attributes: Array<InstanceAttributeMap<TVertParams, T>>
+  ) {
+    this.#gl = gl;
+    this.#buffer = null;
+    this.#instanceCount = 0;
+    this.#instanceSize = 0;
+    this.#attributeLayouts = [];
+
+    for (let attr of attributes) {
+      const attributeType = program.attributeTypes[attr[0] as string];
+      if (attributeType === "float") {
+        this.#attributeLayouts.push({
+          col: 1,
+          row: 1,
+          size: 1,
+          name: attr[0],
+          load: (b, o, i) => {
+            b[o] = attr[1](i) as number;
+          },
+        });
+      } else {
+        const partialLayout: {
+          name: keyof TVertParams["attributes"];
+          load: (buffer: Float32Array, offset: number, instance: T) => void;
+        } = {
+          name: attr[0],
+          load: (b, o, i) => b.set(attr[1](i) as Float32Array, o),
+        };
+        switch (attributeType) {
+          case "vec2":
+            this.#attributeLayouts.push({
+              col: 1,
+              row: 2,
+              size: 2,
+              ...partialLayout,
+            });
+            break;
+          case "vec3":
+            this.#attributeLayouts.push({
+              col: 1,
+              row: 3,
+              size: 3,
+              ...partialLayout,
+            });
+            break;
+          case "vec4":
+            this.#attributeLayouts.push({
+              col: 1,
+              row: 4,
+              size: 4,
+              ...partialLayout,
+            });
+            break;
+          case "mat2":
+            this.#attributeLayouts.push({
+              col: 2,
+              row: 2,
+              size: 4,
+              ...partialLayout,
+            });
+            break;
+          case "mat3":
+            this.#attributeLayouts.push({
+              col: 3,
+              row: 3,
+              size: 9,
+              ...partialLayout,
+            });
+            break;
+          case "mat4":
+            this.#attributeLayouts.push({
+              col: 4,
+              row: 4,
+              size: 16,
+              ...partialLayout,
+            });
+            break;
+          default:
+            throw new Error("Unknown instance buffer attribute type");
+        }
+      }
+      this.#instanceSize +=
+        this.#attributeLayouts[this.#attributeLayouts.length - 1].size;
+    }
+  }
+
+  load(instances: Array<T>): InstanceBuffer<TVertParams, T> {
+    this.#instanceCount = instances.length;
+    const b = new Float32Array(instances.length * this.#instanceSize);
+    let offset = 0;
+    for (let i = 0; i < instances.length; ++i) {
+      for (let j = 0; j < this.#attributeLayouts.length; ++j) {
+        this.#attributeLayouts[j].load(b, offset, instances[i]);
+        offset += this.#attributeLayouts[j].size;
       }
     }
-    instanceSize += fieldLayouts[fieldLayouts.length - 1].size;
+    this.#buffer = this.#gl.createBuffer()!;
+    this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#buffer);
+    this.#gl.bufferData(this.#gl.ARRAY_BUFFER, b, this.#gl.STATIC_DRAW);
+    this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, null);
+    return this;
   }
 
-  // then create the instance buffer and load in the data from each instance
-  const b = new Float32Array(instances.length * instanceSize);
-  let offset = 0;
-  for (let i = 0; i < instances.length; ++i) {
-    for (let j = 0; j < fieldLayouts.length; ++j) {
-      fieldLayouts[j].load(b, offset, instances[i]);
-      offset += fieldLayouts[j].size;
+  bind(program: ShaderProgram<TVertParams, any>, scope: (instanceCount: number) => void): InstanceBuffer<TVertParams, T> {
+    if (!this.#buffer) {
+      return this;
     }
-  }
-  gl.bufferData(gl.ARRAY_BUFFER, b, gl.STATIC_DRAW);
-
-  // then set up the shader to read from the instance buffer
-  offset = 0;
-  for (let i = 0; i < fieldLayouts.length; ++i) {
-    for (let col = 0; col < fieldLayouts[i].col; ++col) {
-      const attrPtr = program.attributes[fieldLayouts[i].name] + col;
-      gl.enableVertexAttribArray(attrPtr);
-      gl.vertexAttribPointer(
-        attrPtr,
-        fieldLayouts[i].row,
-        gl.FLOAT,
-        false,
-        instanceSize * 4,
-        offset
-      );
-      gl.vertexAttribDivisor(attrPtr, 1);
-      offset += fieldLayouts[i].row * 4;
+    this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#buffer);
+    let offset = 0;
+    for (let i = 0; i < this.#attributeLayouts.length; ++i) {
+      for (let col = 0; col < this.#attributeLayouts[i].col; ++col) {
+        const attrPtr =
+          program.attributes[this.#attributeLayouts[i].name] + col;
+        this.#gl.enableVertexAttribArray(attrPtr);
+        this.#gl.vertexAttribPointer(
+          attrPtr,
+          this.#attributeLayouts[i].row,
+          this.#gl.FLOAT,
+          false,
+          this.#instanceSize * 4,
+          offset
+        );
+        this.#gl.vertexAttribDivisor(attrPtr, 1);
+        offset += this.#attributeLayouts[i].row * 4;
+      }
     }
+    scope(this.#instanceCount);
+    return this;
   }
 }
 

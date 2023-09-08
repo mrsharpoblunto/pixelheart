@@ -8,7 +8,8 @@ import {
   SpriteSheetConfig,
   SpriteEffect,
 } from "./sprite-common";
-import { CompiledWebGLProgram, createProgram, bindInstanceBuffer } from "./gl-utils";
+import { Quad } from "./geometry";
+import { ShaderProgram, createProgram, InstanceBuffer } from "./gl-utils";
 import vertexShader from "./shaders/sprite.vert";
 import fragmentShader from "./shaders/sprite.frag";
 
@@ -23,35 +24,35 @@ export async function simpleTextureLoader(
   return await loadTextureFromUrl(ctx, sheet.urls.diffuse);
 }
 
+type SpriteInstance = {
+  mvp: mat3;
+  uv: mat3;
+};
+
 export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   #gl: WebGL2RenderingContext;
-  #program: CompiledWebGLProgram<typeof vertexShader, typeof fragmentShader>;
+  #program: ShaderProgram<typeof vertexShader, typeof fragmentShader>;
+  #instanceBuffer: InstanceBuffer<typeof vertexShader, SpriteInstance>;
+  #quad: Quad;
   #texture: GPUTexture | null;
-  #vertexBuffer: WebGLBuffer;
   #vp: mat3;
-  #pending: Array<{ mvp: mat3; uv: mat3 }>;
+  #pending: Array<SpriteInstance>;
 
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
-
-    this.#program = createProgram(
-      this.#gl,
-      vertexShader,
-      fragmentShader,
-    )!;
-
-    const vertices = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
-    this.#vertexBuffer = this.#gl.createBuffer()!;
-    this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#vertexBuffer);
-    this.#gl.bufferData(this.#gl.ARRAY_BUFFER, vertices, this.#gl.STATIC_DRAW);
+    this.#program = createProgram(this.#gl, vertexShader, fragmentShader)!;
+    this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#program, [
+      ["a_mvp", (instance) => instance.mvp],
+      ["a_uv", (instance) => instance.uv],
+    ]);
+    this.#quad = new Quad(this.#gl);
+    this.#pending = [];
+    this.#texture = null;
 
     this.#vp = mat3.create();
     mat3.scale(this.#vp, this.#vp, [1.0, -1.0]);
     mat3.translate(this.#vp, this.#vp, [-1.0, -1.0]);
     mat3.scale(this.#vp, this.#vp, [2.0, 2.0]);
-
-    this.#pending = [];
-    this.#texture = null;
   }
 
   use(scope: (s: SimpleSpriteEffect) => void) {
@@ -98,17 +99,11 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   }
 
   #end() {
-    bindInstanceBuffer(this.#gl, this.#program, this.#pending, [
-      ["a_mvp", (instance) => instance.mvp],
-      ["a_uv", (instance) => instance.uv],
-    ]);
-
-    this.#gl.drawArraysInstanced(
-      this.#gl.TRIANGLE_STRIP,
-      0,
-      4,
-      this.#pending.length
-    );
+    this.#instanceBuffer.load(this.#pending).bind(this.#program, (instanceCount) => {
+      this.#quad.bind(this.#program, "a_position", (geometry) => {
+        geometry.drawInstanced(instanceCount);
+      });
+    });
     this.#pending = [];
     this.#texture = null;
   }
