@@ -15,7 +15,7 @@ import fragmentShader from "./shaders/sprite.frag";
 
 export type SimpleSpriteTextures = GPUTexture;
 export type SimpleSpriteSheet = SpriteSheet<SimpleSpriteTextures>;
-export class SimpleSpriteAnimator extends SpriteAnimator<SimpleSpriteTextures> {}
+export class SimpleSpriteAnimator extends SpriteAnimator<SimpleSpriteTextures> { }
 
 export async function simpleTextureLoader(
   ctx: GameContext,
@@ -41,10 +41,10 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
     this.#program = createProgram(this.#gl, vertexShader, fragmentShader)!;
-    this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#program, [
-      ["a_mvp", (instance) => instance.mvp],
-      ["a_uv", (instance) => instance.uv],
-    ]);
+    this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#program, {
+      a_mvp: (instance) => instance.mvp,
+      a_uv: (instance) => instance.uv,
+    });
     this.#quad = new Quad(this.#gl);
     this.#pending = [];
     this.#texture = null;
@@ -99,11 +99,14 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   }
 
   #end() {
-    this.#instanceBuffer.load(this.#pending).bind(this.#program, (instanceCount) => {
-      this.#quad.bind(this.#program, "a_position", (geometry) => {
-        geometry.drawInstanced(instanceCount);
-      });
-    });
+    this.#quad.bindInstances(
+      this.#program,
+      { position: "a_position" },
+      this.#instanceBuffer.load(this.#pending),
+      (q) => {
+        q.draw();
+      }
+    );
     this.#pending = [];
     this.#texture = null;
   }

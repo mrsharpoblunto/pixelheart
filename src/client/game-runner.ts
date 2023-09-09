@@ -213,27 +213,54 @@ export default function GameRunner<T, U>(
   });
 
   let lastTime = performance.now();
-  let accumulatedTime = 0;
-  let nextFrame: number | null = null;
-
-  const saveState = localStorage.getItem(props.saveKey);
-
+  let contextLost = false;
   let state: T | null = null;
-  props
-    .start(context, saveState ? (JSON.parse(saveState) as U) : undefined)
-    .then((s) => {
+
+  const startup = async () => {
+    const saveState = localStorage.getItem(props.saveKey);
+    try {
+      state = await props.start(
+        context,
+        saveState ? (JSON.parse(saveState) as U) : undefined
+      );
       lastTime = performance.now();
-      state = s!;
-    })
-    .catch((ex) => {
+    } catch (ex) {
       console.warn(ex);
       // if the saved state fails to load, try again with a fresh state
-      props.start(context).then((s) => {
-        lastTime = performance.now();
-        state = s!;
-      });
-    });
+      state = await props.start(context);
+      lastTime = performance.now();
+    }
+  };
 
+  canvas.addEventListener(
+    "webglcontextlost",
+    (e) => {
+      e.preventDefault();
+      contextLost = true;
+      console.warn("WebGL context lost, saving state...");
+      if (state) {
+        localStorage.setItem(props.saveKey, JSON.stringify(props.save(state)));
+      }
+    },
+    false
+  );
+  canvas.addEventListener(
+    "webglcontextrestored",
+    (e) => {
+      e.preventDefault();
+      context.gl = canvas.getContext("webgl2")!;
+      console.warn("WebGL context restored, loading state...");
+      startup().then((_) => {
+        contextLost = false;
+      });
+    },
+    false
+  );
+
+  startup();
+
+  let accumulatedTime = 0;
+  let nextFrame: number | null = null;
   const render = () => {
     if (state) {
       const currentTime = performance.now();
@@ -250,7 +277,9 @@ export default function GameRunner<T, U>(
         accumulatedTime -= props.fixedUpdate;
       }
 
-      props.draw(context, state, frameTime);
+      if (!contextLost) {
+        props.draw(context, state, frameTime);
+      }
     }
     nextFrame = requestAnimationFrame(render);
   };
@@ -260,6 +289,7 @@ export default function GameRunner<T, U>(
   const handlePersist = () => {
     if (document.visibilityState === "hidden") {
       if (state) {
+        console.warn("Visibility changing, saving state...");
         localStorage.setItem(props.saveKey, JSON.stringify(props.save(state)));
       }
       if (nextFrame) {

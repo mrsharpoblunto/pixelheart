@@ -17,9 +17,11 @@ import { vec2, ReadonlyVec4 } from "gl-matrix";
 import { EditorAction } from "../shared/editor-actions";
 
 const CONTROLLER_DEADZONE = 0.25;
+const CURRENT_SERIALIZATION_VERSION = 1;
 
 export interface SerializedGameState {
-    character: {
+  version: number;
+  character: {
     position: [number, number];
     direction: string;
   };
@@ -59,6 +61,7 @@ export interface EditorState {
 
 export function onSave(state: GameState): SerializedGameState {
   return {
+    version: 1,
     character: {
       position: [state.character.position[0], state.character.position[1]],
       direction: state.character.animator.getSpriteName(),
@@ -70,6 +73,15 @@ export async function onStart(
   ctx: GameContext,
   previousState?: SerializedGameState
 ): Promise<GameState> {
+  if (
+    previousState &&
+    previousState.version !== CURRENT_SERIALIZATION_VERSION
+  ) {
+    // if its possible to gracefully handle loading a previous version, do so
+    // otherwise, throw an error
+    throw new Error(`Invalid save version ${previousState.version}`);
+  }
+
   const overworld = await loadSpriteSheet(
     ctx,
     overworldSprite,

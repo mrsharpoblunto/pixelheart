@@ -98,10 +98,10 @@ export class DeferredSpriteEffect
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
     this.#gBufferProgram = createProgram(gl, vertexShader, fragmentShader)!;
-    this.#instanceBuffer = new InstanceBuffer(gl, this.#gBufferProgram, [
-      ["a_mvp", (instance) => instance.mvp],
-      ["a_uv", (instance) => instance.uv],
-    ]);
+    this.#instanceBuffer = new InstanceBuffer(gl, this.#gBufferProgram, {
+      a_mvp: (instance) => instance.mvp,
+      a_uv: (instance) => instance.uv,
+    });
     this.#quad = new Quad(gl);
     this.#pending = [];
     this.#pendingLights = [];
@@ -171,6 +171,7 @@ export class DeferredSpriteEffect
       };
 
       // framebuffer used for storing the gbuffer data
+      // TODO want a framebuffer wrapper with a bind & use method...
       this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, this.#gBuffer.frameBuffer);
       this.#gl.framebufferTexture2D(
         this.#gl.FRAMEBUFFER,
@@ -206,7 +207,6 @@ export class DeferredSpriteEffect
         this.#gl.COLOR_ATTACHMENT2,
         this.#gl.COLOR_ATTACHMENT3,
       ]);
-      this.#gl.checkFramebufferStatus(this.#gl.FRAMEBUFFER);
 
       // framebuffer used for the lighting accumulation passes
       this.#gl.bindFramebuffer(
@@ -320,13 +320,12 @@ export class DeferredSpriteEffect
       return;
     }
 
-    this.#instanceBuffer
-      .load(this.#pending)
-      .bind(this.#gBufferProgram, (instanceCount) => {
-        this.#quad.bind(this.#gBufferProgram, "a_position", (q) => {
-          q.drawInstanced(instanceCount);
-        });
-      });
+    this.#quad.bindInstances(
+      this.#gBufferProgram,
+      { position: "a_position" },
+      this.#instanceBuffer.load(this.#pending),
+      (q) => q.draw()
+    );
 
     this.#pending = [];
     this.#texture = null;

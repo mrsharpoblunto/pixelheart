@@ -18,10 +18,10 @@ export class SolidEffect {
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
     this.#program = createProgram(this.#gl, vertexShader, fragmentShader)!;
-    this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#program, [
-      ["a_mvp", (instance) => instance.mvp],
-      ["a_color", (instance) => instance.color],
-    ]);
+    this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#program, {
+      a_mvp: (instance) => instance.mvp,
+      a_color: (instance) => instance.color,
+    });
     this.#quad = new Quad(this.#gl);
     this.#pending = [];
 
@@ -48,13 +48,12 @@ export class SolidEffect {
   }
 
   #end() {
-    this.#instanceBuffer
-      .load(this.#pending)
-      .bind(this.#program, (instanceCount) => {
-        this.#quad.bind(this.#program, "a_position", (geometry) =>
-          geometry.drawInstanced(instanceCount)
-        );
-      });
+    this.#quad.bindInstances(
+      this.#program,
+      { position: "a_position" },
+      this.#instanceBuffer.load(this.#pending),
+      (q) => q.draw()
+    );
     this.#pending = [];
   }
 }

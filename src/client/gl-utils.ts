@@ -17,13 +17,12 @@ type TypeMap = {
   mat4: ReadonlyMat4;
 };
 
-export type AttributeType<T, K> = {
-  [P in keyof T]: T[P] extends K ? P : never;
-}[keyof T];
+export type AttributeType<T extends ShaderParameters, K> = {
+  [P in keyof T["attributes"]]: T["attributes"][P] extends K ? P : never;
+}[keyof T["attributes"]];
 
 export interface Geometry {
   draw: () => void;
-  drawInstanced: (instanceCount: number) => void;
 }
 
 export interface ShaderParameters {
@@ -143,13 +142,6 @@ export function createProgram<
   return compiled as ShaderProgram<TVert, TFrag>;
 }
 
-type InstanceAttributeMap<TVertParams extends ShaderParameters, TInstance> = {
-  [K in keyof TVertParams["attributes"]]: [
-    K,
-    (instance: TInstance) => TypeMap[TVertParams["attributes"][K]]
-  ];
-}[keyof TVertParams["attributes"]];
-
 export class InstanceBuffer<TVertParams extends ShaderParameters, T> {
   #buffer: WebGLBuffer | null;
   #gl: WebGL2RenderingContext;
@@ -166,24 +158,28 @@ export class InstanceBuffer<TVertParams extends ShaderParameters, T> {
   constructor(
     gl: WebGL2RenderingContext,
     program: ShaderProgram<TVertParams, any>,
-    attributes: Array<InstanceAttributeMap<TVertParams, T>>
+    attributes: Partial<{
+      [K in keyof TVertParams["attributes"]]: (
+        instance: T
+      ) => TypeMap[TVertParams["attributes"][K]];
+    }>
   ) {
     this.#gl = gl;
-    this.#buffer = null;
+    this.#buffer = this.#gl.createBuffer()!;
     this.#instanceCount = 0;
     this.#instanceSize = 0;
     this.#attributeLayouts = [];
 
-    for (let attr of attributes) {
-      const attributeType = program.attributeTypes[attr[0] as string];
+    for (let [attr, loader] of Object.entries(attributes)) {
+      const attributeType = program.attributeTypes[attr];
       if (attributeType === "float") {
         this.#attributeLayouts.push({
           col: 1,
           row: 1,
           size: 1,
-          name: attr[0],
+          name: attr,
           load: (b, o, i) => {
-            b[o] = attr[1](i) as number;
+            b[o] = loader(i) as number;
           },
         });
       } else {
@@ -191,8 +187,8 @@ export class InstanceBuffer<TVertParams extends ShaderParameters, T> {
           name: keyof TVertParams["attributes"];
           load: (buffer: Float32Array, offset: number, instance: T) => void;
         } = {
-          name: attr[0],
-          load: (b, o, i) => b.set(attr[1](i) as Float32Array, o),
+          name: attr,
+          load: (b, o, i) => b.set(loader(i) as Float32Array, o),
         };
         switch (attributeType) {
           case "vec2":
@@ -262,40 +258,42 @@ export class InstanceBuffer<TVertParams extends ShaderParameters, T> {
         offset += this.#attributeLayouts[j].size;
       }
     }
-    this.#buffer = this.#gl.createBuffer()!;
     this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#buffer);
-    this.#gl.bufferData(this.#gl.ARRAY_BUFFER, b, this.#gl.STATIC_DRAW);
+    this.#gl.bufferData(this.#gl.ARRAY_BUFFER, b, this.#gl.STREAM_DRAW);
     this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, null);
     return this;
   }
 
-  bind(
-    program: ShaderProgram<TVertParams, any>,
-    scope: (instanceCount: number) => void
-  ): InstanceBuffer<TVertParams, T> {
-    if (!this.#buffer) {
-      return this;
-    }
+  getInstanceCount(): number {
+    return this.#instanceCount;
+  }
+
+  getAttributesHash(program: ShaderProgram<TVertParams, any>): string {
+    return this.#attributeLayouts
+      .map((a) => program.attributes[a.name])
+      .join("-");
+  }
+
+  bind(program: ShaderProgram<TVertParams, any>): InstanceBuffer<TVertParams, T> {
     this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#buffer);
+
     let offset = 0;
     for (let i = 0; i < this.#attributeLayouts.length; ++i) {
+      const attrPtr = program.attributes[this.#attributeLayouts[i].name];
       for (let col = 0; col < this.#attributeLayouts[i].col; ++col) {
-        const attrPtr =
-          program.attributes[this.#attributeLayouts[i].name] + col;
-        this.#gl.enableVertexAttribArray(attrPtr);
+        this.#gl.enableVertexAttribArray(attrPtr + col);
         this.#gl.vertexAttribPointer(
-          attrPtr,
+          attrPtr + col,
           this.#attributeLayouts[i].row,
           this.#gl.FLOAT,
           false,
           this.#instanceSize * 4,
           offset
         );
-        this.#gl.vertexAttribDivisor(attrPtr, 1);
+        this.#gl.vertexAttribDivisor(attrPtr + col, 1);
         offset += this.#attributeLayouts[i].row * 4;
       }
     }
-    scope(this.#instanceCount);
     return this;
   }
 }

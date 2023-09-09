@@ -7,6 +7,7 @@ export default function (production: boolean): esbuild.BuildOptions {
     minifySyntax: production,
     minifyWhitespace: production,
     bundle: true,
+    target: "esnext",
     outdir: path.join(__dirname, "../www/js"),
     define: {
       ["process.env.NODE_ENV"]: `"${
