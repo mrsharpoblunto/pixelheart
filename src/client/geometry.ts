@@ -38,7 +38,7 @@ export class Quad {
     hash: string;
   } {
     const ptrs = {
-      position: program.attributes[attributes.position],
+      position: program.inAttributes[attributes.position].location,
     };
     return { ...ptrs, hash: `${ptrs.position}` };
   }

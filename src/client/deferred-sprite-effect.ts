@@ -92,8 +92,8 @@ export class DeferredSpriteEffect
     albedo: WebGLTexture;
     specular: WebGLTexture;
     lighting: GPUTexture;
-    frameBuffer: FrameBuffer;
-    lightingFrameBuffer: FrameBuffer;
+    frameBuffer: FrameBuffer<typeof fragmentShader>;
+    lightingFrameBuffer: FrameBuffer<typeof lightingFragmentShader>;
   } | null;
   #gBufferWidth: number;
   #gBufferHeight: number;
@@ -178,15 +178,15 @@ export class DeferredSpriteEffect
 
       this.#gBuffer = {
         ...gBuffer,
-        frameBuffer: new FrameBuffer(this.#gl, [
-          gBuffer.normal,
-          gBuffer.albedo,
-          gBuffer.specular,
-          gBuffer.lighting[TEXTURE],
-        ]),
-        lightingFrameBuffer: new FrameBuffer(this.#gl, [
-          gBuffer.lighting[TEXTURE],
-        ]),
+        frameBuffer: new FrameBuffer(this.#gl, this.#gBufferProgram, {
+          o_normal: gBuffer.normal,
+          o_albedo: gBuffer.albedo,
+          o_specular: gBuffer.specular,
+          o_lighting: gBuffer.lighting[TEXTURE],
+        }),
+        lightingFrameBuffer: new FrameBuffer(this.#gl, this.#lightingProgram, {
+          o_lighting: gBuffer.lighting[TEXTURE],
+        }),
       };
     }
 
@@ -201,8 +201,12 @@ export class DeferredSpriteEffect
 
     this.#gBuffer.lightingFrameBuffer.bind(() => {
       const previousBlend = this.#gl.getParameter(this.#gl.BLEND);
-      const previousBlendSrcFunc = this.#gl.getParameter(this.#gl.BLEND_SRC_ALPHA);
-      const previousBlendDestFunc = this.#gl.getParameter(this.#gl.BLEND_DST_ALPHA);
+      const previousBlendSrcFunc = this.#gl.getParameter(
+        this.#gl.BLEND_SRC_ALPHA
+      );
+      const previousBlendDestFunc = this.#gl.getParameter(
+        this.#gl.BLEND_DST_ALPHA
+      );
       this.#gl.enable(this.#gl.BLEND);
       this.#gl.blendFunc(this.#gl.ONE, this.#gl.ONE);
 

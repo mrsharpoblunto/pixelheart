@@ -10,7 +10,8 @@ export function isShader(file: string) {
   return path.extname(file) === ".vert" || path.extname(file) === ".frag";
 }
 
-const PARAM_REGEX = /^(in|uniform)\s+(.*?)\s+(.*?);/;
+const PARAM_REGEX =
+  /^\s*(layout\(\s*location\s*=\s*([0-9]*)\)\s*)?(out|in|uniform)\s+(.*?)\s+(.*?);/;
 const NO_MANGLE = ["texture"];
 
 export async function processShader(
@@ -29,23 +30,35 @@ export async function processShader(
     const isVertexShader = path.extname(shader) === ".vert";
     const lines = src.split("\n");
 
-    const inAttributes = new Map<string, string>();
+    const inAttributes = new Map<string, { type: string; location?: number }>();
+    const outAttributes = new Map<
+      string,
+      { type: string; location?: number }
+    >();
     const uniforms = new Map<string, string>();
 
     for (const line of lines) {
       const match = PARAM_REGEX.exec(line);
       if (match) {
-        switch (match[1]) {
+        const location = !match[2] ? undefined : parseInt(match[2]);
+        switch (match[3]) {
           case "in":
             // in attributes on fragment shaders are not accessible
             // to JS code, so we ignore them
             if (isVertexShader) {
-              inAttributes.set(match[3], match[2]);
+              inAttributes.set(match[5], { type: match[4], location });
+            }
+            break;
+          case "out":
+            // out attributes on vertex shaders are not accessible
+            // to JS code, so we ignore them
+            if (!isVertexShader) {
+              outAttributes.set(match[5], { type: match[4], location });
             }
             break;
 
           case "uniform":
-            uniforms.set(match[3], match[2]);
+            uniforms.set(match[5], match[4]);
             break;
         }
       }
@@ -60,33 +73,58 @@ export async function processShader(
       src = (await minifier.execute(src)).sourceCode;
     }
 
-    const output = `type AttributeTypes = {
-  ${[...inAttributes]
-    .map(([name, type]) => `   ${name}: "${type}"`)
-    .join(";\n")}
+    const output = `
+type InAttributeTypes = {
+${[...inAttributes]
+  .map(
+    ([name, { type, location }]) =>
+      `   ${name}: {type: "${type}"${location!==undefined ? `,location:${location}` : ""}}`
+  )
+  .join(";\n")}
+}
+
+type OutAttributeTypes = {
+${[...outAttributes]
+  .map(
+    ([name, { type, location }]) =>
+      `   ${name}: {type: "${type}"${location!==undefined ? `,location:${location}` : ""}}`
+  )
+  .join(";\n")}
 }
 
 type UniformTypes = {
-  ${[...uniforms].map(([name, type]) => `   ${name}: "${type}"`).join(";\n")}
+${[...uniforms].map(([name, type]) => `   ${name}: "${type}"`).join(";\n")}
 }
 
 type ShaderSource = {
   src: string;
   name: string;
-  attributes: AttributeTypes;
+  inAttributes: InAttributeTypes;
+  outAttributes: OutAttributeTypes;
   uniforms: UniformTypes;
-}
+};
 
 const value: ShaderSource = {
   src: \`${src}\`,
   name: "${shader}",
-  attributes: {
-  ${[...inAttributes]
-    .map(([name, type]) => `   ${name}: "${type}"`)
-    .join(",\n")}
+  inAttributes: {
+${[...inAttributes]
+  .map(
+    ([name, { type, location }]) =>
+      `   ${name}: {type: "${type}"${location!==undefined ? `,location:${location}` : ""}}`
+  )
+  .join(",\n")}
+  },
+  outAttributes: {
+${[...outAttributes]
+  .map(
+    ([name, { type, location }]) =>
+      `   ${name}: {type: "${type}"${location!==undefined ? `,location:${location}` : ""}}`
+  )
+  .join(",\n")}
   },
   uniforms: {
-  ${[...uniforms].map(([name, type]) => `   ${name}: "${type}"`).join(",\n")}
+${[...uniforms].map(([name, type]) => `   ${name}: "${type}"`).join(",\n")}
   },
 };
 export default value;

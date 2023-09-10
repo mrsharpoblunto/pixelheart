@@ -17,22 +17,22 @@ type TypeMap = {
   mat4: ReadonlyMat4;
 };
 
-export type AttributeType<T extends ShaderParameters, K> = {
-  [P in keyof T["attributes"]]: T["attributes"][P] extends K ? P : never;
-}[keyof T["attributes"]];
+export type AttributeType<T extends ShaderSource, K> = {
+  [P in keyof T["inAttributes"]]: T["inAttributes"][P]["type"] extends K
+    ? P
+    : never;
+}[keyof T["inAttributes"]];
 
 export interface Geometry {
   draw: () => void;
 }
 
-export interface ShaderParameters {
-  attributes: { [name: string]: keyof TypeMap };
-  uniforms: { [name: string]: string };
-}
-
-export interface ShaderSource extends ShaderParameters {
+export interface ShaderSource {
   src: string;
   name: string;
+  inAttributes: { [name: string]: { type: keyof TypeMap; layout?: number } };
+  outAttributes: { [name: string]: { type: keyof TypeMap; layout?: number } };
+  uniforms: { [name: string]: string };
 }
 
 export class ShaderProgram<
@@ -41,9 +41,14 @@ export class ShaderProgram<
 > {
   #gl: WebGL2RenderingContext;
   #program: WebGLProgram;
-  attributeTypes: { [name: string]: keyof TypeMap };
-  attributes: Record<keyof TVert["attributes"], number>;
-  //outAttributes: Record<keyof TFrag["outAttributes"], number>;
+  inAttributes: Record<
+    keyof TVert["inAttributes"],
+    { location: number; type: keyof TypeMap }
+  >;
+  outAttributes: Record<
+    keyof TFrag["outAttributes"],
+    { location: number; type: keyof TypeMap }
+  >;
   uniforms: Record<
     keyof (TVert["uniforms"] & TFrag["uniforms"]),
     WebGLUniformLocation
@@ -56,8 +61,14 @@ export class ShaderProgram<
   ) {
     this.#gl = gl;
     this.#program = gl.createProgram()!;
-    this.attributeTypes = vertexShaderSource.attributes;
-    this.attributes = {} as Record<keyof TVert["attributes"], number>;
+    this.inAttributes = {} as Record<
+      keyof TVert["inAttributes"],
+      { location: number; type: keyof TypeMap; layout?: number }
+    >;
+    this.outAttributes = {} as Record<
+      keyof TVert["outAttributes"],
+      { location: number; type: keyof TypeMap; layout?: number }
+    >;
     this.uniforms = {} as Record<keyof TVert["uniforms"], WebGLUniformLocation>;
 
     const vertexShader = gl.createShader(gl.VERTEX_SHADER)!;
@@ -121,12 +132,25 @@ export class ShaderProgram<
     );
     for (let i = 0; i < attributeCount; ++i) {
       const info = gl.getActiveAttrib(this.#program, i);
-      // we only want the vertex shader 'in' attributes, not outs or fragment attributes
-      if (info && info.name in vertexShaderSource.attributes) {
-        this.attributes[info.name as unknown as keyof TVert["attributes"]] =
-          gl.getAttribLocation(this.#program, info.name);
+      if (info) {
+        const key = info.name;
+        if (key in vertexShaderSource.inAttributes) {
+          this.inAttributes[key as unknown as keyof TVert["inAttributes"]] = {
+            location: gl.getAttribLocation(this.#program, info.name),
+            type: vertexShaderSource.inAttributes[key].type,
+          };
+        }
       }
     }
+
+    Object.keys(fragmentShaderSource.outAttributes).forEach((key) => {
+      const location = gl.getFragDataLocation(this.#program, key);
+      this.outAttributes[key as unknown as keyof TFrag["outAttributes"]] = {
+        location,
+        type: fragmentShaderSource.outAttributes[key].type,
+      };
+    });
+
     const uniformCount = gl.getProgramParameter(
       this.#program,
       gl.ACTIVE_UNIFORMS
@@ -134,11 +158,17 @@ export class ShaderProgram<
     for (let i = 0; i < uniformCount; ++i) {
       const info = gl.getActiveUniform(this.#program, i);
       if (info) {
-        this.uniforms[
-          info.name as unknown as
-            | keyof TVert["uniforms"]
-            | keyof TFrag["uniforms"]
-        ] = gl.getUniformLocation(this.#program, info.name)!;
+        const key = info.name;
+        if (
+          key in vertexShaderSource.uniforms ||
+          key in fragmentShaderSource.uniforms
+        ) {
+          this.uniforms[
+            info.name as unknown as
+              | keyof TVert["uniforms"]
+              | keyof TFrag["uniforms"]
+          ] = gl.getUniformLocation(this.#program, info.name)!;
+        }
       }
     }
   }
@@ -159,7 +189,7 @@ export class InstanceBuffer<TVertParams extends ShaderSource, T> {
     col: number;
     row: number;
     size: number;
-    name: keyof TVertParams["attributes"];
+    name: keyof TVertParams["inAttributes"];
     load: (buffer: Float32Array, offset: number, instance: T) => void;
   }> = [];
 
@@ -167,9 +197,9 @@ export class InstanceBuffer<TVertParams extends ShaderSource, T> {
     gl: WebGL2RenderingContext,
     program: ShaderProgram<TVertParams, any>,
     attributes: Partial<{
-      [K in keyof TVertParams["attributes"]]: (
+      [K in keyof TVertParams["inAttributes"]]: (
         instance: T
-      ) => TypeMap[TVertParams["attributes"][K]];
+      ) => TypeMap[TVertParams["inAttributes"][K]["type"]];
     }>
   ) {
     this.#gl = gl;
@@ -179,7 +209,7 @@ export class InstanceBuffer<TVertParams extends ShaderSource, T> {
     this.#attributeLayouts = [];
 
     for (let [attr, loader] of Object.entries(attributes)) {
-      const attributeType = program.attributeTypes[attr];
+      const attributeType = program.inAttributes[attr].type;
       if (attributeType === "float") {
         this.#attributeLayouts.push({
           col: 1,
@@ -192,7 +222,7 @@ export class InstanceBuffer<TVertParams extends ShaderSource, T> {
         });
       } else {
         const partialLayout: {
-          name: keyof TVertParams["attributes"];
+          name: keyof TVertParams["inAttributes"];
           load: (buffer: Float32Array, offset: number, instance: T) => void;
         } = {
           name: attr,
@@ -278,7 +308,7 @@ export class InstanceBuffer<TVertParams extends ShaderSource, T> {
 
   getAttributesHash(program: ShaderProgram<TVertParams, any>): string {
     return this.#attributeLayouts
-      .map((a) => program.attributes[a.name])
+      .map((a) => program.inAttributes[a.name].location)
       .join("-");
   }
 
@@ -289,7 +319,8 @@ export class InstanceBuffer<TVertParams extends ShaderSource, T> {
 
     let offset = 0;
     for (let i = 0; i < this.#attributeLayouts.length; ++i) {
-      const attrPtr = program.attributes[this.#attributeLayouts[i].name];
+      const attrPtr =
+        program.inAttributes[this.#attributeLayouts[i].name].location;
       for (let col = 0; col < this.#attributeLayouts[i].col; ++col) {
         this.#gl.enableVertexAttribArray(attrPtr + col);
         this.#gl.vertexAttribPointer(
@@ -308,28 +339,35 @@ export class InstanceBuffer<TVertParams extends ShaderSource, T> {
   }
 }
 
-export class FrameBuffer {
+export class FrameBuffer<TFrag extends ShaderSource> {
   #gl: WebGL2RenderingContext;
   #frameBuffer: WebGLFramebuffer;
 
-  constructor(gl: WebGL2RenderingContext, attachments: Array<WebGLTexture>) {
+  constructor(
+    gl: WebGL2RenderingContext,
+    program: ShaderProgram<any, TFrag>,
+    attachments: { [K in keyof TFrag["outAttributes"]]: WebGLTexture }
+  ) {
     this.#gl = gl;
     this.#frameBuffer = this.#gl.createFramebuffer()!;
     this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, this.#frameBuffer);
-    for (let i = 0; i < attachments.length; ++i) {
+
+    const attachmentList: Array<number> = [];
+    Object.entries(attachments).forEach(([key, value]) => {
+      const location =
+        program.outAttributes[key as keyof TFrag["outAttributes"]].location;
       this.#gl.framebufferTexture2D(
         this.#gl.FRAMEBUFFER,
         // @ts-ignore
-        this.#gl[`COLOR_ATTACHMENT${i}`] as any,
+        this.#gl[`COLOR_ATTACHMENT${location}`] as any,
         this.#gl.TEXTURE_2D,
-        attachments[i],
+        value,
         0
       );
-    }
-    this.#gl.drawBuffers(
       // @ts-ignore
-      attachments.map((_, i) => this.#gl[`COLOR_ATTACHMENT${i}`] as number)
-    );
+      attachmentList.push(this.#gl[`COLOR_ATTACHMENT${location}`]);
+    });
+    this.#gl.drawBuffers(attachmentList);
     this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
   }
 
