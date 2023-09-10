@@ -9,13 +9,13 @@ import {
   SpriteEffect,
 } from "./sprite-common";
 import { Quad } from "./geometry";
-import { ShaderProgram, createProgram, InstanceBuffer } from "./gl-utils";
+import { ShaderProgram, InstanceBuffer } from "./gl-utils";
 import vertexShader from "./shaders/sprite.vert";
 import fragmentShader from "./shaders/sprite.frag";
 
 export type SimpleSpriteTextures = GPUTexture;
 export type SimpleSpriteSheet = SpriteSheet<SimpleSpriteTextures>;
-export class SimpleSpriteAnimator extends SpriteAnimator<SimpleSpriteTextures> { }
+export class SimpleSpriteAnimator extends SpriteAnimator<SimpleSpriteTextures> {}
 
 export async function simpleTextureLoader(
   ctx: GameContext,
@@ -40,7 +40,7 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
 
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
-    this.#program = createProgram(this.#gl, vertexShader, fragmentShader)!;
+    this.#program = new ShaderProgram(this.#gl, vertexShader, fragmentShader)!;
     this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#program, {
       a_mvp: (instance) => instance.mvp,
       a_uv: (instance) => instance.uv,
@@ -56,9 +56,10 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   }
 
   use(scope: (s: SimpleSpriteEffect) => void) {
-    this.#gl.useProgram(this.#program.program);
-    scope(this);
+    this.#program.use(() => {
+      scope(this)
     this.#end();
+    });
   }
 
   setTextures(param: SimpleSpriteTextures): SimpleSpriteEffect {

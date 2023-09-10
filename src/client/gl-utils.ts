@@ -35,114 +35,122 @@ export interface ShaderSource extends ShaderParameters {
   name: string;
 }
 
-export interface ShaderProgram<
-  TVertParams extends ShaderParameters,
-  TFragParams extends ShaderParameters
-> {
-  program: WebGLProgram;
-  attributeTypes: { [name: string]: keyof TypeMap };
-  attributes: Record<keyof TVertParams["attributes"], number>;
-  uniforms: Record<
-    keyof (TVertParams["uniforms"] & TFragParams["uniforms"]),
-    WebGLUniformLocation
-  >;
-}
-
-export function createProgram<
+export class ShaderProgram<
   TVert extends ShaderSource,
   TFrag extends ShaderSource
->(
-  gl: WebGL2RenderingContext,
-  vertexShaderSource: TVert,
-  fragmentShaderSource: TFrag
-): ShaderProgram<TVert, TFrag> | null {
-  const vertexShader = gl.createShader(gl.VERTEX_SHADER)!;
-  gl.shaderSource(vertexShader, vertexShaderSource.src);
-  gl.compileShader(vertexShader);
+> {
+  #gl: WebGL2RenderingContext;
+  #program: WebGLProgram;
+  attributeTypes: { [name: string]: keyof TypeMap };
+  attributes: Record<keyof TVert["attributes"], number>;
+  //outAttributes: Record<keyof TFrag["outAttributes"], number>;
+  uniforms: Record<
+    keyof (TVert["uniforms"] & TFrag["uniforms"]),
+    WebGLUniformLocation
+  >;
 
-  let output = "";
+  constructor(
+    gl: WebGL2RenderingContext,
+    vertexShaderSource: TVert,
+    fragmentShaderSource: TFrag
+  ) {
+    this.#gl = gl;
+    this.#program = gl.createProgram()!;
+    this.attributeTypes = vertexShaderSource.attributes;
+    this.attributes = {} as Record<keyof TVert["attributes"], number>;
+    this.uniforms = {} as Record<keyof TVert["uniforms"], WebGLUniformLocation>;
 
-  if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
-    let error = gl.getShaderInfoLog(vertexShader);
-    if (error) {
-      if (process.env.NODE_ENV !== "production") {
-        output += decorateError(
-          `\nVertex Shader: ${vertexShaderSource.name}`,
-          vertexShaderSource.src,
-          error
-        );
-      } else {
-        output += error + "\n";
+    const vertexShader = gl.createShader(gl.VERTEX_SHADER)!;
+    gl.shaderSource(vertexShader, vertexShaderSource.src);
+    gl.compileShader(vertexShader);
+
+    let output = "";
+
+    if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+      let error = gl.getShaderInfoLog(vertexShader);
+      if (error) {
+        if (process.env.NODE_ENV !== "production") {
+          output += decorateError(
+            `\nVertex Shader: ${vertexShaderSource.name}`,
+            vertexShaderSource.src,
+            error
+          );
+        } else {
+          output += error + "\n";
+        }
       }
     }
-  }
 
-  const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!;
-  gl.shaderSource(fragmentShader, fragmentShaderSource.src);
-  gl.compileShader(fragmentShader);
-  if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
-    let error = gl.getShaderInfoLog(fragmentShader);
-    if (error) {
-      if (process.env.NODE_ENV !== "production") {
-        output += decorateError(
-          `\nFragment Shader: ${fragmentShaderSource.name}`,
-          fragmentShaderSource.src,
-          error
-        );
-      } else {
-        output += error + "\n";
+    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!;
+    gl.shaderSource(fragmentShader, fragmentShaderSource.src);
+    gl.compileShader(fragmentShader);
+    if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+      let error = gl.getShaderInfoLog(fragmentShader);
+      if (error) {
+        if (process.env.NODE_ENV !== "production") {
+          output += decorateError(
+            `\nFragment Shader: ${fragmentShaderSource.name}`,
+            fragmentShaderSource.src,
+            error
+          );
+        } else {
+          output += error + "\n";
+        }
       }
     }
-  }
 
-  const program = gl.createProgram()!;
-  gl.attachShader(program, vertexShader);
-  gl.attachShader(program, fragmentShader);
-  gl.linkProgram(program);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const error = gl.getProgramInfoLog(program);
-    if (error) {
-      output += `\nLinker: (${vertexShaderSource.name}, ${fragmentShaderSource.name}): ${error}`;
+    gl.attachShader(this.#program, vertexShader);
+    gl.attachShader(this.#program, fragmentShader);
+    gl.linkProgram(this.#program);
+    if (!gl.getProgramParameter(this.#program, gl.LINK_STATUS)) {
+      const error = gl.getProgramInfoLog(this.#program);
+      if (error) {
+        output += `\nLinker: (${vertexShaderSource.name}, ${fragmentShaderSource.name}): ${error}`;
+      }
     }
-  }
 
-  if (output !== "") {
-    throw new Error(
-      `Shader compilation of [${vertexShaderSource.name}, ${fragmentShaderSource.name}] failed:\n${output}`
+    if (output !== "") {
+      throw new Error(
+        `Shader compilation of [${vertexShaderSource.name}, ${fragmentShaderSource.name}] failed:\n${output}`
+      );
+    }
+
+    const attributeCount = gl.getProgramParameter(
+      this.#program,
+      gl.ACTIVE_ATTRIBUTES
     );
-  }
-
-  const compiled: {
-    program: WebGLProgram;
-    attributeTypes: { [name: string]: keyof TypeMap };
-    attributes: { [name: string]: number };
-    uniforms: { [name: string]: WebGLUniformLocation };
-  } = {
-    program,
-    attributeTypes: vertexShaderSource.attributes,
-    attributes: {},
-    uniforms: {},
-  };
-
-  const attributeCount = gl.getProgramParameter(program, gl.ACTIVE_ATTRIBUTES);
-  for (let i = 0; i < attributeCount; ++i) {
-    const info = gl.getActiveAttrib(program, i);
-    if (info) {
-      compiled.attributes[info.name] = gl.getAttribLocation(program, info.name);
+    for (let i = 0; i < attributeCount; ++i) {
+      const info = gl.getActiveAttrib(this.#program, i);
+      // we only want the vertex shader 'in' attributes, not outs or fragment attributes
+      if (info && info.name in vertexShaderSource.attributes) {
+        this.attributes[info.name as unknown as keyof TVert["attributes"]] =
+          gl.getAttribLocation(this.#program, info.name);
+      }
     }
-  }
-  const uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
-  for (let i = 0; i < uniformCount; ++i) {
-    const info = gl.getActiveUniform(program, i);
-    if (info) {
-      compiled.uniforms[info.name] = gl.getUniformLocation(program, info.name)!;
+    const uniformCount = gl.getProgramParameter(
+      this.#program,
+      gl.ACTIVE_UNIFORMS
+    );
+    for (let i = 0; i < uniformCount; ++i) {
+      const info = gl.getActiveUniform(this.#program, i);
+      if (info) {
+        this.uniforms[
+          info.name as unknown as
+            | keyof TVert["uniforms"]
+            | keyof TFrag["uniforms"]
+        ] = gl.getUniformLocation(this.#program, info.name)!;
+      }
     }
   }
 
-  return compiled as ShaderProgram<TVert, TFrag>;
+  use(scope: (program: ShaderProgram<TVert, TFrag>) => void): void {
+    this.#gl.useProgram(this.#program);
+    scope(this);
+    this.#gl.useProgram(null);
+  }
 }
 
-export class InstanceBuffer<TVertParams extends ShaderParameters, T> {
+export class InstanceBuffer<TVertParams extends ShaderSource, T> {
   #buffer: WebGLBuffer | null;
   #gl: WebGL2RenderingContext;
   #instanceSize: number;
@@ -274,7 +282,9 @@ export class InstanceBuffer<TVertParams extends ShaderParameters, T> {
       .join("-");
   }
 
-  bind(program: ShaderProgram<TVertParams, any>): InstanceBuffer<TVertParams, T> {
+  bind(
+    program: ShaderProgram<TVertParams, any>
+  ): InstanceBuffer<TVertParams, T> {
     this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#buffer);
 
     let offset = 0;
@@ -295,6 +305,38 @@ export class InstanceBuffer<TVertParams extends ShaderParameters, T> {
       }
     }
     return this;
+  }
+}
+
+export class FrameBuffer {
+  #gl: WebGL2RenderingContext;
+  #frameBuffer: WebGLFramebuffer;
+
+  constructor(gl: WebGL2RenderingContext, attachments: Array<WebGLTexture>) {
+    this.#gl = gl;
+    this.#frameBuffer = this.#gl.createFramebuffer()!;
+    this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, this.#frameBuffer);
+    for (let i = 0; i < attachments.length; ++i) {
+      this.#gl.framebufferTexture2D(
+        this.#gl.FRAMEBUFFER,
+        // @ts-ignore
+        this.#gl[`COLOR_ATTACHMENT${i}`] as any,
+        this.#gl.TEXTURE_2D,
+        attachments[i],
+        0
+      );
+    }
+    this.#gl.drawBuffers(
+      // @ts-ignore
+      attachments.map((_, i) => this.#gl[`COLOR_ATTACHMENT${i}`] as number)
+    );
+    this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
+  }
+
+  bind(scope: () => void): void {
+    this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, this.#frameBuffer);
+    scope();
+    this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
   }
 }
 

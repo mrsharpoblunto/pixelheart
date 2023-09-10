@@ -10,14 +10,14 @@ import {
 import { Quad } from "./geometry";
 import {
   ShaderProgram,
-  createProgram,
   createTexture,
   InstanceBuffer,
+  FrameBuffer,
 } from "./gl-utils";
 import vertexShader from "./shaders/deferred-sprite.vert";
 import fragmentShader from "./shaders/deferred-sprite.frag";
-//import lightVertexShader from "./shaders/deferred-sprite-lighting.vert";
-//import lightFragmentShader from "./shaders/deferred-sprite-lighting.frag";
+import lightingVertexShader from "./shaders/deferred-lighting.vert";
+import lightingFragmentShader from "./shaders/deferred-lighting.frag";
 
 export type DeferredSpriteTextures = {
   diffuseTexture: GPUTexture;
@@ -78,26 +78,34 @@ export class DeferredSpriteEffect
   #instanceBuffer: InstanceBuffer<typeof vertexShader, SpriteInstance>;
   #pending: Array<SpriteInstance>;
 
-  //#lightProgram: ShaderProgram<typeof lightVertexShader, typeof lightFragmentShader>;
+  #lightingProgram: ShaderProgram<
+    typeof lightingVertexShader,
+    typeof lightingFragmentShader
+  >;
   #texture: DeferredSpriteTextures | null;
   #vp: mat3;
   #pendingLights: Array<DeferredLight>;
   #quad: Quad;
 
   #gBuffer: {
-    frameBuffer: WebGLFramebuffer;
-    lightingFrameBuffer: WebGLFramebuffer;
     normal: WebGLTexture;
     albedo: WebGLTexture;
     specular: WebGLTexture;
     lighting: GPUTexture;
+    frameBuffer: FrameBuffer;
+    lightingFrameBuffer: FrameBuffer;
   } | null;
   #gBufferWidth: number;
   #gBufferHeight: number;
 
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
-    this.#gBufferProgram = createProgram(gl, vertexShader, fragmentShader)!;
+    this.#gBufferProgram = new ShaderProgram(gl, vertexShader, fragmentShader);
+    this.#lightingProgram = new ShaderProgram(
+      gl,
+      lightingVertexShader,
+      lightingFragmentShader
+    );
     this.#instanceBuffer = new InstanceBuffer(gl, this.#gBufferProgram, {
       a_mvp: (instance) => instance.mvp,
       a_uv: (instance) => instance.uv,
@@ -129,9 +137,7 @@ export class DeferredSpriteEffect
     ) {
       this.#gBufferHeight = opts.height;
       this.#gBufferWidth = opts.width;
-      this.#gBuffer = {
-        frameBuffer: this.#gl.createFramebuffer()!,
-        lightingFrameBuffer: this.#gl.createFramebuffer()!,
+      const gBuffer = {
         normal: createTexture(
           this.#gl,
           this.#gl.RGBA,
@@ -170,81 +176,60 @@ export class DeferredSpriteEffect
         },
       };
 
-      // framebuffer used for storing the gbuffer data
-      // TODO want a framebuffer wrapper with a bind & use method...
-      this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, this.#gBuffer.frameBuffer);
-      this.#gl.framebufferTexture2D(
-        this.#gl.FRAMEBUFFER,
-        this.#gl.COLOR_ATTACHMENT0,
-        this.#gl.TEXTURE_2D,
-        this.#gBuffer.normal,
-        0
-      );
-      this.#gl.framebufferTexture2D(
-        this.#gl.FRAMEBUFFER,
-        this.#gl.COLOR_ATTACHMENT1,
-        this.#gl.TEXTURE_2D,
-        this.#gBuffer.albedo,
-        0
-      );
-      this.#gl.framebufferTexture2D(
-        this.#gl.FRAMEBUFFER,
-        this.#gl.COLOR_ATTACHMENT2,
-        this.#gl.TEXTURE_2D,
-        this.#gBuffer.specular,
-        0
-      );
-      this.#gl.framebufferTexture2D(
-        this.#gl.FRAMEBUFFER,
-        this.#gl.COLOR_ATTACHMENT3,
-        this.#gl.TEXTURE_2D,
-        this.#gBuffer.lighting[TEXTURE],
-        0
-      );
-      this.#gl.drawBuffers([
-        this.#gl.COLOR_ATTACHMENT0,
-        this.#gl.COLOR_ATTACHMENT1,
-        this.#gl.COLOR_ATTACHMENT2,
-        this.#gl.COLOR_ATTACHMENT3,
-      ]);
-
-      // framebuffer used for the lighting accumulation passes
-      this.#gl.bindFramebuffer(
-        this.#gl.FRAMEBUFFER,
-        this.#gBuffer.lightingFrameBuffer
-      );
-      this.#gl.framebufferTexture2D(
-        this.#gl.FRAMEBUFFER,
-        this.#gl.COLOR_ATTACHMENT0,
-        this.#gl.TEXTURE_2D,
-        this.#gBuffer.lighting[TEXTURE],
-        0
-      );
-      this.#gl.drawBuffers([this.#gl.COLOR_ATTACHMENT0]);
-      this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
+      this.#gBuffer = {
+        ...gBuffer,
+        frameBuffer: new FrameBuffer(this.#gl, [
+          gBuffer.normal,
+          gBuffer.albedo,
+          gBuffer.specular,
+          gBuffer.lighting[TEXTURE],
+        ]),
+        lightingFrameBuffer: new FrameBuffer(this.#gl, [
+          gBuffer.lighting[TEXTURE],
+        ]),
+      };
     }
 
-    this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, this.#gBuffer.frameBuffer);
-    this.#gl.viewport(0, 0, this.#gBufferWidth, this.#gBufferHeight);
-    this.#gl.clear(this.#gl.COLOR_BUFFER_BIT | this.#gl.DEPTH_BUFFER_BIT);
+    this.#gBuffer.frameBuffer.bind(() => {
+      this.#gl.viewport(0, 0, this.#gBufferWidth, this.#gBufferHeight);
+      this.#gl.clear(this.#gl.COLOR_BUFFER_BIT | this.#gl.DEPTH_BUFFER_BIT);
+      this.#gBufferProgram.use(() => {
+        scope(this);
+        this.#end();
+      });
+    });
 
-    this.#gl.useProgram(this.#gBufferProgram.program);
-    scope(this);
-    this.#end();
+    this.#gBuffer.lightingFrameBuffer.bind(() => {
+      const previousBlend = this.#gl.getParameter(this.#gl.BLEND);
+      const previousBlendSrcFunc = this.#gl.getParameter(this.#gl.BLEND_SRC_ALPHA);
+      const previousBlendDestFunc = this.#gl.getParameter(this.#gl.BLEND_DST_ALPHA);
+      this.#gl.enable(this.#gl.BLEND);
+      this.#gl.blendFunc(this.#gl.ONE, this.#gl.ONE);
 
-    /**
-    this.#gl.bindFramebuffer(
-      this.#gl.FRAMEBUFFER,
-      this.#gBuffer.lightingFrameBuffer
-    );
-    this.#gl.useProgram(this.#lightProgram);
-    // TODO attach the gbuffer to the lighting program
-    for (let light of this.#pendingLights) {
-      // TODO bind the lighting framebuffer & render queued lights...
-    }
-    */
+      this.#lightingProgram.use(() => {
+        this.#gl.activeTexture(this.#gl.TEXTURE0);
+        this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#gBuffer!.albedo);
+        this.#gl.uniform1i(this.#lightingProgram.uniforms.u_albedoTexture, 0);
 
-    this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
+        this.#gl.activeTexture(this.#gl.TEXTURE1);
+        this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#gBuffer!.normal);
+        this.#gl.uniform1i(this.#lightingProgram.uniforms.u_normalTexture, 1);
+
+        this.#gl.activeTexture(this.#gl.TEXTURE2);
+        this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#gBuffer!.specular);
+        this.#gl.uniform1i(this.#lightingProgram.uniforms.u_specularTexture, 2);
+
+        //for (let light of this.#pendingLights) {
+        // TODO bind the lighting framebuffer & render queued lights...
+        //}
+      });
+
+      if (!previousBlend) {
+        this.#gl.disable(this.#gl.BLEND);
+      }
+      this.#gl.blendFunc(previousBlendSrcFunc, previousBlendDestFunc);
+    });
+
     this.#pendingLights = [];
   }
 

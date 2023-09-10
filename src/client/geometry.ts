@@ -2,11 +2,11 @@ import {
   Geometry,
   AttributeType,
   ShaderProgram,
-  ShaderParameters,
+  ShaderSource,
   InstanceBuffer,
 } from "./gl-utils";
 
-type QuadAttributes<TVertParams extends ShaderParameters> = {
+type QuadAttributes<TVertParams extends ShaderSource> = {
   position: AttributeType<TVertParams, "vec2">;
 };
 
@@ -30,7 +30,7 @@ export class Quad {
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
   }
 
-  #getAttributes<TVertParams extends ShaderParameters>(
+  #getAttributes<TVertParams extends ShaderSource>(
     program: ShaderProgram<TVertParams, any>,
     attributes: QuadAttributes<TVertParams>
   ): {
@@ -43,7 +43,7 @@ export class Quad {
     return { ...ptrs, hash: `${ptrs.position}` };
   }
 
-  bind<TVertParams extends ShaderParameters>(
+  bind<TVertParams extends ShaderSource>(
     program: ShaderProgram<TVertParams, any>,
     attributes: QuadAttributes<TVertParams>,
     scope: (geometry: Geometry) => void
@@ -67,7 +67,7 @@ export class Quad {
     this.#gl.bindVertexArray(null);
   }
 
-  bindInstances<TVertParams extends ShaderParameters, TInstance>(
+  bindInstances<TVertParams extends ShaderSource, TInstance>(
     program: ShaderProgram<TVertParams, any>,
     attributes: QuadAttributes<TVertParams>,
     instances: InstanceBuffer<TVertParams, TInstance>,

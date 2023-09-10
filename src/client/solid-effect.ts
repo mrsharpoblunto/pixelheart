@@ -1,5 +1,5 @@
 import { mat3, ReadonlyVec4 } from "gl-matrix";
-import { ShaderProgram, createProgram, InstanceBuffer } from "./gl-utils";
+import { ShaderProgram, InstanceBuffer } from "./gl-utils";
 import { Quad } from "./geometry";
 
 import vertexShader from "./shaders/solid.vert";
@@ -17,7 +17,7 @@ export class SolidEffect {
 
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
-    this.#program = createProgram(this.#gl, vertexShader, fragmentShader)!;
+    this.#program = new ShaderProgram(this.#gl, vertexShader, fragmentShader);
     this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#program, {
       a_mvp: (instance) => instance.mvp,
       a_color: (instance) => instance.color,
@@ -32,9 +32,10 @@ export class SolidEffect {
   }
 
   use(scope: (s: SolidEffect) => void) {
-    this.#gl.useProgram(this.#program.program);
-    scope(this);
+    this.#program.use(() => {
+      scope(this);
     this.#end();
+    });
   }
 
   draw(bounds: ReadonlyVec4, color: ReadonlyVec4): SolidEffect {
