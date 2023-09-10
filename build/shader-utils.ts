@@ -68,7 +68,7 @@ export async function processShader(
       const minifier = new GlslMinify({
         preserveUniforms: true,
         output: "object",
-        nomangle: NO_MANGLE,
+        nomangle: NO_MANGLE.concat([...outAttributes.keys()]),
       });
       src = (await minifier.execute(src)).sourceCode;
     }
