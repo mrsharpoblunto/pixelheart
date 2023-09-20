@@ -96,7 +96,7 @@ export async function onStart(
     spriteEffect: new DeferredSpriteEffect(ctx.gl),
     simpleSpriteEffect: new SimpleSpriteEffect(ctx.gl),
     solidEffect: new SolidEffect(ctx.gl),
-    map: await loadCPUReadableTextureFromUrl(ctx, "/images/walkmap.png"),
+    map: await loadCPUReadableTextureFromUrl(ctx, "./images/walkmap.png"),
     mapBuffer: new ImageData(
       ctx.screen.width / coords.TILE_SIZE + 2,
       ctx.screen.height / coords.TILE_SIZE + 2
