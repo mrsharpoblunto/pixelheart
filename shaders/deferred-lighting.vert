@@ -2,16 +2,26 @@
 
 in vec2 a_position;
 
-in mat3 a_uv;
 in mat3 a_mvp;
-// TODO lighting instance attributes...
+in vec3 a_ambient;
+in vec3 a_diffuse;
+in vec3 a_direction;
+in float a_radius;
 
+out vec3 v_ambient;
+out vec3 v_diffuse;
+out vec3 v_direction;
+out float v_radius;
 out vec2 v_texCoord;
 
 void main() {
-  vec3 uvPosition = a_uv * vec3(a_position, 1.0);
-  vec3 clipPosition = a_mvp * vec3(a_position, 1.0);
+  v_texCoord = a_position;
+  v_ambient = a_ambient;
+  v_diffuse = a_diffuse;
+  v_direction = a_direction;
+  v_radius = a_radius;
 
-  v_texCoord = uvPosition.xy;
+
+  vec3 clipPosition = a_mvp * vec3(a_position, 1.0);
   gl_Position = vec4(clipPosition.xy, 0.0, 1.0);
 }

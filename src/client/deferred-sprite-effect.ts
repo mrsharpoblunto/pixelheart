@@ -1,4 +1,4 @@
-import { ReadonlyVec4, mat3, vec3, vec4 } from "gl-matrix";
+import { ReadonlyVec4, mat3, vec2, vec3 } from "gl-matrix";
 import { TEXTURE, GPUTexture, loadTextureFromUrl } from "./images";
 import { GameContext } from "./game-runner";
 import {
@@ -7,7 +7,7 @@ import {
   SpriteAnimator,
   SpriteSheetConfig,
 } from "./sprite-common";
-import { Quad } from "./geometry";
+import { SpriteViewProjection, Quad } from "./geometry";
 import {
   ShaderProgram,
   createTexture,
@@ -17,7 +17,9 @@ import {
 import vertexShader from "./shaders/deferred-sprite.vert";
 import fragmentShader from "./shaders/deferred-sprite.frag";
 import lightingVertexShader from "./shaders/deferred-lighting.vert";
-import lightingFragmentShader from "./shaders/deferred-lighting.frag";
+import lightingFragmentShader, {
+  Constants as LightingConstants,
+} from "./shaders/deferred-lighting.frag";
 
 export type DeferredSpriteTextures = {
   diffuseTexture: GPUTexture;
@@ -26,6 +28,11 @@ export type DeferredSpriteTextures = {
 };
 export type DeferredSpriteSheet = SpriteSheet<DeferredSpriteTextures>;
 export class DeferredSpriteAnimator extends SpriteAnimator<DeferredSpriteTextures> {}
+
+const BLACK: vec3 = vec3.fromValues(0, 0, 0);
+const FULL_MVP = mat3.create();
+mat3.scale(FULL_MVP, FULL_MVP, [1, -1]);
+mat3.mul(FULL_MVP, FULL_MVP, SpriteViewProjection);
 
 export async function deferredTextureLoader(
   ctx: GameContext,
@@ -44,19 +51,18 @@ export async function deferredTextureLoader(
   };
 }
 
-export type DeferredLight =
-  | {
-      type: "direction";
-      color: vec3;
-      ambient: vec4;
-      direction: vec3;
-    }
-  | {
-      type: "point";
-      color: vec3;
-      position?: vec3;
-      radius?: number;
-    };
+export type ScreenSpaceDirectionalLight = {
+  diffuse: vec3;
+  ambient: vec3;
+  direction: vec3;
+};
+
+export type ScreenSpacePointLight = {
+  diffuse: vec3;
+  position: vec2;
+  height: number;
+  radius: number;
+};
 
 type SpriteInstance = {
   mvp: mat3;
@@ -64,9 +70,10 @@ type SpriteInstance = {
 };
 
 type LightInstance = {
+  mvp: mat3;
   ambient: vec3;
-  lightColor: vec3;
-  pointOrDirection: vec3;
+  diffuse: vec3;
+  direction: vec3;
   radius: number;
 };
 
@@ -82,9 +89,11 @@ export class DeferredSpriteEffect
     typeof lightingVertexShader,
     typeof lightingFragmentShader
   >;
+  #lightBuffer: InstanceBuffer<typeof lightingVertexShader, LightInstance>;
+  #pendingDirectionalLights: Array<LightInstance>;
+  #pendingPointLights: Array<LightInstance>;
+
   #texture: DeferredSpriteTextures | null;
-  #vp: mat3;
-  #pendingLights: Array<DeferredLight>;
   #quad: Quad;
 
   #gBuffer: {
@@ -101,26 +110,30 @@ export class DeferredSpriteEffect
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
     this.#gBufferProgram = new ShaderProgram(gl, vertexShader, fragmentShader);
+    this.#instanceBuffer = new InstanceBuffer(gl, this.#gBufferProgram, {
+      a_mvp: (instance) => instance.mvp,
+      a_uv: (instance) => instance.uv,
+    });
+    this.#pending = [];
     this.#lightingProgram = new ShaderProgram(
       gl,
       lightingVertexShader,
       lightingFragmentShader
     );
-    this.#instanceBuffer = new InstanceBuffer(gl, this.#gBufferProgram, {
+    this.#lightBuffer = new InstanceBuffer(gl, this.#lightingProgram, {
       a_mvp: (instance) => instance.mvp,
-      a_uv: (instance) => instance.uv,
+      a_ambient: (instance) => instance.ambient,
+      a_diffuse: (instance) => instance.diffuse,
+      a_direction: (instance) => instance.direction,
+      a_radius: (instance) => instance.radius,
     });
+    this.#pendingDirectionalLights = [];
+    this.#pendingPointLights = [];
+
     this.#quad = new Quad(gl);
-    this.#pending = [];
-    this.#pendingLights = [];
     this.#texture = null;
     this.#gBuffer = null;
     this.#gBufferWidth = this.#gBufferHeight = 0;
-
-    this.#vp = mat3.create();
-    mat3.scale(this.#vp, this.#vp, [1.0, -1.0]);
-    mat3.translate(this.#vp, this.#vp, [-1.0, -1.0]);
-    mat3.scale(this.#vp, this.#vp, [2.0, 2.0]);
   }
 
   use(
@@ -210,22 +223,37 @@ export class DeferredSpriteEffect
       this.#gl.enable(this.#gl.BLEND);
       this.#gl.blendFunc(this.#gl.ONE, this.#gl.ONE);
 
-      this.#lightingProgram.use(() => {
-        this.#gl.activeTexture(this.#gl.TEXTURE0);
-        this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#gBuffer!.albedo);
-        this.#gl.uniform1i(this.#lightingProgram.uniforms.u_albedoTexture, 0);
+      this.#lightingProgram.use((p) => {
+        p.setUniforms({
+          u_albedoTexture: this.#gBuffer!.albedo,
+          u_normalTexture: this.#gBuffer!.normal,
+          u_specularTexture: this.#gBuffer!.specular,
+        });
 
-        this.#gl.activeTexture(this.#gl.TEXTURE1);
-        this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#gBuffer!.normal);
-        this.#gl.uniform1i(this.#lightingProgram.uniforms.u_normalTexture, 1);
-
-        this.#gl.activeTexture(this.#gl.TEXTURE2);
-        this.#gl.bindTexture(this.#gl.TEXTURE_2D, this.#gBuffer!.specular);
-        this.#gl.uniform1i(this.#lightingProgram.uniforms.u_specularTexture, 2);
-
-        //for (let light of this.#pendingLights) {
-        // TODO bind the lighting framebuffer & render queued lights...
-        //}
+        if (this.#pendingDirectionalLights.length) {
+          p.setUniforms({
+            u_lightingMode: LightingConstants.LIGHTING_MODE_DIRECTIONAL,
+          });
+          this.#quad.bindInstances(
+            p,
+            { position: "a_position" },
+            this.#lightBuffer.load(this.#pendingDirectionalLights),
+            (q) => q.draw()
+          );
+          this.#pendingDirectionalLights.length = 0;
+        }
+        if (this.#pendingPointLights.length) {
+          p.setUniforms({
+            u_lightingMode: LightingConstants.LIGHTING_MODE_POINT,
+          });
+          this.#quad.bindInstances(
+            p,
+            { position: "a_position" },
+            this.#lightBuffer.load(this.#pendingPointLights),
+            (q) => q.draw()
+          );
+          this.#pendingPointLights.length = 0;
+        }
       });
 
       if (!previousBlend) {
@@ -233,22 +261,55 @@ export class DeferredSpriteEffect
       }
       this.#gl.blendFunc(previousBlendSrcFunc, previousBlendDestFunc);
     });
-
-    this.#pendingLights = [];
   }
 
-  addLight(light: DeferredLight): DeferredSpriteEffect {
-    this.#pendingLights.push(light);
+  addDirectionalLight(
+    light: ScreenSpaceDirectionalLight
+  ): DeferredSpriteEffect {
+    this.#pendingDirectionalLights.push({
+      mvp: FULL_MVP,
+      ambient: light.ambient,
+      diffuse: light.diffuse,
+      direction: light.direction,
+      radius: 0,
+    });
+    return this;
+  }
+
+  addPointLight(light: ScreenSpacePointLight): DeferredSpriteEffect {
+    if (light.height >= light.radius) {
+      // doesn't intersect the ground plane, so disregard the light
+      return this;
+    }
+
+    const intersectingRadius = Math.sqrt(
+      light.radius * light.radius - light.height * light.height
+    );
+
+    const mvp = mat3.create();
+    mat3.translate(mvp, mvp, [
+      light.position[0] - intersectingRadius,
+      light.position[1] - intersectingRadius,
+    ]);
+    mat3.scale(mvp, mvp, [intersectingRadius * 2, intersectingRadius * 2]);
+    mat3.multiply(mvp, SpriteViewProjection, mvp);
+
+    this.#pendingPointLights.push({
+      mvp,
+      ambient: BLACK,
+      diffuse: light.diffuse,
+      direction: vec3.fromValues(
+        light.position[0],
+        light.height,
+        light.position[1]
+      ),
+      radius: light.radius,
+    });
     return this;
   }
 
   getLightingTexture(): GPUTexture | undefined {
-    return {
-      [TEXTURE]: this.#gBuffer!.albedo,
-      width: this.#gBufferWidth,
-      height: this.#gBufferHeight,
-    };
-    // return this.#gBuffer?.lighting;
+    return this.#gBuffer?.lighting;
   }
 
   setTextures(param: DeferredSpriteTextures): DeferredSpriteEffect {
@@ -259,33 +320,27 @@ export class DeferredSpriteEffect
     }
     this.#texture = param;
 
-    this.#gl.activeTexture(this.#gl.TEXTURE0);
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, param.diffuseTexture[TEXTURE]);
-    this.#gl.uniform1i(this.#gBufferProgram.uniforms.u_diffuseTexture, 0);
-
-    this.#gl.activeTexture(this.#gl.TEXTURE1);
-    this.#gl.bindTexture(
-      this.#gl.TEXTURE_2D,
-      param.normalSpecularTexture[TEXTURE]
-    );
-    this.#gl.uniform1i(
-      this.#gBufferProgram.uniforms.u_normalSpecularTexture,
-      1
-    );
-
-    this.#gl.activeTexture(this.#gl.TEXTURE2);
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, param.emissiveTexture[TEXTURE]);
-    this.#gl.uniform1i(this.#gBufferProgram.uniforms.u_emissiveTexture, 2);
+    this.#gBufferProgram.setUniforms({
+      u_diffuseTexture: param.diffuseTexture[TEXTURE],
+      u_normalSpecularTexture: param.normalSpecularTexture[TEXTURE],
+      u_emissiveTexture: param.emissiveTexture[TEXTURE],
+    });
 
     return this;
   }
 
-  draw(rect: ReadonlyVec4, textureCoords: ReadonlyVec4): DeferredSpriteEffect {
+  draw(
+    screenSpaceRect: ReadonlyVec4,
+    textureCoords: ReadonlyVec4
+  ): DeferredSpriteEffect {
     if (this.#texture) {
       const mvp = mat3.create();
-      mat3.translate(mvp, mvp, [rect[3], rect[0]]);
-      mat3.scale(mvp, mvp, [rect[1] - rect[3], rect[2] - rect[0]]);
-      mat3.multiply(mvp, this.#vp, mvp);
+      mat3.translate(mvp, mvp, [screenSpaceRect[3], screenSpaceRect[0]]);
+      mat3.scale(mvp, mvp, [
+        screenSpaceRect[1] - screenSpaceRect[3],
+        screenSpaceRect[2] - screenSpaceRect[0],
+      ]);
+      mat3.multiply(mvp, SpriteViewProjection, mvp);
 
       const uv = mat3.create();
       mat3.translate(uv, uv, [
@@ -316,7 +371,7 @@ export class DeferredSpriteEffect
       (q) => q.draw()
     );
 
-    this.#pending = [];
+    this.#pending.length = 0;
     this.#texture = null;
   }
 }

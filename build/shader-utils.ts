@@ -10,8 +10,10 @@ export function isShader(file: string) {
   return path.extname(file) === ".vert" || path.extname(file) === ".frag";
 }
 
-const PARAM_REGEX =
+const INOUT_PARAM_REGEX =
   /^\s*(layout\(\s*location\s*=\s*([0-9]*)\)\s*)?(out|in|uniform)\s+(.*?)\s+(.*?);/;
+const DEFINE_REGEX = /^#\s*define\s+(\w+)\s+([0-9]+)/;
+const CONST_REGEX = /^const\s+\w+\s+(\w+)\s*=\s*([0-9]+);/;
 const NO_MANGLE = ["texture"];
 
 export async function processShader(
@@ -36,9 +38,10 @@ export async function processShader(
       { type: string; location?: number }
     >();
     const uniforms = new Map<string, string>();
+    const constants = new Map<string, number>();
 
     for (const line of lines) {
-      const match = PARAM_REGEX.exec(line);
+      let match = INOUT_PARAM_REGEX.exec(line);
       if (match) {
         const location = !match[2] ? undefined : parseInt(match[2]);
         switch (match[3]) {
@@ -62,6 +65,10 @@ export async function processShader(
             break;
         }
       }
+      match = DEFINE_REGEX.exec(line) || CONST_REGEX.exec(line);
+      if (match) {
+        constants.set(match[1], Number(match[2]));
+      }
     }
 
     if (production) {
@@ -78,7 +85,9 @@ type InAttributeTypes = {
 ${[...inAttributes]
   .map(
     ([name, { type, location }]) =>
-      `   ${name}: {type: "${type}"${location!==undefined ? `,location:${location}` : ""}}`
+      `   ${name}: {type: "${type}"${
+        location !== undefined ? `,location:${location}` : ""
+      }}`
   )
   .join(";\n")}
 }
@@ -87,13 +96,19 @@ type OutAttributeTypes = {
 ${[...outAttributes]
   .map(
     ([name, { type, location }]) =>
-      `   ${name}: {type: "${type}"${location!==undefined ? `,location:${location}` : ""}}`
+      `   ${name}: {type: "${type}"${
+        location !== undefined ? `,location:${location}` : ""
+      }}`
   )
   .join(";\n")}
 }
 
 type UniformTypes = {
 ${[...uniforms].map(([name, type]) => `   ${name}: "${type}"`).join(";\n")}
+}
+
+export const enum Constants {
+${[...constants].map(([name, value]) => `   ${name} = ${value}`).join(",\n")}
 }
 
 type ShaderSource = {
@@ -111,7 +126,9 @@ const value: ShaderSource = {
 ${[...inAttributes]
   .map(
     ([name, { type, location }]) =>
-      `   ${name}: {type: "${type}"${location!==undefined ? `,location:${location}` : ""}}`
+      `   ${name}: {type: "${type}"${
+        location !== undefined ? `,location:${location}` : ""
+      }}`
   )
   .join(",\n")}
   },
@@ -119,7 +136,9 @@ ${[...inAttributes]
 ${[...outAttributes]
   .map(
     ([name, { type, location }]) =>
-      `   ${name}: {type: "${type}"${location!==undefined ? `,location:${location}` : ""}}`
+      `   ${name}: {type: "${type}"${
+        location !== undefined ? `,location:${location}` : ""
+      }}`
   )
   .join(",\n")}
   },

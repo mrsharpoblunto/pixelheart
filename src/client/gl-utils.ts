@@ -17,6 +17,11 @@ type TypeMap = {
   mat4: ReadonlyMat4;
 };
 
+type UniformTypeMap = TypeMap & {
+  int: number;
+  sampler2D: WebGLTexture;
+};
+
 export type AttributeType<T extends ShaderSource, K> = {
   [P in keyof T["inAttributes"]]: T["inAttributes"][P]["type"] extends K
     ? P
@@ -32,7 +37,7 @@ export interface ShaderSource {
   name: string;
   inAttributes: { [name: string]: { type: keyof TypeMap; layout?: number } };
   outAttributes: { [name: string]: { type: keyof TypeMap; layout?: number } };
-  uniforms: { [name: string]: string };
+  uniforms: { [name: string]: keyof UniformTypeMap };
 }
 
 export class ShaderProgram<
@@ -51,7 +56,7 @@ export class ShaderProgram<
   >;
   uniforms: Record<
     keyof (TVert["uniforms"] & TFrag["uniforms"]),
-    WebGLUniformLocation
+    { location: WebGLUniformLocation; type: keyof UniformTypeMap }
   >;
 
   constructor(
@@ -69,7 +74,10 @@ export class ShaderProgram<
       keyof TVert["outAttributes"],
       { location: number; type: keyof TypeMap; layout?: number }
     >;
-    this.uniforms = {} as Record<keyof TVert["uniforms"], WebGLUniformLocation>;
+    this.uniforms = {} as Record<
+      keyof TVert["uniforms"],
+      { location: WebGLUniformLocation; type: keyof UniformTypeMap }
+    >;
 
     const vertexShader = gl.createShader(gl.VERTEX_SHADER)!;
     gl.shaderSource(vertexShader, vertexShaderSource.src);
@@ -167,7 +175,11 @@ export class ShaderProgram<
             info.name as unknown as
               | keyof TVert["uniforms"]
               | keyof TFrag["uniforms"]
-          ] = gl.getUniformLocation(this.#program, info.name)!;
+          ] = {
+            location: gl.getUniformLocation(this.#program, info.name)!,
+            type: (vertexShaderSource.uniforms[key] ||
+              fragmentShaderSource.uniforms[key]) as keyof UniformTypeMap,
+          };
         }
       }
     }
@@ -177,6 +189,43 @@ export class ShaderProgram<
     this.#gl.useProgram(this.#program);
     scope(this);
     this.#gl.useProgram(null);
+  }
+
+  setUniforms(
+    uniforms: Partial<{
+      [K in keyof (TVert["uniforms"] &
+        TFrag["uniforms"])]: UniformTypeMap[(TVert["uniforms"] &
+        TFrag["uniforms"])[K]];
+    }>
+  ): ShaderProgram<TVert, TFrag> {
+    let index = 0;
+    for (let u in uniforms) {
+      const value = uniforms[u] as any;
+      const metadata = this.uniforms[u as keyof typeof uniforms];
+      if (metadata.type === "sampler2D") {
+        // @ts-ignore
+        this.#gl.activeTexture(this.#gl[`TEXTURE${index}`]);
+        this.#gl.bindTexture(this.#gl.TEXTURE_2D, value as WebGLTexture);
+        this.#gl.uniform1i(metadata.location, index++);
+      } else if (metadata.type === "float") {
+        this.#gl.uniform1f(metadata.location, value);
+      } else if (metadata.type === "vec2") {
+        this.#gl.uniform2fv(metadata.location, value);
+      } else if (metadata.type === "vec3") {
+        this.#gl.uniform3fv(metadata.location, value);
+      } else if (metadata.type === "vec4") {
+        this.#gl.uniform4fv(metadata.location, value);
+      } else if (metadata.type === "mat2") {
+        this.#gl.uniformMatrix2fv(metadata.location, false, value);
+      } else if (metadata.type === "mat3") {
+        this.#gl.uniformMatrix3fv(metadata.location, false, value);
+      } else if (metadata.type === "mat4") {
+        this.#gl.uniformMatrix4fv(metadata.location, false, value);
+      } else if (metadata.type === "int") {
+        this.#gl.uniform1i(metadata.location, value);
+      }
+    }
+    return this;
   }
 }
 

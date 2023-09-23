@@ -433,11 +433,10 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
         )
       );
 
-      s.addLight({
-        type: "direction",
-        ambient: vec4.fromValues(0.1, 0.1, 0.1, 1.0),
+      s.addDirectionalLight({
+        ambient: vec3.fromValues(0.1, 0.1, 0.1),
         direction: vec3.fromValues(0.5, 0.5, 0.5),
-        color: vec3.fromValues(1.0, 1.0, 1.0),
+        diffuse: vec3.fromValues(1.0, 1.0, 1.0),
       });
     }
   );

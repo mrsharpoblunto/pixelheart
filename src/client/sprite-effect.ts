@@ -8,7 +8,7 @@ import {
   SpriteSheetConfig,
   SpriteEffect,
 } from "./sprite-common";
-import { Quad } from "./geometry";
+import { SpriteViewProjection, Quad } from "./geometry";
 import { ShaderProgram, InstanceBuffer } from "./gl-utils";
 import vertexShader from "./shaders/sprite.vert";
 import fragmentShader from "./shaders/sprite.frag";
@@ -35,7 +35,6 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   #instanceBuffer: InstanceBuffer<typeof vertexShader, SpriteInstance>;
   #quad: Quad;
   #texture: GPUTexture | null;
-  #vp: mat3;
   #pending: Array<SpriteInstance>;
 
   constructor(gl: WebGL2RenderingContext) {
@@ -48,17 +47,12 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
     this.#quad = new Quad(this.#gl);
     this.#pending = [];
     this.#texture = null;
-
-    this.#vp = mat3.create();
-    mat3.scale(this.#vp, this.#vp, [1.0, -1.0]);
-    mat3.translate(this.#vp, this.#vp, [-1.0, -1.0]);
-    mat3.scale(this.#vp, this.#vp, [2.0, 2.0]);
   }
 
   use(scope: (s: SimpleSpriteEffect) => void) {
     this.#program.use(() => {
-      scope(this)
-    this.#end();
+      scope(this);
+      this.#end();
     });
   }
 
@@ -70,10 +64,9 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
     }
 
     this.#texture = param;
-    // Bind the texture to texture unit 0
-    this.#gl.activeTexture(this.#gl.TEXTURE0);
-    this.#gl.bindTexture(this.#gl.TEXTURE_2D, param[TEXTURE]);
-    this.#gl.uniform1i(this.#program.uniforms.u_texture, 0);
+    this.#program.setUniforms({
+      u_texture: param[TEXTURE],
+    });
     return this;
   }
 
@@ -82,7 +75,7 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
       const mvp = mat3.create();
       mat3.translate(mvp, mvp, [rect[3], rect[0]]);
       mat3.scale(mvp, mvp, [rect[1] - rect[3], rect[2] - rect[0]]);
-      mat3.multiply(mvp, this.#vp, mvp);
+      mat3.multiply(mvp, SpriteViewProjection, mvp);
 
       const uv = mat3.create();
       mat3.translate(uv, uv, [
