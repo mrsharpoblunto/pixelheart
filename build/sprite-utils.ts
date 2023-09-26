@@ -3,8 +3,15 @@ import path from "path";
 import sharp from "sharp";
 import { OverlayOptions } from "sharp";
 import Aseprite from "ase-parser";
-import { mat3, vec4, vec3 } from "gl-matrix";
+import { vec4, vec3 } from "gl-matrix";
 import chalk from "chalk";
+import {
+  SpriteConfig,
+  ToTangentSpace,
+  Tangent,
+  Normal,
+  Binormal,
+} from "../src/client/sprite-common";
 
 export const spritePath = path.join(__dirname, "../sprites");
 export const wwwPath = path.join(__dirname, "../www/sprites");
@@ -16,25 +23,9 @@ const HEIGHT_LAYER = "height";
 const SPECULAR_LAYER = "specular";
 const EMISSIVE_LAYER = "emissive";
 
-const TANGENT = vec3.set(vec3.create(), 0, 0, 1);
-const BINORMAL = vec3.set(vec3.create(), -1, 0, 0);
-const NORMAL = vec3.set(vec3.create(), 0, -1, 0);
-const TBN = mat3.set(
-  mat3.create(),
-  TANGENT[0],
-  BINORMAL[0],
-  NORMAL[0],
-  TANGENT[1],
-  BINORMAL[1],
-  NORMAL[1],
-  TANGENT[2],
-  BINORMAL[2],
-  NORMAL[2]
-);
-
 const DEFAULT_TANGENT_NORMAL = vec3.normalize(
   vec3.create(),
-  vec3.transformMat3(vec3.create(), NORMAL, TBN)
+  vec3.transformMat3(vec3.create(), Normal, ToTangentSpace)
 );
 const DEFAULT_NORMAL_BG = vec4.fromValues(
   DEFAULT_TANGENT_NORMAL[0] * 128 + 127,
@@ -44,27 +35,17 @@ const DEFAULT_NORMAL_BG = vec4.fromValues(
 );
 const NORMAL_ROUGHNESS = 0.001;
 
-interface Sprite {
-  width: number;
-  height: number;
-  frames: Array<{
-    top: number;
-    left: number;
-    bottom: number;
-    right: number;
-  }>;
-}
-
-interface SpriteSheet {
+interface PendingSpriteSheet {
   name: string;
   width: number;
   height: number;
-  sprites: Map<string, Sprite>;
+  sprites: Map<string, SpriteConfig>;
 }
 
 interface SpriteCompositeQueue {
   diffuse: Array<OverlayOptions>;
-  normalSpecular: Array<OverlayOptions>;
+  normal: Array<OverlayOptions>;
+  specular: Array<OverlayOptions>;
   emissive: Array<OverlayOptions>;
 }
 
@@ -87,7 +68,7 @@ export async function processSpriteSheet(
   log: (message: string) => void,
   onError: (error: string) => void
 ): Promise<void> {
-  const sheet: SpriteSheet = {
+  const sheet: PendingSpriteSheet = {
     name: spriteSheetName,
     width: 0,
     height: 0,
@@ -99,7 +80,8 @@ export async function processSpriteSheet(
   const sprites = await fs.readdir(path.join(spritePath, sheet.name));
   const compositeQueue = {
     diffuse: [],
-    normalSpecular: [],
+    normal: [],
+    specular: [],
     emissive: [],
   };
   for (let sprite of sprites) {
@@ -138,7 +120,8 @@ export async function processSpriteSheet(
   },
   urls: {
     diffuse: "./sprites/${sheet.name}-diffuse.png",
-    normalSpecular: "./sprites/${sheet.name}-normal.png",
+    normal: "./sprites/${sheet.name}-normal.png",
+    specular: "./sprites/${sheet.name}-specular.png",
     emissive: "./sprites/${sheet.name}-emissive.png",
   }
 };
@@ -154,18 +137,30 @@ export default Sheet;`
           b: 0,
           alpha: 0,
         }),
-        writeSpriteSheetLayer(sheet, "-normal", compositeQueue.normalSpecular, {
-          r: DEFAULT_NORMAL_BG[0],
-          g: DEFAULT_NORMAL_BG[1],
-          b: DEFAULT_NORMAL_BG[2],
-          alpha: 0,
-        }),
         writeSpriteSheetLayer(sheet, "-emissive", compositeQueue.emissive, {
           r: 0,
           g: 0,
           b: 0,
           alpha: 0,
         }),
+        writeSpriteSheetLayer(sheet, "-normal", compositeQueue.normal, {
+          r: DEFAULT_NORMAL_BG[0],
+          g: DEFAULT_NORMAL_BG[1],
+          b: DEFAULT_NORMAL_BG[2],
+          alpha: 255,
+        }),
+        writeSpriteSheetLayer(
+          sheet,
+          "-specular",
+          compositeQueue.specular,
+          {
+            r: 0,
+            g: 0,
+            b: 0,
+            alpha: 255,
+          },
+          (s) => s.greyscale()
+        ),
       ]);
     } catch (err: any) {
       onError(`Failed to write spritesheet: ${err.toString()}`);
@@ -176,27 +171,30 @@ export default Sheet;`
 }
 
 async function writeSpriteSheetLayer(
-  sheet: SpriteSheet,
+  sheet: PendingSpriteSheet,
   sheetSuffix: string,
   compositeQueue: Array<OverlayOptions>,
-  background: { r: number; g: number; b: number; alpha: number }
+  background: { r: number; g: number; b: number; alpha: number },
+  additionalProcessing?: (s: sharp.Sharp) => sharp.Sharp
 ): Promise<void> {
-  await sharp({
-    create: {
-      width: sheet.width,
-      height: sheet.height,
-      channels: 4,
-      background,
-    },
-  })
-    .composite(compositeQueue)
+  await (additionalProcessing || ((s) => s))(
+    sharp({
+      create: {
+        width: sheet.width,
+        height: sheet.height,
+        channels: 4,
+        background,
+      },
+    }).composite(compositeQueue)
+  )
+    .ensureAlpha()
     .png()
     .toFile(path.join(wwwPath, `${sheet.name}${sheetSuffix}.png`));
 }
 
 async function processPngSprite(
   sprite: string,
-  sheet: SpriteSheet,
+  sheet: PendingSpriteSheet,
   compositeQueue: SpriteCompositeQueue,
   log: (message: string) => void,
   onError: (error: string) => void
@@ -246,7 +244,7 @@ async function processPngSprite(
       },
     });
 
-    const outputSprite: Sprite = {
+    const outputSprite: SpriteConfig = {
       width,
       height,
       frames: [],
@@ -270,7 +268,7 @@ async function processPngSprite(
 
 async function processAseSprite(
   sprite: string,
-  sheet: SpriteSheet,
+  sheet: PendingSpriteSheet,
   compositeQueue: SpriteCompositeQueue,
   log: (message: string) => void,
   onError: (error: string) => void
@@ -289,7 +287,7 @@ async function processAseSprite(
       )} ${width}x${height} ${t.to - t.from + 1} frame(s)...`
     );
 
-    const outputSprite: Sprite = {
+    const outputSprite: SpriteConfig = {
       width,
       height,
       frames: frameSlice.map((_f, i) => ({
@@ -385,7 +383,18 @@ async function processAseSprite(
             background: { r: 0, g: 0, b: 0, alpha: 0 },
           },
         });
-      const specularBuffer = await specularLayer.extractChannel(3).toBuffer();
+
+      compositeQueue.specular.push({
+        input: await specularLayer.raw().toBuffer(),
+        top: sheet.height,
+        left: width * i,
+        blend: "over",
+        raw: {
+          width,
+          height,
+          channels: 4,
+        },
+      });
 
       normalLayer =
         normalLayer ||
@@ -394,24 +403,17 @@ async function processAseSprite(
             width,
             height,
             channels: 4,
-            background: { r: 0, g: 0, b: 255, alpha: 255 },
+            background: {
+              r: DEFAULT_NORMAL_BG[0],
+              g: DEFAULT_NORMAL_BG[1],
+              b: DEFAULT_NORMAL_BG[2],
+              alpha: 255,
+            },
           },
         });
-      const normalBuffer = await normalLayer.removeAlpha().toBuffer();
 
-      compositeQueue.normalSpecular.push({
-        // take the specular channel and merge it with the normal RGB
-        input: await sharp(normalBuffer, {
-          raw: { width, height, channels: 3 },
-        })
-          .joinChannel(specularBuffer, {
-            raw: {
-              width,
-              height,
-              channels: 1,
-            },
-          })
-          .toBuffer(),
+      compositeQueue.normal.push({
+        input: await normalLayer.raw().toBuffer(),
         top: sheet.height,
         left: width * i,
         blend: "over",
@@ -475,40 +477,38 @@ function toTangentNormal(): PixelProcessor {
     // [ 1.0  0.0  -1.0 ]
     const gx = 2 * (h00 - h20 + 2.0 * h01 - 2.0 * h21 + h02 - h22);
 
-    // The Sobel operator Z kernel is:
+    // The Sobel operator Y kernel is:
     // [  1.0    2.0    1.0 ]
     // [  0.0    0.0    0.0 ]
     // [ -1.0   -2.0   -1.0 ]
-    const gz = 2 * (h00 + 2.0 * h10 + h20 - h02 - 2.0 * h12 - h22);
+    const gy = 2 * (h00 + 2.0 * h10 + h20 - h02 - 2.0 * h12 - h22);
 
-    const scaledZNormal = vec3.scale(
+    const scaledYNormal = vec3.scale(
       vecStorage[0],
-      NORMAL,
-      gz * NORMAL_ROUGHNESS
+      Normal,
+      gy * NORMAL_ROUGHNESS
     );
     const scaledXNormal = vec3.scale(
       vecStorage[1],
-      NORMAL,
+      Normal,
       gx * NORMAL_ROUGHNESS
     );
-    const tangentDisplacement = vec3.subtract(
+    const tangentDisplacement = vec3.normalize(
       vecStorage[2],
-      TANGENT,
-      scaledZNormal
+      vec3.subtract(vecStorage[2], Tangent, scaledYNormal)
     );
-    const binormalDisplacement = vec3.subtract(
+    const binormalDisplacement = vec3.normalize(
       vecStorage[3],
-      BINORMAL,
-      scaledXNormal
+      vec3.subtract(vecStorage[3], Binormal, scaledXNormal)
     );
     const localNormal = vec3.cross(
       vecStorage[4],
-      tangentDisplacement,
-      binormalDisplacement
+      binormalDisplacement,
+      tangentDisplacement
     );
     const tangentNormal = vec3.normalize(
       vecStorage[5],
-      vec3.transformMat3(vec3.create(), localNormal, TBN)
+      vec3.transformMat3(vecStorage[5], localNormal, ToTangentSpace)
     );
 
     return vec4.fromValues(

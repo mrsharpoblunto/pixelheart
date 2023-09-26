@@ -1,5 +1,24 @@
-import { vec4, ReadonlyVec4 } from "gl-matrix";
+import { vec3, mat3, vec4, ReadonlyVec4 } from "gl-matrix";
 import { GameContext } from "./game-runner";
+
+export const Tangent = vec3.set(vec3.create(), 0, 1, 0);
+export const Normal = vec3.set(vec3.create(), 0, 0, 1);
+export const Binormal = vec3.cross(vec3.create(), Tangent, Normal);
+
+export const TBN = mat3.set(
+  mat3.create(),
+  Tangent[0],
+  Binormal[0],
+  Normal[0],
+  Tangent[1],
+  Binormal[1],
+  Normal[1],
+  Tangent[2],
+  Binormal[2],
+  Normal[2]
+);
+
+export const ToTangentSpace = mat3.transpose(mat3.create(), TBN);
 
 export interface SpriteConfig {
   readonly width: number;
@@ -15,7 +34,8 @@ export interface SpriteConfig {
 export interface SpriteSheetConfig {
   urls: {
     diffuse: string;
-    normalSpecular: string;
+    normal: string;
+    specular: string;
     emissive: string;
   };
   sprites: Record<string, SpriteConfig>;

@@ -14,6 +14,7 @@ import {
   InstanceBuffer,
   FrameBuffer,
 } from "./gl-utils";
+import { ToTangentSpace } from "./sprite-common";
 import vertexShader from "./shaders/deferred-sprite.vert";
 import fragmentShader from "./shaders/deferred-sprite.frag";
 import lightingVertexShader from "./shaders/deferred-lighting.vert";
@@ -23,7 +24,8 @@ import lightingFragmentShader, {
 
 export type DeferredSpriteTextures = {
   diffuseTexture: GPUTexture;
-  normalSpecularTexture: GPUTexture;
+  normalTexture: GPUTexture;
+  specularTexture: GPUTexture;
   emissiveTexture: GPUTexture;
 };
 export type DeferredSpriteSheet = SpriteSheet<DeferredSpriteTextures>;
@@ -38,15 +40,17 @@ export async function deferredTextureLoader(
   ctx: GameContext,
   sheet: SpriteSheetConfig
 ): Promise<DeferredSpriteTextures> {
-  const [diffuseTexture, normalSpecularTexture, emissiveTexture] =
+  const [diffuseTexture, normalTexture, specularTexture, emissiveTexture] =
     await Promise.all([
       loadTextureFromUrl(ctx, sheet.urls.diffuse),
-      loadTextureFromUrl(ctx, sheet.urls.normalSpecular),
+      loadTextureFromUrl(ctx, sheet.urls.normal),
+      loadTextureFromUrl(ctx, sheet.urls.specular),
       loadTextureFromUrl(ctx, sheet.urls.emissive),
     ]);
   return {
     diffuseTexture,
-    normalSpecularTexture,
+    normalTexture,
+    specularTexture,
     emissiveTexture,
   };
 }
@@ -228,6 +232,8 @@ export class DeferredSpriteEffect
           u_albedoTexture: this.#gBuffer!.albedo,
           u_normalTexture: this.#gBuffer!.normal,
           u_specularTexture: this.#gBuffer!.specular,
+          u_toTangentSpace: ToTangentSpace,
+          u_viewDirection: vec3.fromValues(0, 0, -1),
         });
 
         if (this.#pendingDirectionalLights.length) {
@@ -322,7 +328,8 @@ export class DeferredSpriteEffect
 
     this.#gBufferProgram.setUniforms({
       u_diffuseTexture: param.diffuseTexture[TEXTURE],
-      u_normalSpecularTexture: param.normalSpecularTexture[TEXTURE],
+      u_normalTexture: param.normalTexture[TEXTURE],
+      u_specularTexture: param.specularTexture[TEXTURE],
       u_emissiveTexture: param.emissiveTexture[TEXTURE],
     });
 

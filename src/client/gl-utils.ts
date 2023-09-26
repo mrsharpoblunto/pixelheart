@@ -183,6 +183,23 @@ export class ShaderProgram<
         }
       }
     }
+    if (process.env.NODE_ENV !== "production") {
+      for (let key in vertexShaderSource.uniforms) {
+        if (!this.uniforms[key]) {
+          console.warn(
+            `Unused uniform ${key} in vertex shader ${vertexShaderSource.name}`
+          );
+        }
+      }
+      for (let key in fragmentShaderSource.uniforms) {
+        if (!this.uniforms[key]) {
+          console.warn(
+            `Unused uniform ${key} in vertex shader ${vertexShaderSource.name}`
+          );
+        }
+      }
+    }
+
   }
 
   use(scope: (program: ShaderProgram<TVert, TFrag>) => void): void {
@@ -202,7 +219,12 @@ export class ShaderProgram<
     for (let u in uniforms) {
       const value = uniforms[u] as any;
       const metadata = this.uniforms[u as keyof typeof uniforms];
-      if (metadata.type === "sampler2D") {
+      if (!metadata) {
+        // if a uniform isn't being used in the shader, it'll get
+        // optimized out, so there won't be any runtime metadata
+        // for it. we can safely ignore it.
+        continue;
+      } else if (metadata.type === "sampler2D") {
         // @ts-ignore
         this.#gl.activeTexture(this.#gl[`TEXTURE${index}`]);
         this.#gl.bindTexture(this.#gl.TEXTURE_2D, value as WebGLTexture);

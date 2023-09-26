@@ -45,7 +45,10 @@ export default function GameRunner<T, U>(
   canvas.setAttribute("height", props.screen.height.toString());
   canvas.style.imageRendering = "pixelated";
 
-  const gl = canvas.getContext("webgl2");
+  const gl = canvas.getContext("webgl2", {
+    alpha: false,
+    premultipliedAlpha: false,
+  });
 
   if (!gl) {
     console.error(

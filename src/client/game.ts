@@ -434,9 +434,13 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
       );
 
       s.addDirectionalLight({
-        ambient: vec3.fromValues(0.1, 0.1, 0.1),
-        direction: vec3.fromValues(0.5, 0.5, 0.5),
-        diffuse: vec3.fromValues(1.0, 1.0, 1.0),
+        ambient: vec3.fromValues(0.4, 0.4, 0.4),
+        direction: vec3.fromValues(
+          (ctx.mouse.position[0] / ctx.screen.width) * -2 + 1,
+          (ctx.mouse.position[1] / ctx.screen.height) * -2 + 1,
+          -1.0
+        ),
+        diffuse: vec3.fromValues(0.6, 0.6, 0.6),
       });
     }
   );
