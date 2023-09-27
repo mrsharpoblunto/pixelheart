@@ -20,6 +20,7 @@ Promise.resolve(
   for (let spriteSheet of spriteSheets) {
     await processSpriteSheet(
       spriteSheet,
+      true,
       (message: string) => {
         console.log(chalk.dim("[Sprites]"), message);
       },

@@ -22,6 +22,7 @@ const DIFFUSE_LAYER = "diffuse";
 const HEIGHT_LAYER = "height";
 const SPECULAR_LAYER = "specular";
 const EMISSIVE_LAYER = "emissive";
+const SHEET_FORMAT = "png";
 
 const DEFAULT_TANGENT_NORMAL = vec3.normalize(
   vec3.create(),
@@ -65,6 +66,7 @@ export function isSpriteSource(p: string): boolean {
 
 export async function processSpriteSheet(
   spriteSheetName: string,
+  production: boolean,
   log: (message: string) => void,
   onError: (error: string) => void
 ): Promise<void> {
@@ -108,50 +110,49 @@ export async function processSpriteSheet(
     }
   }
 
-  await fs.writeFile(
-    path.join(spriteSrcPath, `${sheet.name}.ts`),
-    `const Sheet = { 
-  sprites: {
-` +
-      [...sheet.sprites]
-        .map(([name, sprite]) => `   ${name}: ${JSON.stringify(sprite)},`)
-        .join("\n") +
-      `
-  },
-  urls: {
-    diffuse: "./sprites/${sheet.name}-diffuse.png",
-    normal: "./sprites/${sheet.name}-normal.png",
-    specular: "./sprites/${sheet.name}-specular.png",
-    emissive: "./sprites/${sheet.name}-emissive.png",
-  }
-};
-export default Sheet;`
-  );
-
   if (sheet.sprites.size) {
     try {
-      await Promise.all([
-        writeSpriteSheetLayer(sheet, "-diffuse", compositeQueue.diffuse, {
-          r: 0,
-          g: 0,
-          b: 0,
-          alpha: 0,
-        }),
-        writeSpriteSheetLayer(sheet, "-emissive", compositeQueue.emissive, {
-          r: 0,
-          g: 0,
-          b: 0,
-          alpha: 0,
-        }),
-        writeSpriteSheetLayer(sheet, "-normal", compositeQueue.normal, {
-          r: DEFAULT_NORMAL_BG[0],
-          g: DEFAULT_NORMAL_BG[1],
-          b: DEFAULT_NORMAL_BG[2],
-          alpha: 255,
-        }),
+      const urls = await Promise.all([
         writeSpriteSheetLayer(
+          "diffuse",
           sheet,
-          "-specular",
+          production,
+          compositeQueue.diffuse,
+          {
+            r: 0,
+            g: 0,
+            b: 0,
+            alpha: 0,
+          }
+        ),
+        writeSpriteSheetLayer(
+          "emissive",
+          sheet,
+          production,
+          compositeQueue.emissive,
+          {
+            r: 0,
+            g: 0,
+            b: 0,
+            alpha: 0,
+          }
+        ),
+        writeSpriteSheetLayer(
+          "normal",
+          sheet,
+          production,
+          compositeQueue.normal,
+          {
+            r: DEFAULT_NORMAL_BG[0],
+            g: DEFAULT_NORMAL_BG[1],
+            b: DEFAULT_NORMAL_BG[2],
+            alpha: 255,
+          }
+        ),
+        writeSpriteSheetLayer(
+          "specular",
+          sheet,
+          production,
           compositeQueue.specular,
           {
             r: 0,
@@ -162,6 +163,23 @@ export default Sheet;`
           (s) => s.greyscale()
         ),
       ]);
+
+      await fs.writeFile(
+        path.join(spriteSrcPath, `${sheet.name}.ts`),
+        `const Sheet = { 
+  sprites: {
+` +
+          [...sheet.sprites]
+            .map(([name, sprite]) => `   ${name}: ${JSON.stringify(sprite)},`)
+            .join("\n") +
+          `
+  },
+  urls: {
+    ${urls.map(([name, url]) => `${name}: "${url}",`).join("\n")}
+  }
+};
+export default Sheet;`
+      );
     } catch (err: any) {
       onError(`Failed to write spritesheet: ${err.toString()}`);
     }
@@ -171,12 +189,14 @@ export default Sheet;`
 }
 
 async function writeSpriteSheetLayer(
+  sheetType: string,
   sheet: PendingSpriteSheet,
-  sheetSuffix: string,
+  production: boolean,
   compositeQueue: Array<OverlayOptions>,
   background: { r: number; g: number; b: number; alpha: number },
   additionalProcessing?: (s: sharp.Sharp) => sharp.Sharp
-): Promise<void> {
+): Promise<[string, string]> {
+  const urlPath = `${sheet.name}-${sheetType}.${SHEET_FORMAT}`;
   await (additionalProcessing || ((s) => s))(
     sharp({
       create: {
@@ -188,8 +208,11 @@ async function writeSpriteSheetLayer(
     }).composite(compositeQueue)
   )
     .ensureAlpha()
-    .png()
-    .toFile(path.join(wwwPath, `${sheet.name}${sheetSuffix}.png`));
+    [SHEET_FORMAT]({
+      compressionLevel: production ? 9 : 6,
+    })
+    .toFile(path.join(wwwPath, urlPath));
+  return [sheetType, `./sprites/${urlPath}`];
 }
 
 async function processPngSprite(
@@ -535,9 +558,8 @@ function normalizeCell(
   if (process) {
     const dest = Buffer.from(src);
     const px = (x: number, y: number) => {
-      if (x >= c.w || x < 0 || y >= c.h || y < 0) {
-        return vec4.create();
-      }
+      x = Math.max(0, Math.min(c.w - 1, x));
+      y = Math.max(0, Math.min(c.h - 1, y));
       return vec4.fromValues(
         src[y * c.w * 4 + x * 4],
         src[y * c.w * 4 + x * 4 + 1],

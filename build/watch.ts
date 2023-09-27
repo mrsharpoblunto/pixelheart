@@ -80,8 +80,7 @@ Promise.resolve(
       // or is older than the source
       srcStat.mtimeMs > (await fs.stat(path.join(wwwPath, dest))).mtimeMs
     ) {
-      await processSpriteSheet(src, spriteLogDecorator, spriteErrorDecorator);
-      await processSpriteSheet(src, spriteLogDecorator, spriteErrorDecorator);
+      await processSpriteSheet(src, false, spriteLogDecorator, spriteErrorDecorator);
     }
   }
 
@@ -347,7 +346,7 @@ async function processSpriteSheetEvents(events: watcher.Event[]) {
   }
 
   for (let nom of newOrModified) {
-    await processSpriteSheet(nom, spriteLogDecorator, spriteErrorDecorator);
+    await processSpriteSheet(nom, false, spriteLogDecorator, spriteErrorDecorator);
   }
 }
 
