@@ -199,7 +199,6 @@ export class ShaderProgram<
         }
       }
     }
-
   }
 
   use(scope: (program: ShaderProgram<TVert, TFrag>) => void): void {
@@ -413,11 +412,12 @@ export class InstanceBuffer<TVertParams extends ShaderSource, T> {
 export class FrameBuffer<TFrag extends ShaderSource> {
   #gl: WebGL2RenderingContext;
   #frameBuffer: WebGLFramebuffer;
+  static #activeStack: Array<WebGLFramebuffer> = [];
 
   constructor(
     gl: WebGL2RenderingContext,
     program: ShaderProgram<any, TFrag>,
-    attachments: { [K in keyof TFrag["outAttributes"]]: WebGLTexture }
+    attachments: { [K in keyof TFrag["outAttributes"]]: WebGLTexture | null }
   ) {
     this.#gl = gl;
     this.#frameBuffer = this.#gl.createFramebuffer()!;
@@ -438,14 +438,23 @@ export class FrameBuffer<TFrag extends ShaderSource> {
       // @ts-ignore
       attachmentList.push(this.#gl[`COLOR_ATTACHMENT${location}`]);
     });
-    this.#gl.drawBuffers(attachmentList);
+    this.#gl.drawBuffers(attachmentList.sort((a, b) => a - b));
     this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
   }
 
   bind(scope: () => void): void {
+    FrameBuffer.#activeStack.push(this.#frameBuffer);
     this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, this.#frameBuffer);
     scope();
-    this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
+    FrameBuffer.#activeStack.pop();
+    if (FrameBuffer.#activeStack.length) {
+      this.#gl.bindFramebuffer(
+        this.#gl.FRAMEBUFFER,
+        FrameBuffer.#activeStack[FrameBuffer.#activeStack.length - 1]
+      );
+    } else {
+      this.#gl.bindFramebuffer(this.#gl.FRAMEBUFFER, null);
+    }
   }
 }
 

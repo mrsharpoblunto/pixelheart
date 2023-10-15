@@ -13,6 +13,7 @@ layout(location = 0) out vec4 o_normal;
 layout(location = 1) out vec4 o_albedo;
 layout(location = 2) out vec4 o_specular;
 layout(location = 3) out vec4 o_lighting;
+layout(location = 4) out vec4 o_mask;
 
 
 void main() {
@@ -24,8 +25,9 @@ void main() {
   // gbuffers don't support partial transparency, so we clamp to 0/1
   float transparency = albedo.w < 0.99 ? 0.0 : 1.0;
 
-  o_albedo = vec4(albedo.xyz, transparency);
+  o_albedo = vec4(albedo.xyz * transparency, transparency);
   o_normal = vec4(normal, transparency);
   o_specular = vec4(specular, specular, specular, transparency);
   o_lighting = vec4(emissive, transparency);
+  o_mask = vec4(transparency, transparency, transparency, 1.0);
 }

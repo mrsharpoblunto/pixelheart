@@ -35,6 +35,9 @@ const BLACK: vec3 = vec3.fromValues(0, 0, 0);
 const FULL_MVP = mat3.create();
 mat3.scale(FULL_MVP, FULL_MVP, [1, -1]);
 mat3.mul(FULL_MVP, FULL_MVP, SpriteViewProjection);
+const FULL_UV = mat3.create();
+mat3.translate(FULL_UV, FULL_UV, [0, 0]);
+mat3.scale(FULL_UV, FULL_UV, [1, 1]);
 
 export async function deferredTextureLoader(
   ctx: GameContext,
@@ -63,8 +66,7 @@ export type ScreenSpaceDirectionalLight = {
 
 export type ScreenSpacePointLight = {
   diffuse: vec3;
-  position: vec2;
-  height: number;
+  position: vec3;
   radius: number;
 };
 
@@ -75,6 +77,7 @@ type SpriteInstance = {
 
 type LightInstance = {
   mvp: mat3;
+  uv: mat3;
   ambient: vec3;
   diffuse: vec3;
   direction: vec3;
@@ -105,7 +108,9 @@ export class DeferredSpriteEffect
     albedo: WebGLTexture;
     specular: WebGLTexture;
     lighting: GPUTexture;
-    frameBuffer: FrameBuffer<typeof fragmentShader>;
+    mask: GPUTexture;
+    maskFrameBuffer: FrameBuffer<typeof fragmentShader>;
+    noMaskFrameBuffer: FrameBuffer<typeof fragmentShader>;
     lightingFrameBuffer: FrameBuffer<typeof lightingFragmentShader>;
   } | null;
   #gBufferWidth: number;
@@ -126,6 +131,7 @@ export class DeferredSpriteEffect
     );
     this.#lightBuffer = new InstanceBuffer(gl, this.#lightingProgram, {
       a_mvp: (instance) => instance.mvp,
+      a_uv: (instance) => instance.uv,
       a_ambient: (instance) => instance.ambient,
       a_diffuse: (instance) => instance.diffuse,
       a_direction: (instance) => instance.direction,
@@ -145,7 +151,8 @@ export class DeferredSpriteEffect
       width: number;
       height: number;
     },
-    scope: (s: DeferredSpriteEffect) => void
+    fillScope: (s: DeferredSpriteEffect, pass: number) => void,
+    maskScope: (mask: GPUTexture) => void
   ) {
     if (
       !this.#gBuffer ||
@@ -191,15 +198,35 @@ export class DeferredSpriteEffect
           width: opts.width,
           height: opts.height,
         },
+        mask: {
+          [TEXTURE]: createTexture(
+            this.#gl,
+            this.#gl.RGBA,
+            this.#gl.RGBA,
+            this.#gl.UNSIGNED_BYTE,
+            opts.width,
+            opts.height
+          ),
+          width: opts.width,
+          height: opts.height,
+        },
       };
 
       this.#gBuffer = {
         ...gBuffer,
-        frameBuffer: new FrameBuffer(this.#gl, this.#gBufferProgram, {
+        maskFrameBuffer: new FrameBuffer(this.#gl, this.#gBufferProgram, {
           o_normal: gBuffer.normal,
           o_albedo: gBuffer.albedo,
           o_specular: gBuffer.specular,
           o_lighting: gBuffer.lighting[TEXTURE],
+          o_mask: gBuffer.mask[TEXTURE],
+        }),
+        noMaskFrameBuffer: new FrameBuffer(this.#gl, this.#gBufferProgram, {
+          o_normal: gBuffer.normal,
+          o_albedo: gBuffer.albedo,
+          o_specular: gBuffer.specular,
+          o_lighting: gBuffer.lighting[TEXTURE],
+          o_mask: null,
         }),
         lightingFrameBuffer: new FrameBuffer(this.#gl, this.#lightingProgram, {
           o_lighting: gBuffer.lighting[TEXTURE],
@@ -207,16 +234,29 @@ export class DeferredSpriteEffect
       };
     }
 
-    this.#gBuffer.frameBuffer.bind(() => {
+    const g = this.#gBuffer!;
+
+    // render the base sprite layer
+    g.maskFrameBuffer.bind(() => {
       this.#gl.viewport(0, 0, this.#gBufferWidth, this.#gBufferHeight);
       this.#gl.clear(this.#gl.COLOR_BUFFER_BIT | this.#gl.DEPTH_BUFFER_BIT);
       this.#gBufferProgram.use(() => {
-        scope(this);
+        // only the base layer textures contribute to the mask
+        fillScope(this, 0);
         this.#end();
       });
     });
 
-    this.#gBuffer.lightingFrameBuffer.bind(() => {
+    // finally, render the mask overlay & top layer of sprites
+    g.noMaskFrameBuffer.bind(() => {
+      maskScope(g.mask);
+      this.#gBufferProgram.use(() => {
+        fillScope(this, 1);
+        this.#end();
+      });
+    });
+
+    g.lightingFrameBuffer.bind(() => {
       const previousBlend = this.#gl.getParameter(this.#gl.BLEND);
       const previousBlendSrcFunc = this.#gl.getParameter(
         this.#gl.BLEND_SRC_ALPHA
@@ -229,9 +269,9 @@ export class DeferredSpriteEffect
 
       this.#lightingProgram.use((p) => {
         p.setUniforms({
-          u_albedoTexture: this.#gBuffer!.albedo,
-          u_normalTexture: this.#gBuffer!.normal,
-          u_specularTexture: this.#gBuffer!.specular,
+          u_albedoTexture: g.albedo,
+          u_normalTexture: g.normal,
+          u_specularTexture: g.specular,
           u_toTangentSpace: ToTangentSpace,
           u_viewDirection: vec3.fromValues(0, 0, -1),
         });
@@ -274,6 +314,7 @@ export class DeferredSpriteEffect
   ): DeferredSpriteEffect {
     this.#pendingDirectionalLights.push({
       mvp: FULL_MVP,
+      uv: FULL_UV,
       ambient: light.ambient,
       diffuse: light.diffuse,
       direction: light.direction,
@@ -283,13 +324,13 @@ export class DeferredSpriteEffect
   }
 
   addPointLight(light: ScreenSpacePointLight): DeferredSpriteEffect {
-    if (light.height >= light.radius) {
+    if (light.position[2] >= light.radius) {
       // doesn't intersect the ground plane, so disregard the light
       return this;
     }
 
     const intersectingRadius = Math.sqrt(
-      light.radius * light.radius - light.height * light.height
+      light.radius * light.radius - light.position[2] * light.position[2]
     );
 
     const mvp = mat3.create();
@@ -298,16 +339,26 @@ export class DeferredSpriteEffect
       light.position[1] - intersectingRadius,
     ]);
     mat3.scale(mvp, mvp, [intersectingRadius * 2, intersectingRadius * 2]);
-    mat3.multiply(mvp, SpriteViewProjection, mvp);
+    mat3.mul(mvp, SpriteViewProjection, mvp);
+    const uv = mat3.create();
+    mat3.translate(uv, uv, [
+      light.position[0] - intersectingRadius,
+      // OpenGL has the origin at the bottom left, so we need to flip the Y axis
+      // to match the UV coordinates which have the origin at the top left
+      1.0 - light.position[1] + intersectingRadius,
+    ]);
+    mat3.scale(uv, uv, [intersectingRadius * 2, intersectingRadius * 2]);
+    mat3.scale(uv, uv, [1, -1]);
 
     this.#pendingPointLights.push({
       mvp,
+      uv,
       ambient: BLACK,
       diffuse: light.diffuse,
       direction: vec3.fromValues(
         light.position[0],
-        light.height,
-        light.position[1]
+        1.0 - light.position[1],
+        light.position[2]
       ),
       radius: light.radius,
     });

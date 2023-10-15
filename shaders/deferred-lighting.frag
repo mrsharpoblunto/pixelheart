@@ -32,10 +32,11 @@ void main() {
   vec3 lightDirection = u_lightingMode == LIGHTING_MODE_DIRECTIONAL 
     ? v_direction 
     // in point light mode v_direction is actually a position
-    : v_direction - vec3(v_texCoord, 0.0);
+    : vec3(v_texCoord, 0.0) - v_direction;
+  lightDirection.y *= u_lightingMode == LIGHTING_MODE_DIRECTIONAL ? 1.0 : -1.0;
   float intensity = u_lightingMode == LIGHTING_MODE_DIRECTIONAL 
     ? 1.0 
-    : pow(1.0 - length(lightDirection) / v_radius, LIGHT_ATTENUATION_EXP);
+    : pow(1.0 - min(v_radius, length(lightDirection)) / v_radius, LIGHT_ATTENUATION_EXP);
   vec3 tLightDirection = normalize(lightDirection * -1.0) * u_toTangentSpace;
 
   // make sure the light direction is in the same tangent space as the normal

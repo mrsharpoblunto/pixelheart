@@ -9,6 +9,8 @@ import {
   DeferredSpriteEffect,
 } from "./deferred-sprite-effect";
 import { SimpleSpriteEffect } from "./sprite-effect";
+import { WaterEffect } from "./water-effect";
+import { GaussianBlurEffect } from "./gaussian-blur";
 import { SolidEffect } from "./solid-effect";
 import overworldSprite from "./sprites/overworld";
 import characterSprite from "./sprites/character";
@@ -47,7 +49,9 @@ export interface GameState {
     height: number;
     toScreenSpace: (out: vec4, relativeRect: ReadonlyVec4) => vec4;
   };
-  water: DeferredSpriteAnimator;
+  animationTimer: number;
+  waterEffect: WaterEffect;
+  blurEffect: GaussianBlurEffect;
   editor?: EditorState;
 }
 
@@ -118,7 +122,9 @@ export async function onStart(
       relativePosition: vec2.create(),
       speed: 1,
     },
-    water: new DeferredSpriteAnimator(overworld, "water", 6 / 1000),
+    waterEffect: new WaterEffect(ctx.gl),
+    blurEffect: new GaussianBlurEffect(ctx.gl),
+    animationTimer: 0,
     screen: {
       ...ctx.screen,
       absolutePosition: vec2.create(),
@@ -256,7 +262,11 @@ export function onUpdate(
     state.character.animator.setSpriteOrTick(newDirection, fixedDelta);
   }
 
-  state.water.tick(fixedDelta);
+  // provide a stable looping animation
+  state.animationTimer += fixedDelta / 4000;
+  if (state.animationTimer > Math.PI * 2) {
+    state.animationTimer -= Math.PI * 2;
+  }
 
   // but movement is not
   const movement = vec2.create();
@@ -347,103 +357,140 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
     state.screen.absolutePosition
   );
 
-  state.spriteEffect.use(
-    {
-      width: ctx.screen.width,
-      height: ctx.screen.height,
-    },
-    (s) => {
-      // overdraw the screen by 1 tile at each edge to prevent tile pop-in
-      for (let x = -1; x <= (ctx.screen.width + 2) / coords.TILE_SIZE; ++x) {
-        for (let y = -1; y <= (ctx.screen.height + 2) / coords.TILE_SIZE; ++y) {
-          const mapX = x + ssp[0];
-          const mapY = y + ssp[1];
-          const spatialHash = hash(mapX, mapY);
+  let sin = Math.sin(state.animationTimer);
+  sin = Math.min(1.0, sin + 0.5);
 
-          const position = ctx.screen.toScreenSpace(
-            vec4.create(),
-            vec4.fromValues(
-              y * coords.TILE_SIZE - ssp[3],
-              x * coords.TILE_SIZE + coords.TILE_SIZE - ssp[2],
-              y * coords.TILE_SIZE + coords.TILE_SIZE - ssp[3],
-              x * coords.TILE_SIZE - ssp[2]
-            )
-          );
+  const day = Math.pow(Math.max(0, sin), 8);
 
-          if (getMapBufferData(x, y, state) === 0) {
-            // water
-            state.water.draw(s, position, spatialHash);
-          } else {
-            // not water
-            const top = getMapBufferData(x, y - 1, state) === 0;
-            const left = getMapBufferData(x - 1, y, state) === 0;
-            const bottom = getMapBufferData(x, y + 1, state) === 0;
-            const right = getMapBufferData(x + 1, y, state) === 0;
-            const topLeft = getMapBufferData(x - 1, y - 1, state) === 0;
-            const topRight = getMapBufferData(x + 1, y - 1, state) === 0;
-            const bottomLeft = getMapBufferData(x - 1, y + 1, state) === 0;
-            const bottomRight = getMapBufferData(x + 1, y + 1, state) === 0;
+  state.spriteEffect
+    .addDirectionalLight({
+      ambient: vec3.fromValues(
+        0.2 + day * 0.3,
+        0.2 + day * 0.3,
+        0.4 + day * 0.1
+      ),
+      direction: vec3.fromValues(
+        Math.cos(state.animationTimer),
+        day * 0.5,
+        -1.0
+      ),
+      diffuse: vec3.fromValues(
+        Math.pow(day, 0.25) * (1 - day) + day * 0.5,
+        day * 0.5,
+        day * 0.45
+      ),
+    })
+    .addPointLight({
+      diffuse: vec3.fromValues(
+        0.6 * (1 - day),
+        0.6 * (1 - day),
+        0.3 * (1 - day)
+      ),
+      position: vec3.fromValues(
+        ctx.mouse.position[0] / ctx.screen.width,
+        ctx.mouse.position[1] / ctx.screen.height,
+        0.1
+      ),
+      radius: 0.5,
+    })
+    .use(
+      {
+        width: ctx.screen.width,
+        height: ctx.screen.height,
+      },
+      (s, pass) => {
+        if (pass === 0) {
+          // overdraw the screen by 1 tile at each edge to prevent tile pop-in
+          for (
+            let x = -1;
+            x <= (ctx.screen.width + 2) / coords.TILE_SIZE;
+            ++x
+          ) {
+            for (
+              let y = -1;
+              y <= (ctx.screen.height + 2) / coords.TILE_SIZE;
+              ++y
+            ) {
+              const mapX = x + ssp[0];
+              const mapY = y + ssp[1];
+              const spatialHash = hash(mapX, mapY);
 
-            if (top && left) {
-              state.overworld.grass_tl.draw(s, position);
-            } else if (top && right) {
-              state.overworld.grass_tr.draw(s, position);
-            } else if (top && !left && !right) {
-              state.overworld.grass_t.draw(s, position);
-            } else if (topLeft && !left && !top) {
-              state.overworld.grass_i_tl.draw(s, position);
-            } else if (topRight && !right && !top) {
-              state.overworld.grass_i_tr.draw(s, position);
-            } else if (left && !top && !bottom) {
-              state.overworld.grass_l.draw(s, position);
-            } else if (bottom && left) {
-              state.overworld.grass_bl.draw(s, position);
-            } else if (bottom && right) {
-              state.overworld.grass_br.draw(s, position);
-            } else if (bottom && !left && !right) {
-              state.overworld.grass_b.draw(s, position);
-            } else if (bottomLeft && !left && !bottom) {
-              state.overworld.grass_i_bl.draw(s, position);
-            } else if (bottomRight && !right && !bottom) {
-              state.overworld.grass_i_br.draw(s, position);
-            } else if (right && !top && !bottom) {
-              state.overworld.grass_r.draw(s, position);
-            } else {
-              state.overworld.grass.draw(s, position, spatialHash);
+              const position = ctx.screen.toScreenSpace(
+                vec4.create(),
+                vec4.fromValues(
+                  y * coords.TILE_SIZE - ssp[3],
+                  x * coords.TILE_SIZE + coords.TILE_SIZE - ssp[2],
+                  y * coords.TILE_SIZE + coords.TILE_SIZE - ssp[3],
+                  x * coords.TILE_SIZE - ssp[2]
+                )
+              );
+
+              if (getMapBufferData(x, y, state) !== 0) {
+                // not water
+                const top = getMapBufferData(x, y - 1, state) === 0;
+                const left = getMapBufferData(x - 1, y, state) === 0;
+                const bottom = getMapBufferData(x, y + 1, state) === 0;
+                const right = getMapBufferData(x + 1, y, state) === 0;
+                const topLeft = getMapBufferData(x - 1, y - 1, state) === 0;
+                const topRight = getMapBufferData(x + 1, y - 1, state) === 0;
+                const bottomLeft = getMapBufferData(x - 1, y + 1, state) === 0;
+                const bottomRight = getMapBufferData(x + 1, y + 1, state) === 0;
+
+                if (top && left) {
+                  state.overworld.grass_tl.draw(s, position);
+                } else if (top && right) {
+                  state.overworld.grass_tr.draw(s, position);
+                } else if (top && !left && !right) {
+                  state.overworld.grass_t.draw(s, position);
+                } else if (topLeft && !left && !top) {
+                  state.overworld.grass_i_tl.draw(s, position);
+                } else if (topRight && !right && !top) {
+                  state.overworld.grass_i_tr.draw(s, position);
+                } else if (left && !top && !bottom) {
+                  state.overworld.grass_l.draw(s, position);
+                } else if (bottom && left) {
+                  state.overworld.grass_bl.draw(s, position);
+                } else if (bottom && right) {
+                  state.overworld.grass_br.draw(s, position);
+                } else if (bottom && !left && !right) {
+                  state.overworld.grass_b.draw(s, position);
+                } else if (bottomLeft && !left && !bottom) {
+                  state.overworld.grass_i_bl.draw(s, position);
+                } else if (bottomRight && !right && !bottom) {
+                  state.overworld.grass_i_br.draw(s, position);
+                } else if (right && !top && !bottom) {
+                  state.overworld.grass_r.draw(s, position);
+                } else {
+                  state.overworld.grass.draw(s, position, spatialHash);
+                }
+              }
             }
           }
+        } else {
+          const offset = vec2.fromValues(
+            state.character.animator.getSprite().width / 2,
+            state.character.animator.getSprite().height / 2
+          );
+
+          state.character.animator.draw(
+            s,
+            ctx.screen.toScreenSpace(
+              vec4.create(),
+              vec4.fromValues(
+                Math.floor(state.character.relativePosition[1]) - offset[1],
+                Math.floor(state.character.relativePosition[0]) + offset[0],
+                Math.floor(state.character.relativePosition[1]) + offset[1],
+                Math.floor(state.character.relativePosition[0]) - offset[0]
+              )
+            )
+          );
         }
+      },
+      (mask) => {
+        state.blurEffect.draw(mask, 0.5);
+        state.waterEffect.draw(mask, state.blurEffect.getBlurTexture());
       }
-
-      const offset = vec2.fromValues(
-        state.character.animator.getSprite().width / 2,
-        state.character.animator.getSprite().height / 2
-      );
-
-      state.character.animator.draw(
-        s,
-        ctx.screen.toScreenSpace(
-          vec4.create(),
-          vec4.fromValues(
-            Math.floor(state.character.relativePosition[1]) - offset[1],
-            Math.floor(state.character.relativePosition[0]) + offset[0],
-            Math.floor(state.character.relativePosition[1]) + offset[1],
-            Math.floor(state.character.relativePosition[0]) - offset[0]
-          )
-        )
-      );
-
-      s.addDirectionalLight({
-        ambient: vec3.fromValues(0.4, 0.4, 0.4),
-        direction: vec3.fromValues(
-          (ctx.mouse.position[0] / ctx.screen.width) * -2 + 1,
-          (ctx.mouse.position[1] / ctx.screen.height) * -2 + 1,
-          -1.0
-        ),
-        diffuse: vec3.fromValues(0.6, 0.6, 0.6),
-      });
-    }
-  );
+    );
 
   // draw the accumulated deferred lighting texture to the screen
   state.simpleSpriteEffect.use((s) => {

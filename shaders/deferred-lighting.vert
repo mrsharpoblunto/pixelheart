@@ -3,6 +3,7 @@
 in vec2 a_position;
 
 in mat3 a_mvp;
+in mat3 a_uv;
 in vec3 a_ambient;
 in vec3 a_diffuse;
 in vec3 a_direction;
@@ -15,7 +16,8 @@ out float v_radius;
 out vec2 v_texCoord;
 
 void main() {
-  v_texCoord = a_position;
+  vec3 uvPosition = a_uv * vec3(a_position, 1.0);
+  v_texCoord = uvPosition.xy;
   v_ambient = a_ambient;
   v_diffuse = a_diffuse;
   v_direction = a_direction;
