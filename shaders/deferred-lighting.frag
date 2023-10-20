@@ -37,13 +37,13 @@ void main() {
   float intensity = u_lightingMode == LIGHTING_MODE_DIRECTIONAL 
     ? 1.0 
     : pow(1.0 - min(v_radius, length(lightDirection)) / v_radius, LIGHT_ATTENUATION_EXP);
-  vec3 tLightDirection = normalize(lightDirection * -1.0) * u_toTangentSpace;
+  vec3 tLightReflection = normalize(lightDirection * -1.0) * u_toTangentSpace;
 
   // make sure the light direction is in the same tangent space as the normal
-  float diffuse = max(dot(tNormal, tLightDirection), 0.0);
+  float diffuse = max(dot(tNormal, tLightReflection), 0.0);
   vec3 diffuseColor = albedo * v_diffuse * diffuse * intensity;
 
-  vec3 tHalfDirection = normalize(tLightDirection + (u_viewDirection * u_toTangentSpace));
+  vec3 tHalfDirection = normalize(tLightReflection + (u_viewDirection * -1.0 * u_toTangentSpace));
   float specularAngle = max(dot(tNormal, tHalfDirection), 0.0);
   float specularIntensity = pow(specularAngle, SPECULAR_POWER);
   vec3 specularColor = v_diffuse * specularIntensity * specular * intensity;
