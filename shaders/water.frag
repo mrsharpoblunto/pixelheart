@@ -30,9 +30,9 @@ void wave(in int i, out float st, out float am, out vec2 di, out float fr, out f
     //setup wave params
 	st = abs(0.05*rand(vec2(i,i)));//qi
 	am = .02+.01*rand(vec2(float(i+5)));//ai
-  di = (vec2(1.e0*rand(vec2(i,i+1)), 1.e0*rand(vec2(i-2,i+2))));//di
+  di = (vec2(rand(vec2(i,i+1)), rand(vec2(i-2,i+2))));//di
   fr = 30.+82.*rand(vec2(float(i+5)));//wi
-  sp = (25.e-1+42.e-1*rand(vec2(float(i+4)))) * 0.00045;//phi
+  sp = (2.5+4.2*rand(vec2(float(i+4)))) * 0.00045;//phi
 }
 
 float maxRound(float v) {
