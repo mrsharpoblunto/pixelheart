@@ -17,11 +17,14 @@ const float KERNEL[KERNEL_SIZE] = float[](
 const int offset = KERNEL_SIZE / 2;
 
 void main() {
+  vec4 originalColor = texture(u_blur, v_texCoord);
   vec4 color = vec4(0.0);
   for (int i = 0;i < KERNEL_SIZE;++i) {
     vec2 pos = v_texCoord + ((vec2(i - offset,i - offset) * u_blurDirection * u_blurStrength) / u_blurSize);
     vec4 s = texture(u_blur, pos);
     color += s * KERNEL[i];
   }
-  o_color = color;
+  // we only ever increase the intensity of the blurred image,
+  // so this is not strictly a normal blur operation
+  o_color = color.r < originalColor.r ? originalColor : color;
 }

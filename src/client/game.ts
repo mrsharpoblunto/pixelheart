@@ -20,6 +20,7 @@ import { EditorAction } from "../shared/editor-actions";
 
 const CONTROLLER_DEADZONE = 0.25;
 const CURRENT_SERIALIZATION_VERSION = 1;
+const MAX_TIME = 1000;
 
 export interface SerializedGameState {
   version: number;
@@ -263,9 +264,9 @@ export function onUpdate(
   }
 
   // provide a stable looping animation
-  state.animationTimer += fixedDelta / 4000;
-  if (state.animationTimer > Math.PI * 2) {
-    state.animationTimer -= Math.PI * 2;
+  state.animationTimer += fixedDelta / 10;
+  if (state.animationTimer > MAX_TIME) {
+    state.animationTimer -= MAX_TIME;
   }
 
   // but movement is not
@@ -348,6 +349,11 @@ export function onUpdate(
   }
 }
 
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  x = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return x * x * (3 - 2 * x);
+}
+
 export function onDraw(ctx: GameContext, state: GameState, delta: number) {
   ctx.gl.enable(ctx.gl.BLEND);
   ctx.gl.blendFunc(ctx.gl.SRC_ALPHA, ctx.gl.ONE_MINUS_SRC_ALPHA);
@@ -360,7 +366,18 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
   let sin = Math.sin(state.animationTimer);
   sin = Math.min(1.0, sin + 0.5);
 
-  const day = Math.pow(Math.max(0, sin), 8);
+  const day =
+    state.animationTimer < MAX_TIME * 0.25
+      ? smoothstep(0, MAX_TIME * 0.25, state.animationTimer)
+      : state.animationTimer < MAX_TIME * 0.5
+      ? 1.0
+      : state.animationTimer < MAX_TIME * 0.75
+      ? 1.0 - smoothstep(MAX_TIME * 0.5, MAX_TIME * 0.75, state.animationTimer)
+      : 0.0;
+  const sunDirection = Math.cos(
+    (Math.min(state.animationTimer, MAX_TIME * 0.75) * Math.PI) /
+      (MAX_TIME * 0.75)
+  );
 
   state.spriteEffect
     .addDirectionalLight({
@@ -369,15 +386,20 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
         0.2 + day * 0.3,
         0.4 + day * 0.1
       ),
-      direction: vec3.fromValues(
-        Math.cos(state.animationTimer),
-        day * 0.5,
-        -1.0
-      ),
+      direction: vec3.fromValues(sunDirection, day * 0.3 + 0.2, -1.0),
       diffuse: vec3.fromValues(
         Math.pow(day, 0.25) * (1 - day) + day * 0.5,
         day * 0.5,
         day * 0.45
+      ),
+    })
+    .addDirectionalLight({
+      ambient: vec3.create(),
+      direction: vec3.fromValues(0.0, (1 - day) * 0.5, -1.0),
+      diffuse: vec3.fromValues(
+        (1 - day) * 0.2,
+        (1 - day) * 0.2,
+        (1 - day) * 0.2
       ),
     })
     .addPointLight({
@@ -487,8 +509,19 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
         }
       },
       (mask) => {
+        const pos = vec2.clone(state.screen.absolutePosition);
+        vec2.div(
+          pos,
+          pos,
+          vec2.fromValues(ctx.screen.width, ctx.screen.height)
+        );
         state.blurEffect.draw(mask, 0.5);
-        state.waterEffect.draw(mask, state.blurEffect.getBlurTexture());
+        state.waterEffect.draw(
+          state.animationTimer,
+          pos,
+          mask,
+          state.blurEffect.getBlurTexture()
+        );
       }
     );
 

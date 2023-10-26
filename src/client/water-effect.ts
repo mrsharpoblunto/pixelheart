@@ -1,3 +1,4 @@
+import { vec2 } from "gl-matrix";
 import { GPUTexture, TEXTURE } from "./images";
 import { ShaderProgram } from "./gl-utils";
 import { Quad } from "./geometry";
@@ -15,9 +16,16 @@ export class WaterEffect {
     this.#quad = new Quad(this.#gl);
   }
 
-  draw(mask: GPUTexture, depth: GPUTexture): WaterEffect {
+  draw(
+    time: number,
+    offset: vec2,
+    mask: GPUTexture,
+    depth: GPUTexture
+  ): WaterEffect {
     this.#program.use((p) => {
       p.setUniforms({
+        u_time: time,
+        u_offset: offset,
         u_mask: mask[TEXTURE],
         u_depth: depth[TEXTURE],
       });
