@@ -10,7 +10,7 @@ import {
 } from "./deferred-sprite-effect";
 import { SimpleSpriteEffect } from "./sprite-effect";
 import { WaterEffect } from "./water-effect";
-import { GaussianBlurEffect } from "./gaussian-blur";
+import { NearestBlurEffect } from "./nearest-blur";
 import { SolidEffect } from "./solid-effect";
 import overworldSprite from "./sprites/overworld";
 import characterSprite from "./sprites/character";
@@ -52,7 +52,7 @@ export interface GameState {
   };
   animationTimer: number;
   waterEffect: WaterEffect;
-  blurEffect: GaussianBlurEffect;
+  blurEffect: NearestBlurEffect;
   editor?: EditorState;
 }
 
@@ -124,7 +124,7 @@ export async function onStart(
       speed: 1,
     },
     waterEffect: new WaterEffect(ctx.gl),
-    blurEffect: new GaussianBlurEffect(ctx.gl),
+    blurEffect: new NearestBlurEffect(ctx.gl),
     animationTimer: 0,
     screen: {
       ...ctx.screen,
@@ -515,7 +515,7 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
           pos,
           vec2.fromValues(ctx.screen.width, ctx.screen.height)
         );
-        state.blurEffect.draw(mask, 0.5);
+        state.blurEffect.draw(mask, 3.0);
         state.waterEffect.draw(
           state.animationTimer,
           pos,

@@ -24,7 +24,5 @@ void main() {
     vec4 s = texture(u_blur, pos);
     color += s * KERNEL[i];
   }
-  // we only ever increase the intensity of the blurred image,
-  // so this is not strictly a normal blur operation
-  o_color = color.r < originalColor.r ? originalColor : color;
+  o_color = color;
 }

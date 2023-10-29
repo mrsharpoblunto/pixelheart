@@ -4,6 +4,7 @@ import { ShaderProgram } from "./gl-utils";
 import { Quad } from "./geometry";
 import vertexShader from "./shaders/quad.vert";
 import fragmentShader from "./shaders/water.frag";
+import { ToTangentSpace, Tangent, Binormal, Normal } from "./sprite-common";
 
 export class WaterEffect {
   #gl: WebGL2RenderingContext;
@@ -24,6 +25,10 @@ export class WaterEffect {
   ): WaterEffect {
     this.#program.use((p) => {
       p.setUniforms({
+        u_normal: Normal,
+        u_tangent: Tangent,
+        u_binormal: Binormal,
+        u_toTangentSpace: ToTangentSpace,
         u_time: time,
         u_offset: offset,
         u_mask: mask[TEXTURE],

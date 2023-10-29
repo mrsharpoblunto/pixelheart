@@ -26,8 +26,8 @@ void main() {
   float transparency = albedo.w < 0.99 ? 0.0 : 1.0;
 
   o_albedo = vec4(albedo.xyz * transparency, transparency);
+  o_mask = o_albedo;
   o_normal = vec4(normal, transparency);
   o_specular = vec4(specular, specular, specular, transparency);
   o_lighting = vec4(emissive, transparency);
-  o_mask = vec4(transparency, transparency, transparency, 1.0);
 }

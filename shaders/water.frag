@@ -14,6 +14,10 @@ uniform sampler2D u_mask;
 uniform sampler2D u_depth;
 uniform float u_time;
 uniform vec2 u_offset;
+uniform vec3 u_normal;
+uniform vec3 u_tangent;
+uniform vec3 u_binormal;
+uniform mat3 u_toTangentSpace;
 
 const float pi = acos(-1.);
 const vec2 c = vec2(1.,0.);
@@ -50,8 +54,8 @@ void gerst(in vec2 xy, in float depth, in float t, out vec3 val, out vec3 deriv)
     for(int i=0; i<nwaves; ++i)
     {
    		wave(i, st, am, di, fr, sp);
-      st += depth * 2.0;
-      am += depth * 4.0;
+      st += depth * 0.1;
+      am += depth * 0.3;
         
       //gen values
       float d = dot(di, xy);
@@ -79,8 +83,10 @@ void gerst(in vec2 xy, in float depth, in float t, out vec3 val, out vec3 deriv)
 
 void main() {
   vec4 mask = texture(u_mask, v_texCoord);
-  float depth = smoothstep(0.0,1.0,texture(u_depth, v_texCoord).r * 0.5);
-  float transparency = 1.0 - mask.r;
+  vec4 depthSample = texture(u_depth, v_texCoord);
+  float depth = smoothstep(0.0,1.0,depthSample.a);
+
+  float transparency = 1.0 - mask.a;
 
   //raytrace and colorize
 	vec3 o = c.yyx, r = 1.*c.xyy, u = 1.*c.yxy+c.yyx, d = normalize(cross(u,r)),
@@ -91,12 +97,18 @@ void main() {
       n, val;
         
   gerst(p.xy, depth, u_time, val, n);
+
+  // all texture normals are in tangent space, so to be consistent we need to convert the water normals too.
+  vec3 tn = normalize(cross(n.x * u_normal + u_binormal, n.y * u_normal + u_tangent)) * u_toTangentSpace;
     
-  vec3 re = normalize(reflect(-l, n)), 
-      v = normalize(p-ro);
-    
-  o_albedo = vec4(50.0/255.0 + depth* 2.0,124.0/255.0 + depth * 2.0,val.z/255.0 + 224.0/255.0 + depth * 2.0, transparency);
-  o_normal = vec4(n, transparency);
+  o_albedo = vec4(50.0/255.0 + depth * 0.5,124.0/255.0 + depth * 0.5,val.z/255.0 + 224.0/255.0 + depth, transparency);
+  if (depth < 0.99) {
+    vec4 ds = texture(u_depth, v_texCoord - n.xy*4.0);
+    if (ds.r > 0.001) {
+      o_albedo = vec4(ds.rgb * depth/2.0 + o_albedo.rgb * (1.0 - depth/2.0), transparency);
+    }
+  }
+  o_normal = vec4(tn, transparency);
   o_specular = vec4(1.0, 1.0, 1.0, transparency);
   o_lighting = vec4(0.0,0.0,0.0,0.0);
   o_mask = vec4(0.0,0.0,0.0,0.0);
