@@ -8,7 +8,11 @@ const gameCanvas = GameRunner({
   start: onStart,
   update: onUpdate,
   draw: onDraw,
-  screen: { width: 320, height: 208 },
+  screen: {
+    incrementSize: 16,
+    preferredWidthIncrements: 20,
+    preferredHeightIncrements: 13,
+  },
   offscreenCanvas: { width: 1024, height: 1024 },
 });
 

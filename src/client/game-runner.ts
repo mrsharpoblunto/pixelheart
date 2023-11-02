@@ -16,12 +16,17 @@ export interface GameContext {
     clicked: Array<boolean>;
   };
   touches: {
-    down: Map<number, vec2>;
-    ended: Map<number, vec2>;
+    down: Map<number, { started: number, position: vec2}>;
+    ended: Map<number, { position: vec2 }>;
   };
   screen: {
     width: number;
     height: number;
+    safeArea: {
+      width: number;
+      height: number;
+      boundingRect: vec4;
+    };
     toScreenSpace: (out: vec4, relativeRect: ReadonlyVec4) => vec4;
   };
 }
@@ -33,7 +38,11 @@ interface GameProps<T, U> {
   save: (state: T) => U;
   update: (ctx: GameContext, state: T, fixedDelta: number) => void;
   draw: (ctx: GameContext, state: T, delta: number) => void;
-  screen: { width: number; height: number };
+  screen: {
+    incrementSize: number;
+    preferredWidthIncrements: number;
+    preferredHeightIncrements: number;
+  };
   offscreenCanvas: { width: number; height: number };
 }
 
@@ -41,8 +50,6 @@ export default function GameRunner<T, U>(
   props: GameProps<T, U>
 ): HTMLCanvasElement | null {
   const canvas = document.createElement("canvas");
-  canvas.setAttribute("width", props.screen.width.toString());
-  canvas.setAttribute("height", props.screen.height.toString());
   canvas.style.imageRendering = "pixelated";
 
   const gl = canvas.getContext("webgl2", {
@@ -72,6 +79,17 @@ export default function GameRunner<T, U>(
 
   let selectedGamepadIndex: number | null = null;
 
+  const contextScreen = {
+    width: 1,
+    height: 1,
+  };
+  const contextSafeScreen = {
+    offsetLeft: 0,
+    offsetTop: 0,
+    width: 1,
+    height: 1,
+  };
+
   const context: GameContext = {
     gl,
     offscreen,
@@ -97,14 +115,35 @@ export default function GameRunner<T, U>(
       ended: new Map(),
     },
     screen: {
-      ...props.screen,
+      get width(): number {
+        return contextScreen.width;
+      },
+      get height(): number {
+        return contextScreen.height;
+      },
+      safeArea: {
+        get width(): number {
+          return contextScreen.width;
+        },
+        get height(): number {
+          return contextScreen.height;
+        },
+        get boundingRect(): vec4 {
+          return vec4.fromValues(
+            contextSafeScreen.offsetTop,
+            contextSafeScreen.offsetLeft + contextSafeScreen.width,
+            contextSafeScreen.offsetTop + contextSafeScreen.height,
+            contextSafeScreen.offsetLeft
+          );
+        },
+      },
       toScreenSpace: (out: vec4, relativeRect: ReadonlyVec4) =>
         vec4.set(
           out,
-          relativeRect[0] / props.screen.height,
-          relativeRect[1] / props.screen.width,
-          relativeRect[2] / props.screen.height,
-          relativeRect[3] / props.screen.width
+          relativeRect[0] / contextScreen.height,
+          relativeRect[1] / contextScreen.width,
+          relativeRect[2] / contextScreen.height,
+          relativeRect[3] / contextScreen.width
         ),
     },
   };
@@ -171,7 +210,7 @@ export default function GameRunner<T, U>(
         newTouch[0] <= context.screen.width &&
         newTouch[1] <= context.screen.height
       ) {
-        context.touches.down.set(touch.identifier, newTouch);
+        context.touches.down.set(touch.identifier, { started: Date.now(), position: newTouch});
       }
     }
   });
@@ -182,7 +221,7 @@ export default function GameRunner<T, U>(
       const existingTouch = context.touches.down.get(touch.identifier);
       if (existingTouch) {
         vec2.set(
-          existingTouch,
+          existingTouch.position,
           (touch.clientX - rect.left) / pixelMultiplier,
           (touch.clientY - rect.top) / pixelMultiplier
         );
@@ -196,12 +235,12 @@ export default function GameRunner<T, U>(
       const existingTouch = context.touches.down.get(touch.identifier);
       if (existingTouch) {
         vec2.set(
-          existingTouch,
+          existingTouch.position,
           (touch.clientX - rect.left) / pixelMultiplier,
           (touch.clientY - rect.top) / pixelMultiplier
         );
         context.touches.down.delete(touch.identifier);
-        context.touches.ended.set(touch.identifier, existingTouch);
+        context.touches.ended.set(touch.identifier, { position: existingTouch.position });
       }
     }
   });
@@ -307,16 +346,62 @@ export default function GameRunner<T, U>(
   window.addEventListener("visibilitychange", handlePersist);
 
   const handleResize = () => {
-    pixelMultiplier = Math.max(
-      1,
-      Math.min(
-        Math.floor(window.innerWidth / props.screen.width),
-        Math.floor(window.innerHeight / props.screen.height)
-      )
-    );
+    pixelMultiplier = 1;
+    if (window.innerWidth >= window.innerHeight) {
+      contextScreen.width =
+        Math.min(
+          props.screen.preferredWidthIncrements,
+          Math.floor(window.innerWidth / props.screen.incrementSize)
+        ) * props.screen.incrementSize;
+      while (contextScreen.width * (pixelMultiplier + 1) < window.innerWidth) {
+        ++pixelMultiplier;
+      }
+      contextScreen.height =
+        Math.floor(
+          window.innerHeight / (props.screen.incrementSize * pixelMultiplier)
+        ) * props.screen.incrementSize;
+    } else {
+      contextScreen.height =
+        Math.min(
+          props.screen.preferredHeightIncrements,
+          Math.floor(window.innerHeight / props.screen.incrementSize)
+        ) * props.screen.incrementSize;
+      while (
+        contextScreen.height * (pixelMultiplier + 1) <
+        window.innerHeight
+      ) {
+        ++pixelMultiplier;
+      }
+      contextScreen.width =
+        Math.floor(
+          window.innerWidth / (props.screen.incrementSize * pixelMultiplier)
+        ) * props.screen.incrementSize;
+    }
+    while (contextScreen.width * pixelMultiplier < window.innerWidth) {
+      contextScreen.width += props.screen.incrementSize;
+    }
+    while (contextScreen.height * pixelMultiplier < window.innerHeight) {
+      contextScreen.height += props.screen.incrementSize;
+    }
+
+    const xOffset =
+      (contextScreen.width * pixelMultiplier - window.innerWidth) / 2;
+    const yOffset =
+      (contextScreen.height * pixelMultiplier - window.innerHeight) / 2;
+
+    contextSafeScreen.offsetLeft = xOffset;
+    contextSafeScreen.offsetTop = yOffset;
+    contextSafeScreen.width = contextScreen.width - xOffset * 2;
+    contextSafeScreen.height = contextScreen.height - yOffset * 2;
+
     if (canvas) {
-      canvas.style.width = pixelMultiplier * props.screen.width + "px";
-      canvas.style.height = pixelMultiplier * props.screen.height + "px";
+      canvas.setAttribute("width", contextScreen.width.toString());
+      canvas.setAttribute("height", contextScreen.height.toString());
+
+      canvas.style.top = -yOffset + "px";
+      canvas.style.left = -xOffset + "px";
+      canvas.style.width = pixelMultiplier * contextScreen.width + "px";
+      canvas.style.height = pixelMultiplier * contextScreen.height + "px";
     }
   };
 

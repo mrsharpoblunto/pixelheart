@@ -15,10 +15,11 @@ import { SolidEffect } from "./solid-effect";
 import overworldSprite from "./sprites/overworld";
 import characterSprite from "./sprites/character";
 import * as coords from "./coordinates";
-import { vec2, ReadonlyVec4 } from "gl-matrix";
+import { vec2 } from "gl-matrix";
 import { EditorAction } from "../shared/editor-actions";
 
 const CONTROLLER_DEADZONE = 0.25;
+const TOUCH_DEADZONE = 5;
 const CURRENT_SERIALIZATION_VERSION = 1;
 const MAX_TIME = 1000;
 
@@ -46,14 +47,12 @@ export interface GameState {
   };
   screen: {
     absolutePosition: vec2;
-    width: number;
-    height: number;
-    toScreenSpace: (out: vec4, relativeRect: ReadonlyVec4) => vec4;
   };
   animationTimer: number;
   waterEffect: WaterEffect;
   blurEffect: NearestBlurEffect;
   editor?: EditorState;
+  moveTouch: { id: number; startPosition: vec2 } | null;
 }
 
 export interface EditorState {
@@ -127,9 +126,9 @@ export async function onStart(
     blurEffect: new NearestBlurEffect(ctx.gl),
     animationTimer: 0,
     screen: {
-      ...ctx.screen,
       absolutePosition: vec2.create(),
     },
+    moveTouch: null,
   };
 
   if (process.env.NODE_ENV === "development") {
@@ -245,6 +244,47 @@ export function onUpdate(
   }
   if (ctx.keys.down.has("d") || ctx.keys.down.has("ArrowRight")) {
     direction.right = true;
+  }
+
+  // touch input
+  for (let [k, v] of ctx.touches.down) {
+    if (state.moveTouch === null && Date.now() - v.started > 250) {
+      state.moveTouch = { id: k, startPosition: vec2.clone(v.position) };
+    }
+  }
+  for (let [k, _] of ctx.touches.ended) {
+    if (state.moveTouch !== null && k === state.moveTouch.id) {
+      state.moveTouch = null;
+    }
+  }
+  if (state.moveTouch !== null) {
+    const currentTouch = ctx.touches.down.get(state.moveTouch.id);
+    if (currentTouch) {
+      if (
+        currentTouch.position[0] - state.moveTouch.startPosition[0] <
+        -TOUCH_DEADZONE
+      ) {
+        direction.left = true;
+      }
+      if (
+        currentTouch.position[0] - state.moveTouch.startPosition[0] >
+        TOUCH_DEADZONE
+      ) {
+        direction.right = true;
+      }
+      if (
+        currentTouch.position[1] - state.moveTouch.startPosition[1] <
+        -TOUCH_DEADZONE
+      ) {
+        direction.up = true;
+      }
+      if (
+        currentTouch.position[1] - state.moveTouch.startPosition[1] >
+        TOUCH_DEADZONE
+      ) {
+        direction.down = true;
+      }
+    }
   }
 
   let newDirection: keyof typeof characterSprite.sprites | null = null;
@@ -447,16 +487,20 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
                 )
               );
 
-              if (getMapBufferData(x, y, state) !== 0) {
+              if (getMapBufferData(x, y, state, ctx) !== 0) {
                 // not water
-                const top = getMapBufferData(x, y - 1, state) === 0;
-                const left = getMapBufferData(x - 1, y, state) === 0;
-                const bottom = getMapBufferData(x, y + 1, state) === 0;
-                const right = getMapBufferData(x + 1, y, state) === 0;
-                const topLeft = getMapBufferData(x - 1, y - 1, state) === 0;
-                const topRight = getMapBufferData(x + 1, y - 1, state) === 0;
-                const bottomLeft = getMapBufferData(x - 1, y + 1, state) === 0;
-                const bottomRight = getMapBufferData(x + 1, y + 1, state) === 0;
+                const top = getMapBufferData(x, y - 1, state, ctx) === 0;
+                const left = getMapBufferData(x - 1, y, state, ctx) === 0;
+                const bottom = getMapBufferData(x, y + 1, state, ctx) === 0;
+                const right = getMapBufferData(x + 1, y, state, ctx) === 0;
+                const topLeft =
+                  getMapBufferData(x - 1, y - 1, state, ctx) === 0;
+                const topRight =
+                  getMapBufferData(x + 1, y - 1, state, ctx) === 0;
+                const bottomLeft =
+                  getMapBufferData(x - 1, y + 1, state, ctx) === 0;
+                const bottomRight =
+                  getMapBufferData(x + 1, y + 1, state, ctx) === 0;
 
                 if (top && left) {
                   state.overworld.grass_tl.draw(s, position);
@@ -568,9 +612,9 @@ function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
 
     if (state.editor.newValue === null) {
       state.editor.newValue =
-        getMapBufferData(rp[0], rp[1], state) === 0 ? 255 : 0;
+        getMapBufferData(rp[0], rp[1], state, ctx) === 0 ? 255 : 0;
     }
-    setMapBufferData(rp[0], rp[1], state.editor.newValue, state);
+    setMapBufferData(rp[0], rp[1], state.editor.newValue, state, ctx);
     const ssp = coords.toAbsoluteTileFromAbsolute(
       vec4.create(),
       state.screen.absolutePosition
@@ -621,15 +665,23 @@ function drawEditor(ctx: GameContext, state: GameState, _delta: number) {
 
     state.solidEffect.use((s) => {
       s.draw(
-        coords.toScreenSpaceFromAbsoluteTile(vec4.create(), ap, state.screen),
+        coords.toScreenSpaceFromAbsoluteTile(vec4.create(), ap, {
+          ...state.screen,
+          ...ctx.screen,
+        }),
         vec4.fromValues(1.0, 0, 0, 0.5)
       );
     });
   }
 }
 
-function getMapBufferData(x: number, y: number, state: GameState): number {
-  const width = state.screen.width / coords.TILE_SIZE + 3;
+function getMapBufferData(
+  x: number,
+  y: number,
+  state: GameState,
+  context: GameContext
+): number {
+  const width = context.screen.width / coords.TILE_SIZE + 3;
   return state.mapBuffer.data[4 * (width * (y + 1) + x + 1)];
 }
 
@@ -637,9 +689,10 @@ function setMapBufferData(
   x: number,
   y: number,
   value: number,
-  state: GameState
+  state: GameState,
+  context: GameContext
 ) {
-  const width = state.screen.width / coords.TILE_SIZE + 3;
+  const width = context.screen.width / coords.TILE_SIZE + 3;
   state.mapBuffer.data[4 * (width * (y + 1) + x + 1)] = value;
 }
 
