@@ -284,6 +284,8 @@ export function onUpdate(
       ) {
         direction.down = true;
       }
+    } else {
+      state.moveTouch = null;
     }
   }
 

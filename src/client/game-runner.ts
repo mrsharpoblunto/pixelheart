@@ -213,6 +213,7 @@ export default function GameRunner<T, U>(
         context.touches.down.set(touch.identifier, { started: Date.now(), position: newTouch});
       }
     }
+    e.preventDefault();
   });
   canvas.addEventListener("touchmove", (e) => {
     const rect = canvas.getBoundingClientRect();
@@ -227,6 +228,7 @@ export default function GameRunner<T, U>(
         );
       }
     }
+    e.preventDefault();
   });
   canvas.addEventListener("touchend", (e) => {
     const rect = canvas.getBoundingClientRect();
@@ -243,6 +245,7 @@ export default function GameRunner<T, U>(
         context.touches.ended.set(touch.identifier, { position: existingTouch.position });
       }
     }
+    e.preventDefault();
   });
   canvas.addEventListener("touchcancel", (e) => {
     for (let i = 0; i < e.changedTouches.length; ++i) {
@@ -252,6 +255,7 @@ export default function GameRunner<T, U>(
         context.touches.down.delete(touch.identifier);
       }
     }
+    e.preventDefault();
   });
 
   let lastTime = performance.now();
