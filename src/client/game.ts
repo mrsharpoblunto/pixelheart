@@ -313,7 +313,7 @@ export function onUpdate(
   }
 
   // provide a stable looping animation
-  state.animationTimer += fixedDelta / 1000;
+  state.animationTimer += fixedDelta / 10;
   if (state.animationTimer > MAX_TIME) {
     state.animationTimer -= MAX_TIME;
   }
