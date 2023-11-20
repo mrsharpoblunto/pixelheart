@@ -56,7 +56,10 @@ export interface SpriteSheet<T> extends Record<string, Sprite<T>> {}
 
 export interface SpriteEffect<T> {
   setTextures(texture: T): SpriteEffect<T>;
-  draw(rect: ReadonlyVec4, textureCoords: ReadonlyVec4): SpriteEffect<T>;
+  draw(
+    rect: ReadonlyVec4,
+    textureCoords: ReadonlyVec4,
+  ): SpriteEffect<T>;
 }
 
 export async function loadSpriteSheet<T>(
@@ -82,7 +85,10 @@ export async function loadSpriteSheet<T>(
             frame: number = 0
           ) => {
             effect.setTextures(textures);
-            effect.draw(position, frames[Math.floor(frame) % frames.length]);
+            effect.draw(
+              position,
+              frames[Math.floor(frame) % frames.length],
+            );
             return p[n];
           },
         };

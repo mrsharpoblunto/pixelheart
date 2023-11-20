@@ -27,6 +27,7 @@ export async function simpleTextureLoader(
 type SpriteInstance = {
   mvp: mat3;
   uv: mat3;
+  alpha: number;
 };
 
 export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
@@ -36,6 +37,7 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   #quad: Quad;
   #texture: GPUTexture | null;
   #pending: Array<SpriteInstance>;
+  #alpha: number;
 
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
@@ -43,14 +45,17 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
     this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#program, {
       a_mvp: (instance) => instance.mvp,
       a_uv: (instance) => instance.uv,
+      a_alpha: (instance) => instance.alpha,
     });
     this.#quad = new Quad(this.#gl);
     this.#pending = [];
     this.#texture = null;
+    this.#alpha = 1.0;
   }
 
   use(scope: (s: SimpleSpriteEffect) => void) {
     this.#program.use(() => {
+      this.#alpha = 1.0;
       scope(this);
       this.#end();
     });
@@ -67,6 +72,11 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
     this.#program.setUniforms({
       u_texture: param[TEXTURE],
     });
+    return this;
+  }
+
+  setAlpha(alpha: number): SimpleSpriteEffect {
+    this.#alpha = alpha;
     return this;
   }
 
@@ -87,7 +97,7 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
         (textureCoords[2] - textureCoords[0]) / this.#texture.height,
       ]);
 
-      this.#pending.push({ mvp, uv });
+      this.#pending.push({ mvp, uv, alpha: this.#alpha });
     }
     return this;
   }

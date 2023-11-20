@@ -1,5 +1,5 @@
 import { GameContext } from "./game-runner";
-import { vec4, vec3 } from "gl-matrix";
+import { vec4, vec3, ReadonlyVec2 } from "gl-matrix";
 import { CPUReadableTexture, loadCPUReadableTextureFromUrl } from "./images";
 import { loadSpriteSheet } from "./sprite-common";
 import {
@@ -8,12 +8,17 @@ import {
   DeferredSpriteAnimator,
   DeferredSpriteEffect,
 } from "./deferred-sprite-effect";
-import { SimpleSpriteEffect } from "./sprite-effect";
+import {
+  SimpleSpriteEffect,
+  SimpleSpriteSheet,
+  simpleTextureLoader,
+} from "./sprite-effect";
 import { WaterEffect } from "./water-effect";
 import { NearestBlurEffect } from "./nearest-blur";
 import { SolidEffect } from "./solid-effect";
 import overworldSprite from "./sprites/overworld";
 import characterSprite from "./sprites/character";
+import uiSprite from "./sprites/ui";
 import * as coords from "./coordinates";
 import { vec2 } from "gl-matrix";
 import { EditorAction } from "../shared/editor-actions";
@@ -38,6 +43,7 @@ export interface GameState {
   map: CPUReadableTexture;
   mapBuffer: ImageData;
   overworld: DeferredSpriteSheet;
+  ui: SimpleSpriteSheet;
   character: {
     sprite: DeferredSpriteSheet;
     animator: DeferredSpriteAnimator;
@@ -52,7 +58,7 @@ export interface GameState {
   waterEffect: WaterEffect;
   blurEffect: NearestBlurEffect;
   editor?: EditorState;
-  moveTouch: { id: number; startPosition: vec2 } | null;
+  moveTouch: { id: number; startPosition: ReadonlyVec2 } | null;
 }
 
 export interface EditorState {
@@ -105,6 +111,7 @@ export async function onStart(
       ctx.screen.width / coords.TILE_SIZE + 2,
       ctx.screen.height / coords.TILE_SIZE + 2
     ),
+    ui: await loadSpriteSheet(ctx, uiSprite, simpleTextureLoader),
     overworld: overworld,
     character: {
       sprite: character,
@@ -306,7 +313,7 @@ export function onUpdate(
   }
 
   // provide a stable looping animation
-  state.animationTimer += fixedDelta / 10;
+  state.animationTimer += fixedDelta / 1000;
   if (state.animationTimer > MAX_TIME) {
     state.animationTimer -= MAX_TIME;
   }
@@ -579,6 +586,22 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
       s.draw(
         vec4.fromValues(1.0, 1.0, 0, 0),
         vec4.fromValues(0, lightingTexture.width, lightingTexture.height, 0)
+      );
+    }
+
+    if (state.moveTouch !== null) {
+      s.setAlpha(0.5);
+      state.ui.touch.draw(
+        s,
+        ctx.screen.toScreenSpace(
+          vec4.create(),
+          vec4.fromValues(
+            Math.round(state.moveTouch.startPosition[1]) - 32,
+            Math.round(state.moveTouch.startPosition[0]) + 32,
+            Math.round(state.moveTouch.startPosition[1]) + 32,
+            Math.round(state.moveTouch.startPosition[0]) - 32
+          )
+        )
       );
     }
   });

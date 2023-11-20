@@ -389,7 +389,7 @@ export class DeferredSpriteEffect
 
   draw(
     screenSpaceRect: ReadonlyVec4,
-    textureCoords: ReadonlyVec4
+    textureCoords: ReadonlyVec4,
   ): DeferredSpriteEffect {
     if (this.#texture) {
       const mvp = mat3.create();
