@@ -13,7 +13,6 @@ const gameCanvas = GameRunner({
     preferredWidthIncrements: 20,
     preferredHeightIncrements: 13,
   },
-  offscreenCanvas: { width: 1024, height: 1024 },
 });
 
 if (gameCanvas) {

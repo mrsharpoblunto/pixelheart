@@ -2,7 +2,11 @@ import { vec4, vec2, ReadonlyVec4 } from "gl-matrix";
 
 export interface GameContext {
   gl: WebGL2RenderingContext;
-  offscreen: CanvasRenderingContext2D;
+  createOffscreenCanvas: (
+    width: number,
+    height: number,
+    settings?: CanvasRenderingContext2DSettings
+  ) => CanvasRenderingContext2D;
   canvas: HTMLCanvasElement;
   getGamepad: () => Gamepad | null;
   keys: {
@@ -16,7 +20,7 @@ export interface GameContext {
     clicked: Array<boolean>;
   };
   touches: {
-    down: Map<number, { started: number, position: vec2}>;
+    down: Map<number, { started: number; position: vec2 }>;
     ended: Map<number, { position: vec2 }>;
   };
   screen: {
@@ -43,7 +47,6 @@ interface GameProps<T, U> {
     preferredWidthIncrements: number;
     preferredHeightIncrements: number;
   };
-  offscreenCanvas: { width: number; height: number };
 }
 
 export default function GameRunner<T, U>(
@@ -64,19 +67,6 @@ export default function GameRunner<T, U>(
     return null;
   }
 
-  const offscreenCanvas = document.createElement("canvas");
-  offscreenCanvas.width = props.offscreenCanvas.width;
-  offscreenCanvas.height = props.offscreenCanvas.height;
-  const offscreen = offscreenCanvas.getContext("2d", {
-    willReadFrequently: true,
-  });
-  if (!offscreen) {
-    console.error(
-      "Unable to initialize OffscreenCanvas. Your browser or machine may not support it."
-    );
-    return null;
-  }
-
   let selectedGamepadIndex: number | null = null;
 
   const contextScreen = {
@@ -92,7 +82,22 @@ export default function GameRunner<T, U>(
 
   const context: GameContext = {
     gl,
-    offscreen,
+    createOffscreenCanvas: (
+      width: number,
+      height: number,
+      settings?: CanvasRenderingContext2DSettings
+    ) => {
+      const offscreenCanvas = document.createElement("canvas");
+      offscreenCanvas.width = width;
+      offscreenCanvas.height = height;
+      const offscreen = offscreenCanvas.getContext("2d", settings);
+      if (!offscreen) {
+        console.error(
+          "Unable to initialize OffscreenCanvas. Your browser or machine may not support it."
+        );
+      }
+      return offscreen!;
+    },
     canvas,
     getGamepad: () => {
       if (selectedGamepadIndex !== null) {
@@ -210,7 +215,10 @@ export default function GameRunner<T, U>(
         newTouch[0] <= context.screen.width &&
         newTouch[1] <= context.screen.height
       ) {
-        context.touches.down.set(touch.identifier, { started: Date.now(), position: newTouch});
+        context.touches.down.set(touch.identifier, {
+          started: Date.now(),
+          position: newTouch,
+        });
       }
     }
     e.preventDefault();
@@ -242,7 +250,9 @@ export default function GameRunner<T, U>(
           (touch.clientY - rect.top) / pixelMultiplier
         );
         context.touches.down.delete(touch.identifier);
-        context.touches.ended.set(touch.identifier, { position: existingTouch.position });
+        context.touches.ended.set(touch.identifier, {
+          position: existingTouch.position,
+        });
       }
     }
     e.preventDefault();

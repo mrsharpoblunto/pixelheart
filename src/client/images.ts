@@ -98,22 +98,27 @@ export function loadTextureFromImage(
   return texture!;
 }
 
+let offscreenPixel: CanvasRenderingContext2D | null = null;
+
 export function getPixelData(
   ctx: GameContext,
   image: HTMLImageElement
 ): (x: number, y: number) => Uint8ClampedArray | null {
-  ctx.offscreen.canvas.width = Math.max(
+  if (!offscreenPixel) {
+    offscreenPixel = ctx.createOffscreenCanvas(image.width,image.height, { willReadFrequently: true});
+  }
+  offscreenPixel.canvas.width = Math.max(
     image.width,
-    ctx.offscreen.canvas.width
+    offscreenPixel.canvas.width
   );
-  ctx.offscreen.canvas.height = Math.max(
+  offscreenPixel.canvas.height = Math.max(
     image.height,
-    ctx.offscreen.canvas.height
+    offscreenPixel.canvas.height
   );
-  ctx.offscreen.drawImage(image, 0, 0, image.width, image.height);
+  offscreenPixel.drawImage(image, 0, 0, image.width, image.height);
 
   return (x: number, y: number) => {
-    const pixelData = ctx.offscreen.getImageData(x, y, 1, 1).data;
+    const pixelData = offscreenPixel!.getImageData(x, y, 1, 1).data;
     return pixelData;
   };
 }

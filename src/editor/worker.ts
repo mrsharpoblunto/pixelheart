@@ -1,5 +1,6 @@
 import { parentPort } from "worker_threads";
 import { EditorAction } from "../shared/editor-actions";
+import { encodeMapTile } from "../shared/map-format";
 import path from "path";
 import sharp from "sharp";
 import chalk from "chalk";
@@ -82,9 +83,11 @@ if (parentPort) {
               };
               workingImages.set(imagePath, existing);
             }
-            existing.buffer[
-              (a.x + a.y * existing.width!) * existing.channels!
-            ] = a.value;
+            encodeMapTile(
+              existing.buffer,
+              (a.x + a.y * existing.width!) * existing.channels!,
+              a.value
+            );
           }
           break;
         case "RESTART":

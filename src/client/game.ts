@@ -1,6 +1,6 @@
 import { GameContext } from "./game-runner";
 import { vec4, vec3, ReadonlyVec2 } from "gl-matrix";
-import { CPUReadableTexture, loadCPUReadableTextureFromUrl } from "./images";
+import { loadCPUReadableTextureFromUrl } from "./images";
 import { loadSpriteSheet } from "./sprite-common";
 import {
   deferredTextureLoader,
@@ -22,6 +22,7 @@ import uiSprite from "./sprites/ui";
 import * as coords from "./coordinates";
 import { vec2 } from "gl-matrix";
 import { EditorAction } from "../shared/editor-actions";
+import MapData from "./map";
 
 const CONTROLLER_DEADZONE = 0.25;
 const TOUCH_DEADZONE = 5;
@@ -40,8 +41,7 @@ export interface GameState {
   spriteEffect: DeferredSpriteEffect;
   simpleSpriteEffect: SimpleSpriteEffect;
   solidEffect: SolidEffect;
-  map: CPUReadableTexture;
-  mapBuffer: ImageData;
+  map: MapData;
   overworld: DeferredSpriteSheet;
   ui: SimpleSpriteSheet;
   character: {
@@ -102,15 +102,13 @@ export async function onStart(
     characterSprite,
     deferredTextureLoader
   );
+  const map = await loadCPUReadableTextureFromUrl(ctx, "./images/walkmap.png");
+
   const state: GameState = {
     spriteEffect: new DeferredSpriteEffect(ctx.gl),
     simpleSpriteEffect: new SimpleSpriteEffect(ctx.gl),
     solidEffect: new SolidEffect(ctx.gl),
-    map: await loadCPUReadableTextureFromUrl(ctx, "./images/walkmap.png"),
-    mapBuffer: new ImageData(
-      ctx.screen.width / coords.TILE_SIZE + 2,
-      ctx.screen.height / coords.TILE_SIZE + 2
-    ),
+    map: new MapData(ctx, coords.TILE_SIZE, map),
     ui: await loadSpriteSheet(ctx, uiSprite, simpleTextureLoader),
     overworld: overworld,
     character: {
@@ -153,15 +151,6 @@ export async function onStart(
       pushEdits(state.editor);
     }, 1000);
   }
-
-  // Draw the walkmap offscreen
-  ctx.offscreen.drawImage(
-    state.map.image,
-    0,
-    0,
-    state.map.width,
-    state.map.height
-  );
 
   return state;
 }
@@ -380,18 +369,7 @@ export function onUpdate(
     state.character.relativePosition
   );
 
-  const ssp = coords.toAbsoluteTileFromAbsolute(
-    vec4.create(),
-    state.screen.absolutePosition
-  );
-
-  // read in all the onscreen tiles
-  state.mapBuffer = ctx.offscreen.getImageData(
-    ssp[0] - 1,
-    ssp[1] - 1,
-    ctx.screen.width / coords.TILE_SIZE + 3,
-    ctx.screen.height / coords.TILE_SIZE + 3
-  );
+  state.map.updateScreenBuffer(ctx, state.screen.absolutePosition);
 
   if (process.env.NODE_ENV === "development") {
     updateEditor(ctx, state, fixedDelta);
@@ -496,20 +474,16 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
                 )
               );
 
-              if (getMapBufferData(x, y, state, ctx) !== 0) {
+              if (state.map.read(mapX, mapY) !== 0) {
                 // not water
-                const top = getMapBufferData(x, y - 1, state, ctx) === 0;
-                const left = getMapBufferData(x - 1, y, state, ctx) === 0;
-                const bottom = getMapBufferData(x, y + 1, state, ctx) === 0;
-                const right = getMapBufferData(x + 1, y, state, ctx) === 0;
-                const topLeft =
-                  getMapBufferData(x - 1, y - 1, state, ctx) === 0;
-                const topRight =
-                  getMapBufferData(x + 1, y - 1, state, ctx) === 0;
-                const bottomLeft =
-                  getMapBufferData(x - 1, y + 1, state, ctx) === 0;
-                const bottomRight =
-                  getMapBufferData(x + 1, y + 1, state, ctx) === 0;
+                const top = state.map.read(mapX, mapY - 1) === 0;
+                const left = state.map.read(mapX - 1, mapY) === 0;
+                const bottom = state.map.read(mapX, mapY + 1) === 0;
+                const right = state.map.read(mapX + 1, mapY) === 0;
+                const topLeft = state.map.read(mapX - 1, mapY - 1) === 0;
+                const topRight = state.map.read(mapX + 1, mapY - 1) === 0;
+                const bottomLeft = state.map.read(mapX - 1, mapY + 1) === 0;
+                const bottomRight = state.map.read(mapX + 1, mapY + 1) === 0;
 
                 if (top && left) {
                   state.overworld.grass_tl.draw(s, position);
@@ -623,12 +597,6 @@ function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
   }
 
   if (ctx.mouse.down[0]) {
-    const rp = coords.toRelativeTileFromRelative(
-      vec4.create(),
-      ctx.mouse.position,
-      state.screen
-    );
-
     const ap = coords.pickAbsoluteTileFromRelative(
       vec4.create(),
       ctx.mouse.position,
@@ -636,15 +604,9 @@ function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
     );
 
     if (state.editor.newValue === null) {
-      state.editor.newValue =
-        getMapBufferData(rp[0], rp[1], state, ctx) === 0 ? 255 : 0;
+      state.editor.newValue = state.map.read(ap[0], ap[1]) === 0 ? 255 : 0;
     }
-    setMapBufferData(rp[0], rp[1], state.editor.newValue, state, ctx);
-    const ssp = coords.toAbsoluteTileFromAbsolute(
-      vec4.create(),
-      state.screen.absolutePosition
-    );
-    ctx.offscreen.putImageData(state.mapBuffer, ssp[0] - 1, ssp[1] - 1);
+    state.map.write(ap[0], ap[1], state.editor.newValue);
 
     const found = rfind(
       state.editor.queued,
@@ -698,27 +660,6 @@ function drawEditor(ctx: GameContext, state: GameState, _delta: number) {
       );
     });
   }
-}
-
-function getMapBufferData(
-  x: number,
-  y: number,
-  state: GameState,
-  context: GameContext
-): number {
-  const width = context.screen.width / coords.TILE_SIZE + 3;
-  return state.mapBuffer.data[4 * (width * (y + 1) + x + 1)];
-}
-
-function setMapBufferData(
-  x: number,
-  y: number,
-  value: number,
-  state: GameState,
-  context: GameContext
-) {
-  const width = context.screen.width / coords.TILE_SIZE + 3;
-  state.mapBuffer.data[4 * (width * (y + 1) + x + 1)] = value;
 }
 
 function hash(x: number, y: number): number {
