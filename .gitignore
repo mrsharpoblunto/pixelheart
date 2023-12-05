@@ -2,6 +2,6 @@ node_modules/
 public/*
 www/sprites/*
 www/js/*
-src/client/sprites/*
-src/client/shaders/*.ts
+src/client/generated/*
+src/shared/generated/*
 .DS_Store

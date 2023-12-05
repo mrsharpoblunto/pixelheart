@@ -10,8 +10,8 @@ import {
 } from "./sprite-common";
 import { SpriteViewProjection, Quad } from "./geometry";
 import { ShaderProgram, InstanceBuffer } from "./gl-utils";
-import vertexShader from "./shaders/sprite.vert";
-import fragmentShader from "./shaders/sprite.frag";
+import vertexShader from "./generated/shaders/sprite.vert";
+import fragmentShader from "./generated/shaders/sprite.frag";
 
 export type SimpleSpriteTextures = GPUTexture;
 export type SimpleSpriteSheet = SpriteSheet<SimpleSpriteTextures>;

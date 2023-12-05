@@ -1,8 +1,8 @@
 import { GPUTexture, TEXTURE } from "./images";
 import { ShaderProgram, FrameBuffer, createTexture } from "./gl-utils";
 import { Quad } from "./geometry";
-import vertexShader from "./shaders/quad.vert";
-import fragmentShader from "./shaders/nearest-blur.frag";
+import vertexShader from "./generated/shaders/quad.vert";
+import fragmentShader from "./generated/shaders/nearest-blur.frag";
 
 export class NearestBlurEffect {
   #gl: WebGL2RenderingContext;

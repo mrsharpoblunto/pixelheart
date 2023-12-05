@@ -2,8 +2,8 @@ import { mat3, ReadonlyVec4 } from "gl-matrix";
 import { ShaderProgram, InstanceBuffer } from "./gl-utils";
 import { SpriteViewProjection, Quad } from "./geometry";
 
-import vertexShader from "./shaders/solid.vert";
-import fragmentShader from "./shaders/solid.frag";
+import vertexShader from "./generated/shaders/solid.vert";
+import fragmentShader from "./generated/shaders/solid.frag";
 
 type SpriteInstance = { mvp: mat3; color: ReadonlyVec4 };
 

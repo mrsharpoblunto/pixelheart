@@ -15,12 +15,12 @@ import {
   FrameBuffer,
 } from "./gl-utils";
 import { ToTangentSpace } from "./sprite-common";
-import vertexShader from "./shaders/deferred-sprite.vert";
-import fragmentShader from "./shaders/deferred-sprite.frag";
-import lightingVertexShader from "./shaders/deferred-lighting.vert";
+import vertexShader from "./generated/shaders/deferred-sprite.vert";
+import fragmentShader from "./generated/shaders/deferred-sprite.frag";
+import lightingVertexShader from "./generated/shaders/deferred-lighting.vert";
 import lightingFragmentShader, {
   Constants as LightingConstants,
-} from "./shaders/deferred-lighting.frag";
+} from "./generated/shaders/deferred-lighting.frag";
 
 export type DeferredSpriteTextures = {
   diffuseTexture: GPUTexture;
@@ -389,7 +389,7 @@ export class DeferredSpriteEffect
 
   draw(
     screenSpaceRect: ReadonlyVec4,
-    textureCoords: ReadonlyVec4,
+    textureCoords: ReadonlyVec4
   ): DeferredSpriteEffect {
     if (this.#texture) {
       const mvp = mat3.create();

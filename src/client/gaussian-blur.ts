@@ -1,8 +1,8 @@
 import { GPUTexture, TEXTURE } from "./images";
 import { ShaderProgram, FrameBuffer, createTexture } from "./gl-utils";
 import { Quad } from "./geometry";
-import vertexShader from "./shaders/quad.vert";
-import fragmentShader from "./shaders/gaussian-blur.frag";
+import vertexShader from "./generated/shaders/quad.vert";
+import fragmentShader from "./generated/shaders/gaussian-blur.frag";
 
 export class GaussianBlurEffect {
   #gl: WebGL2RenderingContext;

@@ -13,9 +13,12 @@ import {
   Binormal,
 } from "../src/client/sprite-common";
 
-export const spritePath = path.join(__dirname, "../sprites");
+export const spritePath = path.join(__dirname, "../assets/sprites");
 export const wwwPath = path.join(__dirname, "../www/sprites");
-export const spriteSrcPath = path.join(__dirname, "../src/client/sprites");
+export const spriteSrcPath = path.join(
+  __dirname,
+  "../src/shared/generated/sprites"
+);
 
 const PNG_REGEX = /([a-zA-Z_][a-zA-Z0-9_]*)-([0-9]+)x([0-9]+)\.(png|ase)/;
 const DIFFUSE_LAYER = "diffuse";

@@ -16,9 +16,10 @@ import {
 import { WaterEffect } from "./water-effect";
 import { NearestBlurEffect } from "./nearest-blur";
 import { SolidEffect } from "./solid-effect";
-import overworldSprite from "./sprites/overworld";
-import characterSprite from "./sprites/character";
-import uiSprite from "./sprites/ui";
+import overworldSprite from "../shared/generated/sprites/overworld";
+import characterSprite from "../shared/generated/sprites/character";
+import uiSprite from "../shared/generated/sprites/ui";
+import { MapTile } from "../shared/map-format";
 import * as coords from "./coordinates";
 import { vec2 } from "gl-matrix";
 import { EditorAction } from "../shared/editor-actions";
@@ -50,6 +51,7 @@ export interface GameState {
     position: vec2;
     relativePosition: vec2;
     speed: number;
+    boundingBox: vec4;
   };
   screen: {
     absolutePosition: vec2;
@@ -63,7 +65,7 @@ export interface GameState {
 
 export interface EditorState {
   active: boolean;
-  newValue: number | null;
+  newValue: MapTile | null;
   queued: Array<EditorAction>;
   pending: Array<EditorAction>;
   isUpdating: boolean;
@@ -125,6 +127,12 @@ export async function onStart(
           )
         : vec2.fromValues(ctx.screen.width / 2, ctx.screen.height / 2),
       relativePosition: vec2.create(),
+      boundingBox: vec4.fromValues(
+        character.walk_u.height - 14,
+        character.walk_u.width - 2,
+        character.walk_u.height - 4,
+        2
+      ),
       speed: 1,
     },
     waterEffect: new WaterEffect(ctx.gl),
@@ -326,9 +334,59 @@ export function onUpdate(
   vec2.scale(movement, movement, state.character.speed);
   vec2.add(movement, movement, state.character.position);
 
-  const isWater = false; // ctx.offscreen.getImageData(newPositionX / TILE_SIZE, newPositionY / TILE_SIZE, 1, 1).data[0]===0;
+  const renderOffset = vec2.fromValues(
+    state.character.animator.getSprite().width / 2,
+    state.character.animator.getSprite().height / 2
+  );
 
-  if (!isWater) {
+  // check the characters bounding box against the map
+  // top left
+  const isWalkable =
+    state.map.read(
+      Math.floor(
+        (movement[0] - renderOffset[0] + state.character.boundingBox[3]) /
+          coords.TILE_SIZE
+      ),
+      Math.floor(
+        (movement[1] - renderOffset[1] + state.character.boundingBox[0]) /
+          coords.TILE_SIZE
+      )
+    ).walkable &&
+    // top right
+    state.map.read(
+      Math.floor(
+        (movement[0] - renderOffset[0] + state.character.boundingBox[1]) /
+          coords.TILE_SIZE
+      ),
+      Math.floor(
+        (movement[1] - renderOffset[1] + state.character.boundingBox[0]) /
+          coords.TILE_SIZE
+      )
+    ).walkable &&
+    // bottom left
+    state.map.read(
+      Math.floor(
+        (movement[0] - renderOffset[0] + state.character.boundingBox[3]) /
+          coords.TILE_SIZE
+      ),
+      Math.floor(
+        (movement[1] - renderOffset[1] + state.character.boundingBox[2]) /
+          coords.TILE_SIZE
+      )
+    ).walkable &&
+    // bottom right
+    state.map.read(
+      Math.floor(
+        (movement[0] - renderOffset[0] + state.character.boundingBox[1]) /
+          coords.TILE_SIZE
+      ),
+      Math.floor(
+        (movement[1] - renderOffset[1] + state.character.boundingBox[2]) /
+          coords.TILE_SIZE
+      )
+    ).walkable;
+
+  if (isWalkable) {
     const renderOffset = vec2.fromValues(
       state.character.animator.getSprite().width / 2,
       state.character.animator.getSprite().height / 2
@@ -474,16 +532,18 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
                 )
               );
 
-              if (state.map.read(mapX, mapY) !== 0) {
+              if (state.map.read(mapX, mapY).index !== 0) {
                 // not water
-                const top = state.map.read(mapX, mapY - 1) === 0;
-                const left = state.map.read(mapX - 1, mapY) === 0;
-                const bottom = state.map.read(mapX, mapY + 1) === 0;
-                const right = state.map.read(mapX + 1, mapY) === 0;
-                const topLeft = state.map.read(mapX - 1, mapY - 1) === 0;
-                const topRight = state.map.read(mapX + 1, mapY - 1) === 0;
-                const bottomLeft = state.map.read(mapX - 1, mapY + 1) === 0;
-                const bottomRight = state.map.read(mapX + 1, mapY + 1) === 0;
+                const top = state.map.read(mapX, mapY - 1).index === 0;
+                const left = state.map.read(mapX - 1, mapY).index === 0;
+                const bottom = state.map.read(mapX, mapY + 1).index === 0;
+                const right = state.map.read(mapX + 1, mapY).index === 0;
+                const topLeft = state.map.read(mapX - 1, mapY - 1).index === 0;
+                const topRight = state.map.read(mapX + 1, mapY - 1).index === 0;
+                const bottomLeft =
+                  state.map.read(mapX - 1, mapY + 1).index === 0;
+                const bottomRight =
+                  state.map.read(mapX + 1, mapY + 1).index === 0;
 
                 if (top && left) {
                   state.overworld.grass_tl.draw(s, position);
@@ -604,7 +664,14 @@ function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
     );
 
     if (state.editor.newValue === null) {
-      state.editor.newValue = state.map.read(ap[0], ap[1]) === 0 ? 255 : 0;
+      const oldValue = state.map.read(ap[0], ap[1]);
+      state.editor.newValue = {
+        index: oldValue.index === 255 ? 0 : 255,
+        frame: 0,
+        walkable: oldValue.index === 0,
+        spatialHash: true,
+        animated: false,
+      };
     }
     state.map.write(ap[0], ap[1], state.editor.newValue);
 
@@ -651,12 +718,39 @@ function drawEditor(ctx: GameContext, state: GameState, _delta: number) {
     );
 
     state.solidEffect.use((s) => {
+      // editor cursor
       s.draw(
         coords.toScreenSpaceFromAbsoluteTile(vec4.create(), ap, {
           ...state.screen,
           ...ctx.screen,
         }),
         vec4.fromValues(1.0, 0, 0, 0.5)
+      );
+
+      // character bounding box
+      const offset = vec2.fromValues(
+        state.character.animator.getSprite().width / 2,
+        state.character.animator.getSprite().height / 2
+      );
+      s.draw(
+        ctx.screen.toScreenSpace(
+          vec4.create(),
+          vec4.fromValues(
+            Math.floor(state.character.relativePosition[1]) -
+              offset[1] +
+              state.character.boundingBox[0],
+            Math.floor(state.character.relativePosition[0]) -
+              offset[0] +
+              state.character.boundingBox[1],
+            Math.floor(state.character.relativePosition[1]) -
+              offset[1] +
+              state.character.boundingBox[2],
+            Math.floor(state.character.relativePosition[0]) -
+              offset[0] +
+              state.character.boundingBox[3]
+          )
+        ),
+        vec4.fromValues(0.0, 0, 1.0, 0.5)
       );
     });
   }

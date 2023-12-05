@@ -3,8 +3,8 @@ import fs from "fs/promises";
 import chalk from "chalk";
 import { GlslMinify } from "webpack-glsl-minify/build/minify";
 
-export const shadersPath = path.join(__dirname, "../shaders");
-export const shadersSrcPath = path.join(__dirname, "../src/client/shaders");
+export const shadersPath = path.join(__dirname, "../assets/shaders");
+export const shadersSrcPath = path.join(__dirname, "../src/client/generated/shaders");
 
 export function isShader(file: string) {
   return path.extname(file) === ".vert" || path.extname(file) === ".frag";

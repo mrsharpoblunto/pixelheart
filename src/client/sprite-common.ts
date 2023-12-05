@@ -42,6 +42,7 @@ export interface SpriteSheetConfig {
 }
 
 export interface Sprite<T> {
+  readonly index: number;
   readonly width: number;
   readonly height: number;
   readonly frames: Array<ReadonlyVec4>;
@@ -56,10 +57,7 @@ export interface SpriteSheet<T> extends Record<string, Sprite<T>> {}
 
 export interface SpriteEffect<T> {
   setTextures(texture: T): SpriteEffect<T>;
-  draw(
-    rect: ReadonlyVec4,
-    textureCoords: ReadonlyVec4,
-  ): SpriteEffect<T>;
+  draw(rect: ReadonlyVec4, textureCoords: ReadonlyVec4): SpriteEffect<T>;
 }
 
 export async function loadSpriteSheet<T>(
@@ -68,6 +66,7 @@ export async function loadSpriteSheet<T>(
   loader: (ctx: GameContext, sheet: SpriteSheetConfig) => Promise<T>
 ): Promise<SpriteSheet<T>> {
   const textures = await loader(ctx, sheet);
+  let i = 0;
   return {
     ...Object.keys(sheet.sprites).reduce(
       (p: Record<string, Sprite<T>>, n: string) => {
@@ -76,6 +75,7 @@ export async function loadSpriteSheet<T>(
           vec4.fromValues(f.top, f.right, f.bottom, f.left)
         );
         p[n] = {
+          index: i++,
           width: sprite.width,
           height: sprite.height,
           frames,
@@ -85,10 +85,7 @@ export async function loadSpriteSheet<T>(
             frame: number = 0
           ) => {
             effect.setTextures(textures);
-            effect.draw(
-              position,
-              frames[Math.floor(frame) % frames.length],
-            );
+            effect.draw(position, frames[Math.floor(frame) % frames.length]);
             return p[n];
           },
         };
@@ -97,6 +94,23 @@ export async function loadSpriteSheet<T>(
       {}
     ),
   };
+}
+
+export type SpriteIndex  = Array<{
+    readonly sprite: string;
+    readonly frames: Array<ReadonlyVec4>;
+  }>;
+
+export function createSpriteIndex(sheet: SpriteSheetConfig) {
+  return Object.keys(sheet.sprites).map((s: string) => {
+    const sprite = sheet.sprites[s];
+    return {
+      sprite: s,
+      frames: sprite.frames.map((f) =>
+        vec4.fromValues(f.top, f.right, f.bottom, f.left)
+      ),
+    };
+  });
 }
 
 export class SpriteAnimator<T> {

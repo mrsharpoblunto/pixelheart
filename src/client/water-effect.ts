@@ -2,8 +2,8 @@ import { vec2 } from "gl-matrix";
 import { GPUTexture, TEXTURE } from "./images";
 import { ShaderProgram } from "./gl-utils";
 import { Quad } from "./geometry";
-import vertexShader from "./shaders/quad.vert";
-import fragmentShader from "./shaders/water.frag";
+import vertexShader from "./generated/shaders/quad.vert";
+import fragmentShader from "./generated/shaders/water.frag";
 import { ToTangentSpace, Tangent, Binormal, Normal } from "./sprite-common";
 
 export class WaterEffect {

@@ -12,7 +12,7 @@
     "build:shaders": "ts-node ./build/shaders.ts",
     "dev": "npm run clean && npm run watch",
     "watch": "ts-node ./build/watch.ts",
-    "clean": "rimraf www/js && rimraf www/sprites && rimraf src/client/sprites && rimraf src/client/shaders"
+    "clean": "rimraf www/js && rimraf www/sprites && rimraf src/client/generated && rimraf src/shared/generated"
   },
   "keywords": [],
   "author": "",
