@@ -1,9 +1,17 @@
 export interface MapTile {
   index: number; // 0-255
-  frame: number; // 0-255
   walkable: boolean;
   spatialHash: boolean;
   animated: boolean;
+  triggerId: number;
+}
+
+export interface MapTileSource {
+  sprite: string;
+  walkable: boolean;
+  spatialHash: boolean;
+  animated: boolean;
+  triggerId: number;
 }
 
 export function decodeMapTile(
@@ -12,7 +20,7 @@ export function decodeMapTile(
 ): MapTile {
   return {
     index: buffer[index],
-    frame: buffer[index + 1],
+    triggerId: buffer[index + 1],
     walkable: (buffer[index + 2] & 1) === 1,
     spatialHash: (buffer[index + 2] & 2) === 2,
     animated: (buffer[index + 2] & 4) === 4,
@@ -25,7 +33,7 @@ export function encodeMapTile(
   value: MapTile
 ) {
   buffer[index] = value.index;
-  buffer[index + 1] = value.frame;
+  buffer[index + 1] = value.triggerId;
   buffer[index + 2] =
     (value.walkable ? 1 : 0) |
     (value.spatialHash ? 2 : 0) |

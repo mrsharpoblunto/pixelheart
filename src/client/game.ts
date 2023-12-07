@@ -16,10 +16,10 @@ import {
 import { WaterEffect } from "./water-effect";
 import { NearestBlurEffect } from "./nearest-blur";
 import { SolidEffect } from "./solid-effect";
-import overworldSprite from "../shared/generated/sprites/overworld";
+import overworldMap from "../shared/generated/maps/overworld";
 import characterSprite from "../shared/generated/sprites/character";
 import uiSprite from "../shared/generated/sprites/ui";
-import { MapTile } from "../shared/map-format";
+import { MapTileSource } from "../shared/map-format";
 import * as coords from "./coordinates";
 import { vec2 } from "gl-matrix";
 import { EditorAction } from "../shared/editor-actions";
@@ -65,7 +65,7 @@ export interface GameState {
 
 export interface EditorState {
   active: boolean;
-  newValue: MapTile | null;
+  newValue: MapTileSource | null;
   queued: Array<EditorAction>;
   pending: Array<EditorAction>;
   isUpdating: boolean;
@@ -96,7 +96,7 @@ export async function onStart(
 
   const overworld = await loadSpriteSheet(
     ctx,
-    overworldSprite,
+    overworldMap.spriteSheet,
     deferredTextureLoader
   );
   const character = await loadSpriteSheet(
@@ -104,7 +104,7 @@ export async function onStart(
     characterSprite,
     deferredTextureLoader
   );
-  const map = await loadCPUReadableTextureFromUrl(ctx, "./images/walkmap.png");
+  const map = await loadCPUReadableTextureFromUrl(ctx, overworldMap.url);
 
   const state: GameState = {
     spriteEffect: new DeferredSpriteEffect(ctx.gl),
@@ -666,14 +666,19 @@ function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
     if (state.editor.newValue === null) {
       const oldValue = state.map.read(ap[0], ap[1]);
       state.editor.newValue = {
-        index: oldValue.index === 255 ? 0 : 255,
-        frame: 0,
+        sprite: oldValue.index === 0 ? "grass" : "",
+        triggerId: 0,
         walkable: oldValue.index === 0,
-        spatialHash: true,
+        spatialHash: oldValue.index === 0,
         animated: false,
       };
     }
-    state.map.write(ap[0], ap[1], state.editor.newValue);
+    state.map.write(ap[0], ap[1], {
+      ...state.editor.newValue,
+      index: state.editor.newValue.sprite
+        ? state.overworld[state.editor.newValue.sprite].index
+        : 0,
+    });
 
     const found = rfind(
       state.editor.queued,
@@ -687,6 +692,7 @@ function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
         type: "TILE_CHANGE",
         x: ap[0],
         y: ap[1],
+        map: "overworld",
         value: state.editor.newValue,
       });
     }

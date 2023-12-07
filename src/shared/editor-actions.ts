@@ -1,11 +1,12 @@
-import { MapTile } from "./map-format";
+import { MapTileSource } from "./map-format";
 
 export type EditorAction =
   | {
       type: "TILE_CHANGE";
       x: number;
       y: number;
-      value: MapTile;
+      map: string;
+      value: MapTileSource;
     }
   | {
       type: "RESTART";

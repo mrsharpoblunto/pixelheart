@@ -23,6 +23,7 @@ export const ToTangentSpace = mat3.transpose(mat3.create(), TBN);
 export interface SpriteConfig {
   readonly width: number;
   readonly height: number;
+  readonly index: number;
   readonly frames: Array<{
     readonly top: number;
     readonly left: number;
@@ -38,6 +39,7 @@ export interface SpriteSheetConfig {
     specular: string;
     emissive: string;
   };
+  indexes: Array<string>;
   sprites: Record<string, SpriteConfig>;
 }
 
@@ -66,7 +68,6 @@ export async function loadSpriteSheet<T>(
   loader: (ctx: GameContext, sheet: SpriteSheetConfig) => Promise<T>
 ): Promise<SpriteSheet<T>> {
   const textures = await loader(ctx, sheet);
-  let i = 0;
   return {
     ...Object.keys(sheet.sprites).reduce(
       (p: Record<string, Sprite<T>>, n: string) => {
@@ -75,7 +76,7 @@ export async function loadSpriteSheet<T>(
           vec4.fromValues(f.top, f.right, f.bottom, f.left)
         );
         p[n] = {
-          index: i++,
+          index: sprite.index,
           width: sprite.width,
           height: sprite.height,
           frames,
@@ -96,20 +97,25 @@ export async function loadSpriteSheet<T>(
   };
 }
 
-export type SpriteIndex  = Array<{
-    readonly sprite: string;
-    readonly frames: Array<ReadonlyVec4>;
-  }>;
+export type SpriteIndex = Array<{
+  readonly sprite: string;
+  readonly index: number;
+  readonly frames: Array<ReadonlyVec4>;
+}>;
 
-export function createSpriteIndex(sheet: SpriteSheetConfig) {
-  return Object.keys(sheet.sprites).map((s: string) => {
-    const sprite = sheet.sprites[s];
-    return {
-      sprite: s,
-      frames: sprite.frames.map((f) =>
-        vec4.fromValues(f.top, f.right, f.bottom, f.left)
-      ),
-    };
+export function createSpriteIndex(
+  sheet: SpriteSheetConfig
+): SpriteIndex {
+  return sheet.indexes.map((s: string, i: number) => {
+    return i == 0
+      ? { sprite: "", index: i, frames: [] }
+      : {
+          sprite: s,
+          index: i,
+          frames: sheet.sprites[s].frames.map((f) =>
+            vec4.fromValues(f.top, f.right, f.bottom, f.left)
+          ),
+        };
   });
 }
 

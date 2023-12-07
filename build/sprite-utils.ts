@@ -167,21 +167,44 @@ export async function processSpriteSheet(
         ),
       ]);
 
+      // write the typescript generated mapping
       await fs.writeFile(
         path.join(spriteSrcPath, `${sheet.name}.ts`),
         `const Sheet = { 
   sprites: {
 ` +
           [...sheet.sprites]
-            .map(([name, sprite]) => `   ${name}: ${JSON.stringify(sprite)},`)
+            .map(
+              ([name, sprite], i) =>
+                `   ${name}: ${JSON.stringify({
+                  ...sprite,
+                  index: i + 1,
+                })},`
+            )
             .join("\n") +
           `
   },
+  indexes: [
+    "",
+    ` +
+          [...sheet.sprites].map(([name, _]) => `"${name}",`).join("\n") +
+          `
+  ],
   urls: {
     ${urls.map(([name, url]) => `${name}: "${url}",`).join("\n")}
   }
 };
 export default Sheet;`
+      );
+
+      // write the json reverse index
+      await fs.writeFile(
+        path.join(spriteSrcPath, `${sheet.name}.json`),
+        `{` +
+          [...sheet.sprites]
+            .map(([name, _], i) => `"${name}":${i + 1}`)
+            .join(",") +
+          `}`
       );
     } catch (err: any) {
       onError(`Failed to write spritesheet: ${err.toString()}`);
@@ -271,6 +294,7 @@ async function processPngSprite(
     });
 
     const outputSprite: SpriteConfig = {
+      index: 0,
       width,
       height,
       frames: [],
@@ -314,6 +338,7 @@ async function processAseSprite(
     );
 
     const outputSprite: SpriteConfig = {
+      index: 0,
       width,
       height,
       frames: frameSlice.map((_f, i) => ({

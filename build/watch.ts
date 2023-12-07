@@ -10,7 +10,7 @@ import chalk from "chalk";
 import { spawn } from "child_process";
 import {
   spritePath,
-  wwwPath,
+  wwwPath as spriteWwwPath,
   spriteSrcPath,
   ensurePath,
   processSpriteSheet,
@@ -22,6 +22,13 @@ import {
   processShader,
   isShader,
 } from "./shader-utils";
+import {
+  mapsPath,
+  mapSrcPath,
+  wwwPath as mapsWwwPath,
+  processMap,
+  loadMapMetadata,
+} from "./map-utils";
 import { serve } from "esbuild";
 import esbuildConfig from "./esbuild-config";
 import { Worker } from "worker_threads";
@@ -44,6 +51,12 @@ const shaderLogDecorator = (message: string) => {
 const shaderErrorDecorator = (error: string) => {
   console.log(chalk.dim("[Shaders]"), chalk.red(error));
 };
+const mapsLogDecorator = (message: string) => {
+  console.log(chalk.dim("[Maps]"), message);
+};
+const mapsErrorDecorator = (error: string) => {
+  console.log(chalk.dim("[Maps]"), chalk.red(error));
+};
 
 Promise.resolve(
   yargs(hideBin(process.argv))
@@ -55,14 +68,16 @@ Promise.resolve(
     .scriptName("watch")
     .usage("$0 args").argv
 ).then(async (args) => {
-  await ensurePath(wwwPath);
+  await ensurePath(spriteWwwPath);
+  await ensurePath(mapsWwwPath);
   await ensurePath(spriteSrcPath);
+  await ensurePath(mapSrcPath);
   await ensurePath(shadersSrcPath);
 
   // on first run, check if any sprites are missing or older
   // than the source and build them
   const sourceSpriteSheets = await fs.readdir(spritePath);
-  const destSpriteSheets = await fs.readdir(wwwPath);
+  const destSpriteSheets = await fs.readdir(spriteWwwPath);
   for (const src of sourceSpriteSheets) {
     const srcStat = await fs.stat(path.join(spritePath, src));
     if (srcStat.isFile()) {
@@ -78,16 +93,36 @@ Promise.resolve(
       // doesn't exist
       !dest ||
       // or is older than the source
-      srcStat.mtimeMs > (await fs.stat(path.join(wwwPath, dest))).mtimeMs
+      srcStat.mtimeMs > (await fs.stat(path.join(spriteWwwPath, dest))).mtimeMs
     ) {
-      await processSpriteSheet(src, false, spriteLogDecorator, spriteErrorDecorator);
+      await processSpriteSheet(
+        src,
+        false,
+        spriteLogDecorator,
+        spriteErrorDecorator
+      );
     }
   }
 
-  // then await other changes as they come
-  await watcher.subscribe(spritePath, async (_err, events) => {
-    await processSpriteSheetEvents(events);
-  });
+  // on first run, check if any maps are missing or older
+  // than the source and build them.
+  const sourceMaps = await fs.readdir(mapsPath);
+  const destMaps = await fs.readdir(mapsWwwPath);
+  for (const src of sourceMaps) {
+    const srcStat = await fs.stat(path.join(mapsPath, src));
+    if (srcStat.isFile()) {
+      continue;
+    }
+    const dest = destMaps.find((d) => d === `${src}.png`);
+    if (
+      // doesn't exist
+      !dest ||
+      // or is older than the source
+      srcStat.mtimeMs > (await fs.stat(path.join(mapsWwwPath, dest))).mtimeMs
+    ) {
+      await processMap(src, mapsLogDecorator, mapsErrorDecorator);
+    }
+  }
 
   // on first run, check if any shader type definitions are missing or older
   // than the source and build them
@@ -121,9 +156,21 @@ Promise.resolve(
     )
   );
 
-  // then await other changes as they come
+  // await other sprite changes as they come
+  await watcher.subscribe(spritePath, async (_err, events) => {
+    await processSpriteSheetEvents(events);
+  });
+  // await other changes to shaders as they come
   await watcher.subscribe(shadersPath, async (_err, events) => {
     await processShaderEvents(args.production, events);
+  });
+  // NOTE: we also watch for sprite changes here because maps depend on
+  // sprites and we want to rebuild them if a sprite changes.
+  await watcher.subscribe(spriteSrcPath, async (_err, events) => {
+    await processMapSpriteEvents(events);
+  });
+  await watcher.subscribe(mapsPath, async (_err, events) => {
+    await processMapEvents(events);
   });
 
   // run the esbuild watcher
@@ -306,6 +353,62 @@ function createEditor(
   });
 }
 
+async function processMapSpriteEvents(events: watcher.Event[]) {
+  // if a sprite rev index.json changes, rebuild any maps
+  // which have a metadata.sprite field that matches the
+  // changed file
+  for (let e of events) {
+    if (path.extname(e.path) === ".json") {
+      const sprite = path.basename(e.path, ".json");
+
+      const maps = await fs.readdir(mapsPath);
+      for (const map of maps) {
+        const srcStat = await fs.stat(path.join(mapsPath, map));
+        if (srcStat.isFile()) {
+          continue;
+        }
+        const result = await loadMapMetadata(map);
+        if (result.ok && result.metadata.spriteSheet === sprite) {
+          await processMap(map, mapsLogDecorator, mapsErrorDecorator);
+        }
+      }
+    }
+  }
+}
+
+async function processMapEvents(events: watcher.Event[]) {
+  const newOrModified = new Set<string>();
+  const deleted = [];
+  for (let e of events) {
+    const components = e.path.substring(mapsPath.length + 1).split("/");
+    switch (e.type) {
+      case "create":
+      case "update":
+        if (components.length === 1 || components[1] === "metadata.json") {
+          newOrModified.add(components[0]);
+        }
+        break;
+
+      case "delete":
+        {
+          if (components.length === 1) {
+            deleted.push(components[0]);
+          }
+        }
+        break;
+    }
+  }
+
+  for (const d of deleted) {
+    await fs.rm(path.join(mapSrcPath, `${d}.ts`));
+    await fs.rm(path.join(mapsWwwPath, `${d}.png`));
+  }
+
+  for (const nom of newOrModified) {
+    await processMap(nom, mapsLogDecorator, mapsErrorDecorator);
+  }
+}
+
 async function processSpriteSheetEvents(events: watcher.Event[]) {
   const newOrModified = new Set<string>();
   const deleted = [];
@@ -341,12 +444,17 @@ async function processSpriteSheetEvents(events: watcher.Event[]) {
   for (let d of deleted) {
     try {
       await fs.rm(path.join(srcPath, `${d}.ts`));
-      await fs.rm(path.join(wwwPath, `${d}.png`));
+      await fs.rm(path.join(spriteWwwPath, `${d}.png`));
     } catch (ex) {}
   }
 
   for (let nom of newOrModified) {
-    await processSpriteSheet(nom, false, spriteLogDecorator, spriteErrorDecorator);
+    await processSpriteSheet(
+      nom,
+      false,
+      spriteLogDecorator,
+      spriteErrorDecorator
+    );
   }
 }
 
