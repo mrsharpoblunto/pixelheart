@@ -27,7 +27,7 @@ import MapData from "./map";
 
 const CONTROLLER_DEADZONE = 0.25;
 const TOUCH_DEADZONE = 5;
-const CURRENT_SERIALIZATION_VERSION = 1;
+const CURRENT_SERIALIZATION_VERSION = 2;
 const MAX_TIME = 1000;
 
 export interface SerializedGameState {
@@ -73,7 +73,7 @@ export interface EditorState {
 
 export function onSave(state: GameState): SerializedGameState {
   return {
-    version: 1,
+    version: CURRENT_SERIALIZATION_VERSION,
     character: {
       position: [state.character.position[0], state.character.position[1]],
       direction: state.character.animator.getSpriteName(),
@@ -125,7 +125,10 @@ export async function onStart(
             previousState.character.position[0],
             previousState.character.position[1]
           )
-        : vec2.fromValues(ctx.screen.width / 2, ctx.screen.height / 2),
+        : vec2.fromValues(
+            overworldMap.startPosition.x * coords.TILE_SIZE,
+            overworldMap.startPosition.y * coords.TILE_SIZE
+          ),
       relativePosition: vec2.create(),
       boundingBox: vec4.fromValues(
         character.walk_u.height - 14,

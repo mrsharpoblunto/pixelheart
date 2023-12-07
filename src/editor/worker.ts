@@ -23,7 +23,7 @@ interface WorkingMapData {
     path: string;
   };
   src: {
-    data: Array<Array<Array<MapTileSource | null>>>;
+    data: { [x: string]: { [y: string]: { [z: string]: MapTileSource } } };
     meta: MapMetadata;
     path: string;
   };
@@ -57,7 +57,10 @@ if (parentPort) {
         .toFile(value.image.path)
         .then(() => {
           log(`Saved updated image to ${value.image.path}`);
-          return fs.writeFile(value.src.path, JSON.stringify(value.src.data));
+          return fs.writeFile(
+            value.src.path,
+            JSON.stringify(value.src.data, null, 2)
+          );
         })
         .then(() => {
           log(`Saved map src data to ${value.src.path}`);
@@ -104,7 +107,17 @@ if (parentPort) {
               break;
             }
 
-            existing.src.data[a.x][a.y][0] = a.value.sprite ? a.value : null;
+            if (!existing.src.data[a.x]) {
+              existing.src.data[a.x] = {};
+            }
+            if (!existing.src.data[a.x][a.y]) {
+              existing.src.data[a.x][a.y] = {};
+            }
+            if (a.value.sprite) {
+              existing.src.data[a.x][a.y][0] = a.value;
+            } else {
+              delete existing.src.data[a.x][a.y][0];
+            }
             encodeMapTile(
               existing.image.buffer,
               (a.x + a.y * existing.image.width!) * existing.image.channels!,

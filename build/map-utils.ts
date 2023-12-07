@@ -3,7 +3,6 @@ import { ErrorObject } from "ajv";
 import sharp from "sharp";
 import {
   encodeMapTile,
-  MapTile,
   MapTileSource,
 } from "../src/shared/map-format";
 import path from "path";
@@ -121,23 +120,10 @@ export default Map;`
   const data = await loadJson(dataPath);
 
   const mapData = data.ok
-    ? (data.data as unknown as Array<Array<Array<MapTileSource | null>>>)
-    : (() => {
-        const newMap = new Array<Array<Array<MapTileSource | null>>>(
-          result.metadata.width
-        );
-        for (let x = 0; x < result.metadata.width; x++) {
-          newMap[x] = new Array<Array<MapTileSource | null>>(
-            result.metadata.height
-          );
-          for (let y = 0; y < result.metadata.height; y++) {
-            newMap[x][y] = [null];
-          }
-        }
-        return newMap;
-      })();
+    ? (data.data as unknown as { [x: string]: { [y: string]: { [z: string]: MapTileSource}}})
+    : {}
   if (!data.ok) {
-    await fs.writeFile(dataPath, JSON.stringify(mapData));
+    await fs.writeFile(dataPath, JSON.stringify(mapData, null, 2));
   }
 
   const spriteRevIndex = await loadJson(
@@ -154,23 +140,25 @@ export default Map;`
   );
   for (let x = 0; x < result.metadata.width; x++) {
     for (let y = 0; y < result.metadata.height; y++) {
-      const tile = mapData[x][y][0];
-      if (tile) {
-        const index = spriteRevIndex.data[tile.sprite];
-        if (!index) {
-          return onError(
-            `Invalid sprite at (${x},${y}): ${chalk.green(
-              result.metadata.spriteSheet
-            )}:${chalk.blue(tile.sprite)}`
-          );
+      if (mapData[x] && mapData[x][y]) {
+        const tile = mapData[x][y][0];
+        if (tile) {
+          const index = spriteRevIndex.data[tile.sprite];
+          if (!index) {
+            return onError(
+              `Invalid sprite at (${x},${y}): ${chalk.green(
+                result.metadata.spriteSheet
+              )}:${chalk.blue(tile.sprite)}`
+            );
+          }
+          encodeMapTile(mapBuffer, (x + y * result.metadata.width) * 3, {
+            index,
+            triggerId: tile.triggerId,
+            walkable: tile.walkable,
+            spatialHash: tile.spatialHash,
+            animated: tile.animated,
+          });
         }
-        encodeMapTile(mapBuffer, (x + y * result.metadata.width) * 3, {
-          index,
-          triggerId: tile.triggerId,
-          walkable: tile.walkable,
-          spatialHash: tile.spatialHash,
-          animated: tile.animated,
-        });
       }
     }
   }
