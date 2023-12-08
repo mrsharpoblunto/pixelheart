@@ -19,7 +19,7 @@ import { SolidEffect } from "./solid-effect";
 import overworldMap from "../shared/generated/maps/overworld";
 import characterSprite from "../shared/generated/sprites/character";
 import uiSprite from "../shared/generated/sprites/ui";
-import { MapTileSource } from "../shared/map-format";
+import { MapTile, MapTileSource } from "../shared/map-format";
 import * as coords from "./coordinates";
 import { vec2 } from "gl-matrix";
 import { EditorAction } from "../shared/editor-actions";
@@ -65,7 +65,7 @@ export interface GameState {
 
 export interface EditorState {
   active: boolean;
-  newValue: MapTileSource | null;
+  newValue: string | null;
   queued: Array<EditorAction>;
   pending: Array<EditorAction>;
   isUpdating: boolean;
@@ -523,7 +523,6 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
             ) {
               const mapX = x + ssp[0];
               const mapY = y + ssp[1];
-              const spatialHash = hash(mapX, mapY);
 
               const position = ctx.screen.toScreenSpace(
                 vec4.create(),
@@ -535,46 +534,14 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
                 )
               );
 
-              if (state.map.read(mapX, mapY).index !== 0) {
-                // not water
-                const top = state.map.read(mapX, mapY - 1).index === 0;
-                const left = state.map.read(mapX - 1, mapY).index === 0;
-                const bottom = state.map.read(mapX, mapY + 1).index === 0;
-                const right = state.map.read(mapX + 1, mapY).index === 0;
-                const topLeft = state.map.read(mapX - 1, mapY - 1).index === 0;
-                const topRight = state.map.read(mapX + 1, mapY - 1).index === 0;
-                const bottomLeft =
-                  state.map.read(mapX - 1, mapY + 1).index === 0;
-                const bottomRight =
-                  state.map.read(mapX + 1, mapY + 1).index === 0;
-
-                if (top && left) {
-                  state.overworld.grass_tl.draw(s, position);
-                } else if (top && right) {
-                  state.overworld.grass_tr.draw(s, position);
-                } else if (top && !left && !right) {
-                  state.overworld.grass_t.draw(s, position);
-                } else if (topLeft && !left && !top) {
-                  state.overworld.grass_i_tl.draw(s, position);
-                } else if (topRight && !right && !top) {
-                  state.overworld.grass_i_tr.draw(s, position);
-                } else if (left && !top && !bottom) {
-                  state.overworld.grass_l.draw(s, position);
-                } else if (bottom && left) {
-                  state.overworld.grass_bl.draw(s, position);
-                } else if (bottom && right) {
-                  state.overworld.grass_br.draw(s, position);
-                } else if (bottom && !left && !right) {
-                  state.overworld.grass_b.draw(s, position);
-                } else if (bottomLeft && !left && !bottom) {
-                  state.overworld.grass_i_bl.draw(s, position);
-                } else if (bottomRight && !right && !bottom) {
-                  state.overworld.grass_i_br.draw(s, position);
-                } else if (right && !top && !bottom) {
-                  state.overworld.grass_r.draw(s, position);
-                } else {
-                  state.overworld.grass.draw(s, position, spatialHash);
-                }
+              const tile = state.map.read(mapX, mapY);
+              if (tile.index !== 0) {
+                const tileName = overworldMap.spriteSheet.indexes[tile.index];
+                state.overworld[tileName].draw(
+                  s,
+                  position,
+                  tile.spatialHash ? hash(mapX, mapY) : undefined
+                );
               }
             }
           }
@@ -648,6 +615,20 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
   }
 }
 
+const edgeTileSuffixes = new Set<string>();
+edgeTileSuffixes.add("tl");
+edgeTileSuffixes.add("tr");
+edgeTileSuffixes.add("bl");
+edgeTileSuffixes.add("br");
+edgeTileSuffixes.add("t");
+edgeTileSuffixes.add("b");
+edgeTileSuffixes.add("l");
+edgeTileSuffixes.add("r");
+edgeTileSuffixes.add("i_tl");
+edgeTileSuffixes.add("i_tr");
+edgeTileSuffixes.add("i_bl");
+edgeTileSuffixes.add("i_br");
+
 function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
   if (!state.editor) return;
 
@@ -668,40 +649,159 @@ function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
 
     if (state.editor.newValue === null) {
       const oldValue = state.map.read(ap[0], ap[1]);
-      state.editor.newValue = {
-        sprite: oldValue.index === 0 ? "grass" : "",
-        triggerId: 0,
-        walkable: oldValue.index === 0,
-        spatialHash: oldValue.index === 0,
-        animated: false,
-      };
+      const oldSprite = overworldMap.spriteSheet.indexes[oldValue.index];
+      state.editor.newValue = oldSprite === "" ? "grass" : "";
     }
-    state.map.write(ap[0], ap[1], {
-      ...state.editor.newValue,
-      index: state.editor.newValue.sprite
-        ? state.overworld[state.editor.newValue.sprite].index
-        : 0,
-    });
 
-    const found = rfind(
-      state.editor.queued,
-      (e) => e.type === "TILE_CHANGE" && e.x === ap[0] && e.y === ap[1]
-    );
-
-    if (found && found.type === "TILE_CHANGE") {
-      found.value = state.editor.newValue;
-    } else {
-      state.editor.queued.push({
-        type: "TILE_CHANGE",
-        x: ap[0],
-        y: ap[1],
-        map: "overworld",
-        value: state.editor.newValue,
-      });
-    }
+    queueTileChange(state.editor.newValue, ap[0], ap[1], state);
   } else {
     state.editor.newValue = null;
   }
+}
+
+function queueTileChange(
+  newValue: string,
+  x: number,
+  y: number,
+  state: GameState
+) {
+  createPendingChange(newValue, x, y, state);
+
+  const toRecheck = new Array<{
+    x: number;
+    y: number;
+    sprite: string;
+  }>();
+
+  // reset all adjacent edge tiles to their base sprite
+  for (let offsetX = -1; offsetX <= 1; ++offsetX) {
+    for (let offsetY = -1; offsetY <= 1; ++offsetY) {
+      const tile = state.map.read(x + offsetX, y + offsetY);
+      const sprite = overworldMap.spriteSheet.indexes[tile.index];
+      const splitIndex = sprite.indexOf("_");
+      if (splitIndex !== -1) {
+        const baseSprite = sprite.substring(0, splitIndex);
+        const spriteSuffix = sprite.substring(splitIndex + 1);
+        if (
+          overworldMap.spriteSheet.sprites.hasOwnProperty(baseSprite) &&
+          edgeTileSuffixes.has(spriteSuffix)
+        ) {
+          const index =
+            overworldMap.spriteSheet.sprites[
+              baseSprite as keyof typeof overworldMap.spriteSheet.sprites
+            ].index;
+          tile.index = index;
+          createPendingChange(baseSprite, x + offsetX, y + offsetY, state);
+          toRecheck.push({
+            x: x + offsetX,
+            y: y + offsetY,
+            sprite: baseSprite,
+          });
+        }
+      } else {
+        toRecheck.push({ x: x + offsetX, y: y + offsetY, sprite });
+      }
+    }
+  }
+
+  const newEdges = Array<{
+    x: number;
+    y: number;
+    sprite: string;
+  }>();
+
+  // convert any tiles that should be to edges (if a suitable sprite exists)
+  for (let check of toRecheck) {
+    const top = state.map.read(check.x, check.y - 1).index === 0;
+    const left = state.map.read(check.x - 1, check.y).index === 0;
+    const bottom = state.map.read(check.x, check.y + 1).index === 0;
+    const right = state.map.read(check.x + 1, check.y).index === 0;
+    const topLeft = state.map.read(check.x - 1, check.y - 1).index === 0;
+    const topRight = state.map.read(check.x + 1, check.y - 1).index === 0;
+    const bottomLeft = state.map.read(check.x - 1, check.y + 1).index === 0;
+    const bottomRight = state.map.read(check.x + 1, check.y + 1).index === 0;
+
+    if (top && left) {
+      newEdges.push({ x: check.x, y: check.y, sprite: check.sprite + "_tl" });
+    } else if (top && right) {
+      newEdges.push({ x: check.x, y: check.y, sprite: check.sprite + "_tr" });
+    } else if (top && !left && !right) {
+      newEdges.push({ x: check.x, y: check.y, sprite: check.sprite + "_t" });
+    } else if (topLeft && !left && !top) {
+      newEdges.push({ x: check.x, y: check.y, sprite: check.sprite + "_i_tl" });
+    } else if (topRight && !right && !top) {
+      newEdges.push({ x: check.x, y: check.y, sprite: check.sprite + "_i_tr" });
+    } else if (left && !top && !bottom) {
+      newEdges.push({ x: check.x, y: check.y, sprite: check.sprite + "_l" });
+    } else if (bottom && left) {
+      newEdges.push({ x: check.x, y: check.y, sprite: check.sprite + "_bl" });
+    } else if (bottom && right) {
+      newEdges.push({ x: check.x, y: check.y, sprite: check.sprite + "_br" });
+    } else if (bottom && !left && !right) {
+      newEdges.push({ x: check.x, y: check.y, sprite: check.sprite + "_b" });
+    } else if (bottomLeft && !left && !bottom) {
+      newEdges.push({ x: check.x, y: check.y, sprite: check.sprite + "_i_bl" });
+    } else if (bottomRight && !right && !bottom) {
+      newEdges.push({ x: check.x, y: check.y, sprite: check.sprite + "_i_br" });
+    } else if (right && !top && !bottom) {
+      newEdges.push({ x: check.x, y: check.y, sprite: check.sprite + "_r" });
+    }
+  }
+
+  for (let edge of newEdges) {
+    if (overworldMap.spriteSheet.sprites.hasOwnProperty(edge.sprite)) {
+      createPendingChange(edge.sprite, edge.x, edge.y, state);
+    }
+  }
+}
+
+function createPendingChange(
+  sprite: string,
+  x: number,
+  y: number,
+  state: GameState
+) {
+  const found = rfind(
+    state.editor!.queued,
+    (e) => e.type === "TILE_CHANGE" && e.x === x && e.y === y
+  );
+
+  const sourceValue =
+    found && found.type === "TILE_CHANGE"
+      ? found.value
+      : (() => {
+          const change: EditorAction = {
+            type: "TILE_CHANGE",
+            x: x,
+            y: y,
+            map: "overworld",
+            value: {
+              sprite: "",
+              animated: false,
+              walkable: false,
+              triggerId: 0,
+              spatialHash: false,
+            },
+          };
+          state.editor!.queued.push(change);
+          return change.value;
+        })();
+
+  Object.assign(sourceValue, {
+    sprite,
+    animated: false,
+    walkable: sprite !== "",
+    triggerId: 0,
+    spatialHash: sprite !== "",
+  });
+
+  const index =
+    sprite === ""
+      ? 0
+      : overworldMap.spriteSheet.sprites[
+          sprite as keyof typeof overworldMap.spriteSheet.sprites
+        ].index;
+  state.map.write(x, y, { ...sourceValue, index });
 }
 
 function rfind<T>(
