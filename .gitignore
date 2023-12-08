@@ -1,8 +1,5 @@
 node_modules/
-public/*
-www/sprites/*
-www/js/*
-www/maps/*
+www
 src/client/generated/*
 src/shared/generated/*
 .DS_Store

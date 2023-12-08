@@ -4,16 +4,17 @@
   "description": "A basic WebGL app with TypeScript and React",
   "main": "index.js",
   "scripts": {
-    "dist:build": "npm run clean && npm run build:sprites && npm run build:shaders && npm run build:maps && tsc --noEmit && npm run build:js",
+    "dist:build": "npm run clean && npm run build:sprites && npm run build:shaders && npm run build:maps && tsc --noEmit && npm run build:js && npm run build:html",
     "dist:serve": "npm run dist:build && ts-node ./build/serve.ts",
     "dist:watch": "npm run clean && npm run watch -- --production",
     "build:js": "ts-node ./build/js.ts",
     "build:sprites": "ts-node ./build/sprites.ts",
     "build:shaders": "ts-node ./build/shaders.ts",
     "build:maps": "ts-node ./build/maps.ts",
+    "build:html": "ts-node ./build/html.ts",
     "dev": "npm run clean && npm run watch",
     "watch": "ts-node ./build/watch.ts",
-    "clean": "rimraf www/js && rimraf www/sprites && rimraf www/maps && rimraf src/client/generated && rimraf src/shared/generated"
+    "clean": "rimraf www && mkdir www && rimraf src/client/generated && rimraf src/shared/generated"
   },
   "keywords": [],
   "author": "",

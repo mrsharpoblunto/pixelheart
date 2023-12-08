@@ -1,14 +1,12 @@
 import Ajv, { JTDDataType } from "ajv/dist/jtd";
 import { ErrorObject } from "ajv";
 import sharp from "sharp";
-import {
-  encodeMapTile,
-  MapTileSource,
-} from "../src/shared/map-format";
+import { encodeMapTile, MapTileSource } from "../src/shared/map-format";
 import path from "path";
 import chalk from "chalk";
 import fs from "fs/promises";
 import { spriteSrcPath } from "./sprite-utils";
+import { getFileHash } from "./common-utils";
 
 export const mapsPath = path.join(__dirname, "../assets/maps");
 export const wwwPath = path.join(__dirname, "../www/maps");
@@ -104,24 +102,14 @@ export async function processMap(
     } map using sprite sheet ${chalk.green(result.metadata.spriteSheet)}...`
   );
 
-  await fs.writeFile(
-    path.join(mapSrcPath, `${map}.ts`),
-    `
-    import SpriteSheet from "../sprites/${result.metadata.spriteSheet}";
-    const Map = {...${JSON.stringify({
-      ...result.metadata,
-      url: `/maps/${map}.png`,
-    })}, spriteSheet: SpriteSheet,
-    };
-export default Map;`
-  );
-
   const dataPath = path.join(mapsPath, map, "data.json");
   const data = await loadJson(dataPath);
 
   const mapData = data.ok
-    ? (data.data as unknown as { [x: string]: { [y: string]: { [z: string]: MapTileSource}}})
-    : {}
+    ? (data.data as unknown as {
+        [x: string]: { [y: string]: { [z: string]: MapTileSource } };
+      })
+    : {};
   if (!data.ok) {
     await fs.writeFile(dataPath, JSON.stringify(mapData, null, 2));
   }
@@ -165,7 +153,7 @@ export default Map;`
 
   const mapPath = path.join(wwwPath, `${map}.png`);
 
-  sharp(mapBuffer, {
+  await sharp(mapBuffer, {
     raw: {
       width: result.metadata.width,
       height: result.metadata.height,
@@ -180,4 +168,18 @@ export default Map;`
     .catch((err) => {
       onError(`Failed to build ${map}: ${err.toString()}`);
     });
+
+  const mapHash = await getFileHash(mapPath);
+
+  await fs.writeFile(
+    path.join(mapSrcPath, `${map}.ts`),
+    `
+    import SpriteSheet from "../sprites/${result.metadata.spriteSheet}";
+    const Map = {...${JSON.stringify({
+      ...result.metadata,
+      url: `/maps/${map}.png?v=${mapHash}`,
+    })}, spriteSheet: SpriteSheet,
+    };
+export default Map;`
+  );
 }

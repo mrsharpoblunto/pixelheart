@@ -2,6 +2,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import fs from "fs/promises";
 import chalk from "chalk";
+import path from "path";
 import {
   spritePath,
   wwwPath,
@@ -18,6 +19,10 @@ Promise.resolve(
 
   const spriteSheets = await fs.readdir(spritePath);
   for (let spriteSheet of spriteSheets) {
+    const srcStat = await fs.stat(path.join(spritePath, spriteSheet));
+    if (srcStat.isFile()) {
+      continue;
+    }
     await processSpriteSheet(
       spriteSheet,
       true,

@@ -36,6 +36,7 @@ import { codeFrameColumns, SourceLocation } from "@babel/code-frame";
 
 const PORT = 8000;
 const srcPath = path.join(__dirname, "..", "src");
+const wwwPath = path.join(__dirname, "..", "www");
 
 let editor: Worker | null = null;
 
@@ -73,6 +74,10 @@ Promise.resolve(
   await ensurePath(spriteSrcPath);
   await ensurePath(mapSrcPath);
   await ensurePath(shadersSrcPath);
+  await fs.cp(
+    path.join(srcPath, "index.html"),
+    path.join(wwwPath, "index.html"),
+  );
 
   // on first run, check if any sprites are missing or older
   // than the source and build them

@@ -12,6 +12,7 @@ import {
   Normal,
   Binormal,
 } from "../src/client/sprite-common";
+import { getFileHash } from "./common-utils";
 
 export const spritePath = path.join(__dirname, "../assets/sprites");
 export const wwwPath = path.join(__dirname, "../www/sprites");
@@ -223,6 +224,7 @@ async function writeSpriteSheetLayer(
   additionalProcessing?: (s: sharp.Sharp) => sharp.Sharp
 ): Promise<[string, string]> {
   const urlPath = `${sheet.name}-${sheetType}.${SHEET_FORMAT}`;
+  const filePath = path.join(wwwPath, urlPath);
   await (additionalProcessing || ((s) => s))(
     sharp({
       create: {
@@ -237,8 +239,11 @@ async function writeSpriteSheetLayer(
     [SHEET_FORMAT]({
       compressionLevel: production ? 9 : 6,
     })
-    .toFile(path.join(wwwPath, urlPath));
-  return [sheetType, `./sprites/${urlPath}`];
+    .toFile(filePath);
+
+  const hash = await getFileHash(filePath);
+
+  return [sheetType, `/sprites/${urlPath}?v=${hash}`];
 }
 
 async function processPngSprite(
