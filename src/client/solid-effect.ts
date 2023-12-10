@@ -1,6 +1,7 @@
 import { mat3, ReadonlyVec4 } from "gl-matrix";
 import { ShaderProgram, InstanceBuffer } from "./gl-utils";
 import { SpriteViewProjection, Quad } from "./geometry";
+import { GameContext } from "./game-runner";
 
 import vertexShader from "./generated/shaders/solid.vert";
 import fragmentShader from "./generated/shaders/solid.frag";
@@ -14,9 +15,9 @@ export class SolidEffect {
   #quad: Quad;
   #pending: Array<SpriteInstance>;
 
-  constructor(gl: WebGL2RenderingContext) {
-    this.#gl = gl;
-    this.#program = new ShaderProgram(this.#gl, vertexShader, fragmentShader);
+  constructor(ctx: GameContext) {
+    this.#gl = ctx.gl;
+    this.#program = new ShaderProgram(ctx, vertexShader, fragmentShader);
     this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#program, {
       a_mvp: (instance) => instance.mvp,
       a_color: (instance) => instance.color,
@@ -28,7 +29,7 @@ export class SolidEffect {
   use(scope: (s: SolidEffect) => void) {
     this.#program.use(() => {
       scope(this);
-    this.#end();
+      this.#end();
     });
   }
 

@@ -4,7 +4,10 @@ import chalk from "chalk";
 import { GlslMinify } from "webpack-glsl-minify/build/minify";
 
 export const shadersPath = path.join(__dirname, "../assets/shaders");
-export const shadersSrcPath = path.join(__dirname, "../src/client/generated/shaders");
+export const shadersSrcPath = path.join(
+  __dirname,
+  "../src/client/generated/shaders"
+);
 
 export function isShader(file: string) {
   return path.extname(file) === ".vert" || path.extname(file) === ".frag";
@@ -21,7 +24,7 @@ export async function processShader(
   production: boolean,
   log: (message: string) => void,
   onError: (error: string) => void
-): Promise<void> {
+): Promise<string> {
   log(
     `Building ${production ? "minified " : ""}shader ${chalk.green(shader)}...`
   );
@@ -154,7 +157,9 @@ export default value;
       output,
       "utf-8"
     );
+    return src;
   } catch (error: any) {
     onError(error.toString());
+    return "";
   }
 }

@@ -1,7 +1,14 @@
+import { EditorAction, EditorEvent } from "../shared/editor-actions";
 import { vec4, vec2, ReadonlyVec4 } from "gl-matrix";
+
+export interface EditorConnection {
+  sendAction: (action: EditorAction) => void;
+  onEvent: (callback: (event: EditorEvent) => void) => void;
+}
 
 export interface GameContext {
   gl: WebGL2RenderingContext;
+  editor: EditorConnection | null;
   createOffscreenCanvas: (
     width: number,
     height: number,
@@ -82,6 +89,7 @@ export default function GameRunner<T, U>(
 
   const context: GameContext = {
     gl,
+    editor: null,
     createOffscreenCanvas: (
       width: number,
       height: number,
@@ -313,7 +321,36 @@ export default function GameRunner<T, U>(
     false
   );
 
-  startup();
+  if (process.env.NODE_ENV === "development") {
+    const socket = new WebSocket(
+      `ws://${window.location.hostname}:${
+        parseInt(window.location.port, 10) + 2
+      }`
+    );
+    socket.addEventListener("open", () => {
+      console.info("Connected to editor WebSocket");
+      context.editor = {
+        sendAction: (action: EditorAction) => {
+          socket.send(JSON.stringify(action));
+        },
+        onEvent: (callback: (event: EditorEvent) => void) => {
+          socket.addEventListener("message", (event: any) => {
+            callback(JSON.parse(event.toString()) as EditorEvent);
+          });
+        },
+      };
+      startup();
+    });
+    socket.addEventListener("close", (error: any) => {
+      if (!context.editor) {
+        startup();
+      }
+      context.editor = null;
+      console.error("Editor Websocket disconnected", error);
+    });
+  } else {
+    startup();
+  }
 
   let accumulatedTime = 0;
   let nextFrame: number | null = null;

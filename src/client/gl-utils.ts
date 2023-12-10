@@ -6,6 +6,7 @@ import {
   ReadonlyMat3,
   ReadonlyMat4,
 } from "gl-matrix";
+import { GameContext } from "./game-runner";
 
 type TypeMap = {
   float: number;
@@ -60,12 +61,12 @@ export class ShaderProgram<
   >;
 
   constructor(
-    gl: WebGL2RenderingContext,
+    ctx: GameContext,
     vertexShaderSource: TVert,
     fragmentShaderSource: TFrag
   ) {
-    this.#gl = gl;
-    this.#program = gl.createProgram()!;
+    this.#gl = ctx.gl;
+    this.#program = this.#gl.createProgram()!;
     this.inAttributes = {} as Record<
       keyof TVert["inAttributes"],
       { location: number; type: keyof TypeMap; layout?: number }
@@ -79,14 +80,14 @@ export class ShaderProgram<
       { location: WebGLUniformLocation; type: keyof UniformTypeMap }
     >;
 
-    const vertexShader = gl.createShader(gl.VERTEX_SHADER)!;
-    gl.shaderSource(vertexShader, vertexShaderSource.src);
-    gl.compileShader(vertexShader);
+    const vertexShader = this.#gl.createShader(this.#gl.VERTEX_SHADER)!;
+    this.#gl.shaderSource(vertexShader, vertexShaderSource.src);
+    this.#gl.compileShader(vertexShader);
 
     let output = "";
 
-    if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
-      let error = gl.getShaderInfoLog(vertexShader);
+    if (!this.#gl.getShaderParameter(vertexShader, this.#gl.COMPILE_STATUS)) {
+      let error = this.#gl.getShaderInfoLog(vertexShader);
       if (error) {
         if (process.env.NODE_ENV !== "production") {
           output += decorateError(
@@ -100,11 +101,11 @@ export class ShaderProgram<
       }
     }
 
-    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)!;
-    gl.shaderSource(fragmentShader, fragmentShaderSource.src);
-    gl.compileShader(fragmentShader);
-    if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
-      let error = gl.getShaderInfoLog(fragmentShader);
+    const fragmentShader = this.#gl.createShader(this.#gl.FRAGMENT_SHADER)!;
+    this.#gl.shaderSource(fragmentShader, fragmentShaderSource.src);
+    this.#gl.compileShader(fragmentShader);
+    if (!this.#gl.getShaderParameter(fragmentShader, this.#gl.COMPILE_STATUS)) {
+      let error = this.#gl.getShaderInfoLog(fragmentShader);
       if (error) {
         if (process.env.NODE_ENV !== "production") {
           output += decorateError(
@@ -118,11 +119,11 @@ export class ShaderProgram<
       }
     }
 
-    gl.attachShader(this.#program, vertexShader);
-    gl.attachShader(this.#program, fragmentShader);
-    gl.linkProgram(this.#program);
-    if (!gl.getProgramParameter(this.#program, gl.LINK_STATUS)) {
-      const error = gl.getProgramInfoLog(this.#program);
+    this.#gl.attachShader(this.#program, vertexShader);
+    this.#gl.attachShader(this.#program, fragmentShader);
+    this.#gl.linkProgram(this.#program);
+    if (!this.#gl.getProgramParameter(this.#program, this.#gl.LINK_STATUS)) {
+      const error = this.#gl.getProgramInfoLog(this.#program);
       if (error) {
         output += `\nLinker: (${vertexShaderSource.name}, ${fragmentShaderSource.name}): ${error}`;
       }
@@ -134,17 +135,17 @@ export class ShaderProgram<
       );
     }
 
-    const attributeCount = gl.getProgramParameter(
+    const attributeCount = this.#gl.getProgramParameter(
       this.#program,
-      gl.ACTIVE_ATTRIBUTES
+      this.#gl.ACTIVE_ATTRIBUTES
     );
     for (let i = 0; i < attributeCount; ++i) {
-      const info = gl.getActiveAttrib(this.#program, i);
+      const info = this.#gl.getActiveAttrib(this.#program, i);
       if (info) {
         const key = info.name;
         if (key in vertexShaderSource.inAttributes) {
           this.inAttributes[key as unknown as keyof TVert["inAttributes"]] = {
-            location: gl.getAttribLocation(this.#program, info.name),
+            location: this.#gl.getAttribLocation(this.#program, info.name),
             type: vertexShaderSource.inAttributes[key].type,
           };
         }
@@ -152,19 +153,19 @@ export class ShaderProgram<
     }
 
     Object.keys(fragmentShaderSource.outAttributes).forEach((key) => {
-      const location = gl.getFragDataLocation(this.#program, key);
+      const location = this.#gl.getFragDataLocation(this.#program, key);
       this.outAttributes[key as unknown as keyof TFrag["outAttributes"]] = {
         location,
         type: fragmentShaderSource.outAttributes[key].type,
       };
     });
 
-    const uniformCount = gl.getProgramParameter(
+    const uniformCount = this.#gl.getProgramParameter(
       this.#program,
-      gl.ACTIVE_UNIFORMS
+      this.#gl.ACTIVE_UNIFORMS
     );
     for (let i = 0; i < uniformCount; ++i) {
-      const info = gl.getActiveUniform(this.#program, i);
+      const info = this.#gl.getActiveUniform(this.#program, i);
       if (info) {
         const key = info.name;
         if (
@@ -176,7 +177,7 @@ export class ShaderProgram<
               | keyof TVert["uniforms"]
               | keyof TFrag["uniforms"]
           ] = {
-            location: gl.getUniformLocation(this.#program, info.name)!,
+            location: this.#gl.getUniformLocation(this.#program, info.name)!,
             type: (vertexShaderSource.uniforms[key] ||
               fragmentShaderSource.uniforms[key]) as keyof UniformTypeMap,
           };

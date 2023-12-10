@@ -19,11 +19,11 @@ import { SolidEffect } from "./solid-effect";
 import overworldMap from "../shared/generated/maps/overworld";
 import characterSprite from "../shared/generated/sprites/character";
 import uiSprite from "../shared/generated/sprites/ui";
-import { MapTile, MapTileSource } from "../shared/map-format";
 import * as coords from "./coordinates";
 import { vec2 } from "gl-matrix";
 import { EditorAction } from "../shared/editor-actions";
 import MapData from "./map";
+import { MapTileSource } from "../shared/map-format";
 
 const CONTROLLER_DEADZONE = 0.25;
 const TOUCH_DEADZONE = 5;
@@ -66,9 +66,7 @@ export interface GameState {
 export interface EditorState {
   active: boolean;
   newValue: string | null;
-  queued: Array<EditorAction>;
-  pending: Array<EditorAction>;
-  isUpdating: boolean;
+  pendingChanges: Map<string, EditorAction>;
 }
 
 export function onSave(state: GameState): SerializedGameState {
@@ -107,9 +105,9 @@ export async function onStart(
   const map = await loadCPUReadableTextureFromUrl(ctx, overworldMap.url);
 
   const state: GameState = {
-    spriteEffect: new DeferredSpriteEffect(ctx.gl),
-    simpleSpriteEffect: new SimpleSpriteEffect(ctx.gl),
-    solidEffect: new SolidEffect(ctx.gl),
+    spriteEffect: new DeferredSpriteEffect(ctx),
+    simpleSpriteEffect: new SimpleSpriteEffect(ctx),
+    solidEffect: new SolidEffect(ctx),
     map: new MapData(ctx, coords.TILE_SIZE, map),
     ui: await loadSpriteSheet(ctx, uiSprite, simpleTextureLoader),
     overworld: overworld,
@@ -138,8 +136,8 @@ export async function onStart(
       ),
       speed: 1,
     },
-    waterEffect: new WaterEffect(ctx.gl),
-    blurEffect: new NearestBlurEffect(ctx.gl),
+    waterEffect: new WaterEffect(ctx),
+    blurEffect: new NearestBlurEffect(ctx),
     animationTimer: 0,
     screen: {
       absolutePosition: vec2.create(),
@@ -147,53 +145,15 @@ export async function onStart(
     moveTouch: null,
   };
 
-  if (process.env.NODE_ENV === "development") {
+  if (ctx.editor) {
     state.editor = {
       active: false,
       newValue: null,
-      queued: [],
-      pending: [],
-      isUpdating: false,
+      pendingChanges: new Map(),
     };
-    setInterval(() => {
-      if (!state.editor) {
-        return;
-      }
-      pushEdits(state.editor);
-    }, 1000);
   }
 
   return state;
-}
-
-function pushEdits(editor: EditorState) {
-  if (editor.queued.length && !editor.isUpdating) {
-    fetch("/edit", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(editor.queued),
-    })
-      .then((r) => {
-        if (!r.ok) {
-          throw new Error("Network response was not ok");
-        }
-        return r.json();
-      })
-      .then((_data) => {
-        editor.pending = [];
-        editor.isUpdating = false;
-      })
-      .catch((_err) => {
-        // re-queue events that failed
-        editor.queued = editor.pending.concat(editor.queued);
-        editor.pending = [];
-        editor.isUpdating = false;
-      });
-    editor.pending = editor.queued;
-    editor.queued = [];
-  }
 }
 
 export function onUpdate(
@@ -432,7 +392,7 @@ export function onUpdate(
 
   state.map.updateScreenBuffer(ctx, state.screen.absolutePosition);
 
-  if (process.env.NODE_ENV === "development") {
+  if (ctx.editor) {
     updateEditor(ctx, state, fixedDelta);
   }
 }
@@ -610,7 +570,7 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
     }
   });
 
-  if (process.env.NODE_ENV === "development") {
+  if (ctx.editor) {
     drawEditor(ctx, state, delta);
   }
 }
@@ -653,30 +613,40 @@ function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
       state.editor.newValue = oldSprite === "" ? "grass" : "";
     }
 
-    queueTileChange(state.editor.newValue, ap[0], ap[1], state);
+    changeMapTile(state, {
+      sprite: state.editor.newValue,
+      x: ap[0],
+      y: ap[1],
+    });
   } else {
     state.editor.newValue = null;
+    for (let a of state.editor.pendingChanges.values()) {
+      ctx.editor?.sendAction(a);
+    }
+    state.editor.pendingChanges.clear();
   }
 }
 
-function queueTileChange(
-  newValue: string,
-  x: number,
-  y: number,
-  state: GameState
-) {
-  createPendingChange(newValue, x, y, state);
-
-  const toRecheck = new Array<{
+function changeMapTile(
+  state: GameState,
+  change: {
+    sprite: string;
     x: number;
     y: number;
+  }
+) {
+  queueMapTileAction(state, change);
+
+  const toRecheck = new Array<{
     sprite: string;
+    x: number;
+    y: number;
   }>();
 
   // reset all adjacent edge tiles to their base sprite
   for (let offsetX = -1; offsetX <= 1; ++offsetX) {
     for (let offsetY = -1; offsetY <= 1; ++offsetY) {
-      const tile = state.map.read(x + offsetX, y + offsetY);
+      const tile = state.map.read(change.x + offsetX, change.y + offsetY);
       const sprite = overworldMap.spriteSheet.indexes[tile.index];
       const splitIndex = sprite.indexOf("_");
       if (splitIndex !== -1) {
@@ -691,15 +661,23 @@ function queueTileChange(
               baseSprite as keyof typeof overworldMap.spriteSheet.sprites
             ].index;
           tile.index = index;
-          createPendingChange(baseSprite, x + offsetX, y + offsetY, state);
+          queueMapTileAction(state, {
+            sprite: baseSprite,
+            x: change.x + offsetX,
+            y: change.y + offsetY,
+          });
           toRecheck.push({
-            x: x + offsetX,
-            y: y + offsetY,
+            x: change.x + offsetX,
+            y: change.y + offsetY,
             sprite: baseSprite,
           });
         }
       } else {
-        toRecheck.push({ x: x + offsetX, y: y + offsetY, sprite });
+        toRecheck.push({
+          x: change.x + offsetX,
+          y: change.y + offsetY,
+          sprite,
+        });
       }
     }
   }
@@ -750,70 +728,57 @@ function queueTileChange(
 
   for (let edge of newEdges) {
     if (overworldMap.spriteSheet.sprites.hasOwnProperty(edge.sprite)) {
-      createPendingChange(edge.sprite, edge.x, edge.y, state);
+      queueMapTileAction(state, edge);
     }
   }
 }
 
-function createPendingChange(
-  sprite: string,
-  x: number,
-  y: number,
-  state: GameState
-) {
-  const found = rfind(
-    state.editor!.queued,
-    (e) => e.type === "TILE_CHANGE" && e.x === x && e.y === y
-  );
-
-  const sourceValue =
-    found && found.type === "TILE_CHANGE"
-      ? found.value
-      : (() => {
-          const change: EditorAction = {
-            type: "TILE_CHANGE",
-            x: x,
-            y: y,
-            map: "overworld",
-            value: {
-              sprite: "",
-              animated: false,
-              walkable: false,
-              triggerId: 0,
-              spatialHash: false,
-            },
-          };
-          state.editor!.queued.push(change);
-          return change.value;
-        })();
-
-  Object.assign(sourceValue, {
+function queueMapTileAction(
+  state: GameState,
+  {
     sprite,
-    animated: false,
-    walkable: sprite !== "",
-    triggerId: 0,
-    spatialHash: sprite !== "",
-  });
-
-  const index =
-    sprite === ""
-      ? 0
-      : overworldMap.spriteSheet.sprites[
-          sprite as keyof typeof overworldMap.spriteSheet.sprites
-        ].index;
-  state.map.write(x, y, { ...sourceValue, index });
-}
-
-function rfind<T>(
-  arr: Array<T>,
-  predicate: (value: T, index: number, arr: Array<T>) => boolean
-): T | null {
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (predicate(arr[i], i, arr)) {
-      return arr[i];
-    }
+    x,
+    y,
+  }: {
+    sprite: string;
+    x: number;
+    y: number;
   }
-  return null;
+) {
+  let action = state.editor?.pendingChanges.get(`${x},${y}`);
+  if (!action) {
+    action = {
+      type: "TILE_CHANGE",
+      x: x,
+      y: y,
+      map: "overworld",
+      value: {
+        sprite: "",
+        animated: false,
+        walkable: false,
+        triggerId: 0,
+        spatialHash: false,
+      },
+    };
+    state.editor?.pendingChanges.set(`${x},${y}`, action);
+  }
+
+  if (action.type === "TILE_CHANGE") {
+    Object.assign(action.value, {
+      sprite,
+      animated: false,
+      walkable: sprite !== "",
+      triggerId: 0,
+      spatialHash: sprite !== "",
+    });
+    const index =
+      sprite === ""
+        ? 0
+        : overworldMap.spriteSheet.sprites[
+            sprite as keyof typeof overworldMap.spriteSheet.sprites
+          ].index;
+    state.map.write(x, y, { ...action.value, index });
+  }
 }
 
 function drawEditor(ctx: GameContext, state: GameState, _delta: number) {

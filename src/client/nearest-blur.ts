@@ -1,6 +1,7 @@
 import { GPUTexture, TEXTURE } from "./images";
 import { ShaderProgram, FrameBuffer, createTexture } from "./gl-utils";
 import { Quad } from "./geometry";
+import { GameContext } from "./game-runner";
 import vertexShader from "./generated/shaders/quad.vert";
 import fragmentShader from "./generated/shaders/nearest-blur.frag";
 
@@ -13,9 +14,9 @@ export class NearestBlurEffect {
     textures: Array<GPUTexture>;
   } | null;
 
-  constructor(gl: WebGL2RenderingContext) {
-    this.#gl = gl;
-    this.#program = new ShaderProgram(this.#gl, vertexShader, fragmentShader)!;
+  constructor(ctx: GameContext) {
+    this.#gl = ctx.gl;
+    this.#program = new ShaderProgram(ctx, vertexShader, fragmentShader)!;
     this.#quad = new Quad(this.#gl);
     this.#blurBuffer = null;
   }

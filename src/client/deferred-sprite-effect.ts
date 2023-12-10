@@ -116,20 +116,20 @@ export class DeferredSpriteEffect
   #gBufferWidth: number;
   #gBufferHeight: number;
 
-  constructor(gl: WebGL2RenderingContext) {
-    this.#gl = gl;
-    this.#gBufferProgram = new ShaderProgram(gl, vertexShader, fragmentShader);
-    this.#instanceBuffer = new InstanceBuffer(gl, this.#gBufferProgram, {
+  constructor(ctx: GameContext) {
+    this.#gl = ctx.gl;
+    this.#gBufferProgram = new ShaderProgram(ctx, vertexShader, fragmentShader);
+    this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#gBufferProgram, {
       a_mvp: (instance) => instance.mvp,
       a_uv: (instance) => instance.uv,
     });
     this.#pending = [];
     this.#lightingProgram = new ShaderProgram(
-      gl,
+      ctx,
       lightingVertexShader,
       lightingFragmentShader
     );
-    this.#lightBuffer = new InstanceBuffer(gl, this.#lightingProgram, {
+    this.#lightBuffer = new InstanceBuffer(this.#gl, this.#lightingProgram, {
       a_mvp: (instance) => instance.mvp,
       a_uv: (instance) => instance.uv,
       a_ambient: (instance) => instance.ambient,
@@ -140,7 +140,7 @@ export class DeferredSpriteEffect
     this.#pendingDirectionalLights = [];
     this.#pendingPointLights = [];
 
-    this.#quad = new Quad(gl);
+    this.#quad = new Quad(this.#gl);
     this.#texture = null;
     this.#gBuffer = null;
     this.#gBufferWidth = this.#gBufferHeight = 0;

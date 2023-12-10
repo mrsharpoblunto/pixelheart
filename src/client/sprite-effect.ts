@@ -39,9 +39,9 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
   #pending: Array<SpriteInstance>;
   #alpha: number;
 
-  constructor(gl: WebGL2RenderingContext) {
-    this.#gl = gl;
-    this.#program = new ShaderProgram(this.#gl, vertexShader, fragmentShader)!;
+  constructor(ctx: GameContext) {
+    this.#gl = ctx.gl;
+    this.#program = new ShaderProgram(ctx, vertexShader, fragmentShader)!;
     this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#program, {
       a_mvp: (instance) => instance.mvp,
       a_uv: (instance) => instance.uv,

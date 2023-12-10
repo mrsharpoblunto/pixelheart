@@ -14,7 +14,7 @@ import chalk from "chalk";
 import fs from "fs/promises";
 
 interface WorkingMapData {
-  version: number;
+  lastAccess: number;
   image: {
     width: number;
     height: number;
@@ -29,7 +29,8 @@ interface WorkingMapData {
   };
 }
 
-const workingMaps = new Map<string, WorkingMapData>();
+const mapCache = new Map<string, WorkingMapData>();
+const pendingMapActions = new Map<string, Array<EditorAction>>();
 
 const log = (message: string) => {
   console.log(chalk.dim("[Editor]"), message);
@@ -42,110 +43,109 @@ const logError = (message: string) => {
 if (parentPort) {
   log("Running.");
 
-  setInterval(() => {
-    const maps = [...workingMaps];
-    for (const [key, value] of maps) {
-      const version = value.version;
-      sharp(value.image.buffer, {
-        raw: {
-          width: value.image.width!,
-          height: value.image.height!,
-          channels: value.image.channels!,
-        },
-      })
-        .png()
-        .toFile(value.image.path)
-        .then(() => {
-          log(`Saved updated image to ${value.image.path}`);
-          return fs.writeFile(
-            value.src.path,
-            JSON.stringify(value.src.data, null, 2)
-          );
-        })
-        .then(() => {
-          log(`Saved map src data to ${value.src.path}`);
-          if (value.version === version) {
-            // there was no modification between when the saving started and ended
-            // otherwise we keep this modified value in memory rather than load
-            // an out of date version that doesn't have the in-memory changes included
-            workingMaps.delete(key);
-          }
-        })
-        .catch((err) => {
-          logError(`Failed to update map ${key} - ${err.toString()}`);
-        });
-    }
-  }, 2000);
+  let mapUpdateInterval = setInterval(flushMapChanges, 5000);
 
   parentPort.on("message", async (message: any) => {
-    // process the editor action
-    let actionCount = 1;
-    let previousAction = null;
-    for (let a of message.actions as Array<EditorAction>) {
-      if (previousAction === a.type) {
-        actionCount++;
-      } else {
-        if (previousAction !== null) {
-          log(`Processing ${actionCount} ${chalk.green(a.type)} action(s)`);
-        }
-        previousAction = a.type;
-        actionCount = 1;
-      }
+    const a = message as EditorAction;
+    log(`Processing ${chalk.green(a.type)} action`);
 
-      switch (a.type) {
-        case "TILE_CHANGE":
-          {
-            const existing = await getMap(a.map);
-            if (!existing) {
-              break;
-            }
-
-            const revIndex = await loadJson(
-              path.join(spriteSrcPath, `${existing.src.meta.spriteSheet}.json`)
-            );
-            if (!revIndex.ok) {
-              break;
-            }
-
-            if (!existing.src.data[a.x]) {
-              existing.src.data[a.x] = {};
-            }
-            if (!existing.src.data[a.x][a.y]) {
-              existing.src.data[a.x][a.y] = {};
-            }
-            if (a.value.sprite) {
-              existing.src.data[a.x][a.y][0] = a.value;
-            } else {
-              delete existing.src.data[a.x][a.y][0];
-            }
-            encodeMapTile(
-              existing.image.buffer,
-              (a.x + a.y * existing.image.width!) * existing.image.channels!,
-              { ...a.value, index: revIndex.data[a.value.sprite] }
-            );
+    switch (a.type) {
+      case "TILE_CHANGE":
+        {
+          let actions = pendingMapActions.get(a.map);
+          if (!actions) {
+            actions = [];
+            pendingMapActions.set(a.map, actions);
           }
-          break;
-        case "RESTART":
-          process.exit(0);
-        default:
-          throw new Error("Unknown Editor action");
-      }
-    }
-    if (previousAction) {
-      log(`Processing ${actionCount} ${chalk.green(previousAction)} action(s)`);
-    }
-
-    if (message.requestId) {
-      parentPort!.postMessage({
-        requestId: message.requestId,
-        response: {},
-      });
+          actions.push(a);
+        }
+        break;
+      case "RESTART":
+        clearInterval(mapUpdateInterval);
+        await flushMapChanges();
+        process.exit(0);
+      default:
+        throw new Error("Unknown Editor action");
     }
   });
 }
 
+async function flushMapChanges() {
+  const updated = new Map<string, WorkingMapData>();
+  // copy so that we can safely start accumulating
+  // new changes while we're processing
+  const actionsToApply = [...pendingMapActions];
+  pendingMapActions.clear();
+
+  for (const [map, actions] of actionsToApply) {
+    const existing = await getMap(map);
+    if (!existing) {
+      logError(`Failed to load map ${map}`);
+      continue;
+    }
+
+    const revIndex = await loadJson(
+      path.join(spriteSrcPath, `${existing.src.meta.spriteSheet}.json`)
+    );
+    if (!revIndex.ok) {
+      logError(
+        `Failed to sprite sheet ${existing.src.meta.spriteSheet} for map ${map}`
+      );
+      continue;
+    }
+
+    updated.set(map, existing);
+
+    for (const a of actions) {
+      if (a.type !== "TILE_CHANGE") {
+        continue;
+      }
+      if (!existing.src.data[a.x]) {
+        existing.src.data[a.x] = {};
+      }
+      if (!existing.src.data[a.x][a.y]) {
+        existing.src.data[a.x][a.y] = {};
+      }
+      if (a.value.sprite) {
+        existing.src.data[a.x][a.y][0] = a.value;
+      } else {
+        delete existing.src.data[a.x][a.y][0];
+      }
+      encodeMapTile(
+        existing.image.buffer,
+        (a.x + a.y * existing.image.width!) * existing.image.channels!,
+        { ...a.value, index: revIndex.data[a.value.sprite] }
+      );
+    }
+  }
+
+  for (const [map, u] of updated) {
+    try {
+      await sharp(u.image.buffer, {
+        raw: {
+          width: u.image.width!,
+          height: u.image.height!,
+          channels: u.image.channels!,
+        },
+      })
+        .png()
+        .toFile(u.image.path);
+      await fs.writeFile(u.src.path, JSON.stringify(u.src.data, null, 2));
+      log(`Saved map ${chalk.green(map)}`);
+    } catch (err) {
+      logError(`Failed to update map ${map} - ${err}`);
+    }
+  }
+
+  const maps = [...mapCache];
+  for (const [key, value] of maps) {
+    // clear out maps from memory that haven't been accessed in 10 seconds
+    if (Date.now() - value.lastAccess > 10000) mapCache.delete(key);
+  }
+}
+
 async function getMap(map: string): Promise<WorkingMapData | null> {
-  let existing = workingMaps.get(map);
+  let existing = mapCache.get(map);
   if (!existing) {
     const imagePath = path.join(mapsWwwPath, `${map}.png`);
     const image = sharp(imagePath);
@@ -160,7 +160,7 @@ async function getMap(map: string): Promise<WorkingMapData | null> {
       return null;
     }
     existing = {
-      version: 0,
+      lastAccess: Date.now(),
       image: {
         width: metadata.width!,
         height: metadata.height!,
@@ -175,10 +175,11 @@ async function getMap(map: string): Promise<WorkingMapData | null> {
       },
     };
 
-    workingMaps.set(map, existing);
+    mapCache.set(map, existing);
+    log(`Loaded map ${chalk.green(map)}`);
   }
   if (existing) {
-    existing.version++;
+    existing.lastAccess = Date.now();
   }
   return existing;
 }

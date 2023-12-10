@@ -2,7 +2,6 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import express from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
-import { v4 as uuidv4 } from "uuid";
 import fs from "fs/promises";
 import path from "path";
 import watcher from "@parcel/watcher";
@@ -30,15 +29,15 @@ import {
   loadMapMetadata,
 } from "./map-utils";
 import { serve } from "esbuild";
+import { EditorHost } from "../src/editor/host";
 import esbuildConfig from "./esbuild-config";
-import { Worker } from "worker_threads";
 import { codeFrameColumns, SourceLocation } from "@babel/code-frame";
 
 const PORT = 8000;
 const srcPath = path.join(__dirname, "..", "src");
 const wwwPath = path.join(__dirname, "..", "www");
 
-let editor: Worker | null = null;
+let editor: EditorHost;
 
 const spriteLogDecorator = (message: string) => {
   console.log(chalk.dim("[Sprites]"), message);
@@ -76,7 +75,7 @@ Promise.resolve(
   await ensurePath(shadersSrcPath);
   await fs.cp(
     path.join(srcPath, "index.html"),
-    path.join(wwwPath, "index.html"),
+    path.join(wwwPath, "index.html")
   );
 
   // on first run, check if any sprites are missing or older
@@ -249,40 +248,7 @@ Promise.resolve(
   const app = express();
 
   if (!args.production) {
-    app.use(express.json());
-
-    const requestMap = new Map<
-      string,
-      {
-        res: express.Response;
-      }
-    >();
-    createEditor(app, requestMap);
-
-    app.post("/edit", (req, res) => {
-      const requestId = uuidv4();
-      requestMap.set(requestId, { res });
-      if (!editor) {
-        res.status(500).send("Editor not ready");
-      } else {
-        editor.postMessage({
-          requestId,
-          actions: req.body,
-        });
-      }
-    });
-
-    await watcher.subscribe(
-      srcPath,
-      async (_err, _events) => {
-        console.log(chalk.dim("[Editor]"), "Restarting...");
-        editor?.postMessage({ actions: [{ type: "RESTART" }] });
-        editor = null;
-      },
-      {
-        ignore: ["client/**"],
-      }
-    );
+    editor = new EditorHost(PORT + 2, srcPath);
   } else {
     console.log(
       `${chalk.dim("[Editor]")} ${chalk.red("Disabled in production builds")}`
@@ -317,47 +283,6 @@ Promise.resolve(
   });
 });
 
-function createEditor(
-  app: express.Express,
-  requestMap: Map<
-    string,
-    {
-      res: express.Response;
-    }
-  >
-) {
-  editor = new Worker(path.join(srcPath, "editor", "worker.ts"), {
-    eval: false,
-    workerData: null,
-    execArgv: ["-r", "ts-node/register"],
-  });
-
-  editor.on("error", (error: any) => {
-    console.log(chalk.dim("[Editor]"), `Error - ${error.stack}`);
-  });
-
-  editor.on("exit", (code: number) => {
-    console.log(chalk.dim("[Editor]"), `Closed (${code}).`);
-    // clear out pending requests so the client can
-    // be notified of the failure and re-send the requests
-    for (let req of requestMap.values()) {
-      req.res.status(500).send("Editor not ready");
-    }
-    requestMap.clear();
-    createEditor(app, requestMap);
-  });
-
-  editor.on("message", (message: any) => {
-    const request = requestMap.get(message.requestId);
-    if (request) {
-      if (message.response) {
-        requestMap.delete(message.requestId);
-        request.res.json(message.response);
-      }
-    }
-  });
-}
-
 async function processMapSpriteEvents(events: watcher.Event[]) {
   // if a sprite rev index.json changes, rebuild any maps
   // which have a metadata.sprite field that matches the
@@ -375,6 +300,7 @@ async function processMapSpriteEvents(events: watcher.Event[]) {
         const result = await loadMapMetadata(map);
         if (result.ok && result.metadata.spriteSheet === sprite) {
           await processMap(map, mapsLogDecorator, mapsErrorDecorator);
+          editor?.broadcast({ type: "RELOAD_MAP", map });
         }
       }
     }
@@ -411,6 +337,7 @@ async function processMapEvents(events: watcher.Event[]) {
 
   for (const nom of newOrModified) {
     await processMap(nom, mapsLogDecorator, mapsErrorDecorator);
+    editor?.broadcast({ type: "RELOAD_MAP", map: nom });
   }
 }
 
@@ -460,6 +387,7 @@ async function processSpriteSheetEvents(events: watcher.Event[]) {
       spriteLogDecorator,
       spriteErrorDecorator
     );
+    editor?.broadcast({ type: "RELOAD_SPRITESHEET", spriteSheet: nom });
   }
 }
 
@@ -476,12 +404,14 @@ async function processShaderEvents(
       case "create":
       case "update":
         {
-          await processShader(
-            path.basename(e.path),
+          const shader = path.basename(e.path);
+          const src = await processShader(
+            shader,
             production,
             shaderLogDecorator,
             shaderErrorDecorator
           );
+          editor?.broadcast({ type: "RELOAD_SHADER", shader, src });
         }
         break;
 

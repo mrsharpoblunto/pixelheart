@@ -11,3 +11,8 @@ export type EditorAction =
   | {
       type: "RESTART";
     };
+
+export type EditorEvent =
+  | { type: "RELOAD_MAP"; map: string }
+  | { type: "RELOAD_SHADER"; shader: string, src: string }
+  | { type: "RELOAD_SPRITESHEET"; spriteSheet: string };

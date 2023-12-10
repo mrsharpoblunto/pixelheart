@@ -5,15 +5,16 @@ import { Quad } from "./geometry";
 import vertexShader from "./generated/shaders/quad.vert";
 import fragmentShader from "./generated/shaders/water.frag";
 import { ToTangentSpace, Tangent, Binormal, Normal } from "./sprite-common";
+import { GameContext } from "./game-runner";
 
 export class WaterEffect {
   #gl: WebGL2RenderingContext;
   #program: ShaderProgram<typeof vertexShader, typeof fragmentShader>;
   #quad: Quad;
 
-  constructor(gl: WebGL2RenderingContext) {
-    this.#gl = gl;
-    this.#program = new ShaderProgram(this.#gl, vertexShader, fragmentShader)!;
+  constructor(ctx: GameContext) {
+    this.#gl = ctx.gl;
+    this.#program = new ShaderProgram(ctx, vertexShader, fragmentShader)!;
     this.#quad = new Quad(this.#gl);
   }
 
