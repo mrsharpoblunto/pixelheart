@@ -95,12 +95,10 @@ void main() {
   vec3 l = (c.yyx-3.*c.yxy),
       p = mat3(c.yxy, c.yyx, 1./d.z, -d.x/d.z, -d.y/d.z)*ro,
       n, val;
-        
   gerst(p.xy, depth, u_time, val, n);
 
   // all texture normals are in tangent space, so to be consistent we need to convert the water normals too.
   vec3 tn = normalize(cross(n.x * u_normal + u_binormal, n.y * u_normal + u_tangent)) * u_toTangentSpace;
-    
   o_albedo = vec4(50.0/255.0 + depth * 0.5,124.0/255.0 + depth * 0.5,val.z/255.0 + 224.0/255.0 + depth, transparency);
   if (depth < 0.99) {
     vec4 ds = texture(u_depth, v_texCoord - n.xy*4.0);

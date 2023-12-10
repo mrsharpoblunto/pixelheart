@@ -5,7 +5,6 @@ import {
   SpriteEffect,
   SpriteSheet,
   SpriteAnimator,
-  SpriteSheetConfig,
 } from "./sprite-common";
 import { SpriteViewProjection, Quad } from "./geometry";
 import {
@@ -14,7 +13,7 @@ import {
   InstanceBuffer,
   FrameBuffer,
 } from "./gl-utils";
-import { ToTangentSpace } from "./sprite-common";
+import { SpriteSheetConfig, ToTangentSpace } from "../shared/sprite-format";
 import vertexShader from "./generated/shaders/deferred-sprite.vert";
 import fragmentShader from "./generated/shaders/deferred-sprite.frag";
 import lightingVertexShader from "./generated/shaders/deferred-lighting.vert";

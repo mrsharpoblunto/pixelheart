@@ -334,8 +334,8 @@ export default function GameRunner<T, U>(
           socket.send(JSON.stringify(action));
         },
         onEvent: (callback: (event: EditorEvent) => void) => {
-          socket.addEventListener("message", (event: any) => {
-            callback(JSON.parse(event.toString()) as EditorEvent);
+          socket.addEventListener("message", (message) => {
+            callback(JSON.parse(message.data.toString()) as EditorEvent);
           });
         },
       };

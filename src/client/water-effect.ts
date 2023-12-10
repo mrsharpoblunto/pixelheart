@@ -4,7 +4,7 @@ import { ShaderProgram } from "./gl-utils";
 import { Quad } from "./geometry";
 import vertexShader from "./generated/shaders/quad.vert";
 import fragmentShader from "./generated/shaders/water.frag";
-import { ToTangentSpace, Tangent, Binormal, Normal } from "./sprite-common";
+import { ToTangentSpace, Tangent, Binormal, Normal } from "../shared/sprite-format";
 import { GameContext } from "./game-runner";
 
 export class WaterEffect {

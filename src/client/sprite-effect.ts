@@ -5,9 +5,9 @@ import { loadTextureFromUrl } from "./images";
 import {
   SpriteSheet,
   SpriteAnimator,
-  SpriteSheetConfig,
   SpriteEffect,
 } from "./sprite-common";
+import { SpriteSheetConfig } from "../shared/sprite-format";
 import { SpriteViewProjection, Quad } from "./geometry";
 import { ShaderProgram, InstanceBuffer } from "./gl-utils";
 import vertexShader from "./generated/shaders/sprite.vert";

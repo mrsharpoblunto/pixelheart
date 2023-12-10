@@ -6,19 +6,20 @@ import Aseprite from "ase-parser";
 import { vec4, vec3 } from "gl-matrix";
 import chalk from "chalk";
 import {
-  SpriteConfig,
   ToTangentSpace,
   Tangent,
   Normal,
   Binormal,
-} from "../src/client/sprite-common";
+  SpriteConfig,
+  SpriteSheetConfig,
+} from "../src/shared/sprite-format";
 import { getFileHash } from "./common-utils";
 
 export const spritePath = path.join(__dirname, "../assets/sprites");
 export const wwwPath = path.join(__dirname, "../www/sprites");
 export const spriteSrcPath = path.join(
   __dirname,
-  "../src/shared/generated/sprites"
+  "../src/client/generated/sprites"
 );
 
 const PNG_REGEX = /([a-zA-Z_][a-zA-Z0-9_]*)-([0-9]+)x([0-9]+)\.(png|ase)/;
@@ -73,7 +74,8 @@ export async function processSpriteSheet(
   production: boolean,
   log: (message: string) => void,
   onError: (error: string) => void
-): Promise<void> {
+): Promise<SpriteSheetConfig | null> {
+  let config: SpriteSheetConfig | null = null;
   const sheet: PendingSpriteSheet = {
     name: spriteSheetName,
     width: 0,
@@ -110,7 +112,8 @@ export async function processSpriteSheet(
           onError(`Invalid sprite format: ${sprite}`);
       }
     } catch (ex: any) {
-      return onError(`Unexpected sprite error: ${ex.toString()}`);
+      onError(`Unexpected sprite error: ${ex.toString()}`);
+      return null;
     }
   }
 
@@ -168,51 +171,48 @@ export async function processSpriteSheet(
         ),
       ]);
 
+      config = {
+        name: sheet.name,
+        sprites: [...sheet.sprites]
+          .map(([name, sprite], i) => ({
+            name,
+            sprite: { ...sprite, index: i + 1 },
+          }))
+          .reduce((p, { name, sprite }) => {
+            p[name] = sprite;
+            return p;
+          }, {} as Record<string, SpriteConfig>),
+        indexes: [["", ""], ...sheet.sprites].map(([name, _]) => name),
+        urls: urls.reduce((p, [name, url]) => {
+          p[name] = url;
+          return p;
+        }, {} as any),
+      };
+
       // write the typescript generated mapping
       await fs.writeFile(
         path.join(spriteSrcPath, `${sheet.name}.ts`),
-        `const Sheet = { 
-  sprites: {
-` +
-          [...sheet.sprites]
-            .map(
-              ([name, sprite], i) =>
-                `   ${name}: ${JSON.stringify({
-                  ...sprite,
-                  index: i + 1,
-                })},`
-            )
-            .join("\n") +
-          `
-  },
-  indexes: [
-    "",
-    ` +
-          [...sheet.sprites].map(([name, _]) => `"${name}",`).join("\n") +
-          `
-  ],
-  urls: {
-    ${urls.map(([name, url]) => `${name}: "${url}",`).join("\n")}
-  }
-};
+        `const Sheet = ${JSON.stringify(config, null, 2)};
 export default Sheet;`
       );
 
       // write the json reverse index
       await fs.writeFile(
         path.join(spriteSrcPath, `${sheet.name}.json`),
-        `{` +
+        `{
+  ` +
           [...sheet.sprites]
-            .map(([name, _], i) => `"${name}":${i + 1}`)
+            .map(([name, _], i) => `"${name}":${i + 1} `)
             .join(",") +
-          `}`
+          `} `
       );
     } catch (err: any) {
-      onError(`Failed to write spritesheet: ${err.toString()}`);
+      onError(`Failed to write spritesheet: ${err.toString()} `);
     }
   }
 
   log(`Completed ${chalk.green(sheet.name)}.`);
+  return config;
 }
 
 async function writeSpriteSheetLayer(
@@ -271,12 +271,12 @@ async function processPngSprite(
   if (metadata.width && metadata.height) {
     if (metadata.width !== width && metadata.width % width !== 0) {
       return onError(
-        `Invalid sprite width ${metadata.width}, must be a multiple of ${width}`
+        `Invalid sprite width ${metadata.width}, must be a multiple of ${width} `
       );
     }
     if (metadata.height !== height) {
       return onError(
-        `Invalid sprite width ${metadata.height}, must be equal to ${height}`
+        `Invalid sprite width ${metadata.height}, must be equal to ${height} `
       );
     }
 

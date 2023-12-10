@@ -41,6 +41,8 @@ export interface ShaderSource {
   uniforms: { [name: string]: keyof UniformTypeMap };
 }
 
+let hotReloadCache: Map<string, string> | null = null;
+
 export class ShaderProgram<
   TVert extends ShaderSource,
   TFrag extends ShaderSource
@@ -66,7 +68,34 @@ export class ShaderProgram<
     fragmentShaderSource: TFrag
   ) {
     this.#gl = ctx.gl;
-    this.#program = this.#gl.createProgram()!;
+
+  if (process.env.NODE_ENV === "development") {
+    if (ctx.editor) {
+      ctx.editor.onEvent((event) => {
+        if (event.type === "RELOAD_SHADER") {
+          if (!hotReloadCache) {
+            hotReloadCache = new Map();
+          }
+          hotReloadCache?.set(event.shader, event.src);
+          try {
+            this.#program = this.#createProgram(
+              vertexShaderSource,
+              fragmentShaderSource
+            );
+          } catch (e) {
+            console.error(e);
+            return;
+          }
+            this.setAttributesAndUniforms(
+              vertexShaderSource,
+              fragmentShaderSource
+            );
+            console.log("Reloaded shader", event.shader);
+        }
+      });
+    }
+  }
+
     this.inAttributes = {} as Record<
       keyof TVert["inAttributes"],
       { location: number; type: keyof TypeMap; layout?: number }
@@ -80,61 +109,17 @@ export class ShaderProgram<
       { location: WebGLUniformLocation; type: keyof UniformTypeMap }
     >;
 
-    const vertexShader = this.#gl.createShader(this.#gl.VERTEX_SHADER)!;
-    this.#gl.shaderSource(vertexShader, vertexShaderSource.src);
-    this.#gl.compileShader(vertexShader);
+    this.#program = this.#createProgram(
+      vertexShaderSource,
+      fragmentShaderSource
+    );
+    this.setAttributesAndUniforms(vertexShaderSource, fragmentShaderSource);
+  }
 
-    let output = "";
-
-    if (!this.#gl.getShaderParameter(vertexShader, this.#gl.COMPILE_STATUS)) {
-      let error = this.#gl.getShaderInfoLog(vertexShader);
-      if (error) {
-        if (process.env.NODE_ENV !== "production") {
-          output += decorateError(
-            `\nVertex Shader: ${vertexShaderSource.name}`,
-            vertexShaderSource.src,
-            error
-          );
-        } else {
-          output += error + "\n";
-        }
-      }
-    }
-
-    const fragmentShader = this.#gl.createShader(this.#gl.FRAGMENT_SHADER)!;
-    this.#gl.shaderSource(fragmentShader, fragmentShaderSource.src);
-    this.#gl.compileShader(fragmentShader);
-    if (!this.#gl.getShaderParameter(fragmentShader, this.#gl.COMPILE_STATUS)) {
-      let error = this.#gl.getShaderInfoLog(fragmentShader);
-      if (error) {
-        if (process.env.NODE_ENV !== "production") {
-          output += decorateError(
-            `\nFragment Shader: ${fragmentShaderSource.name}`,
-            fragmentShaderSource.src,
-            error
-          );
-        } else {
-          output += error + "\n";
-        }
-      }
-    }
-
-    this.#gl.attachShader(this.#program, vertexShader);
-    this.#gl.attachShader(this.#program, fragmentShader);
-    this.#gl.linkProgram(this.#program);
-    if (!this.#gl.getProgramParameter(this.#program, this.#gl.LINK_STATUS)) {
-      const error = this.#gl.getProgramInfoLog(this.#program);
-      if (error) {
-        output += `\nLinker: (${vertexShaderSource.name}, ${fragmentShaderSource.name}): ${error}`;
-      }
-    }
-
-    if (output !== "") {
-      throw new Error(
-        `Shader compilation of [${vertexShaderSource.name}, ${fragmentShaderSource.name}] failed:\n${output}`
-      );
-    }
-
+  setAttributesAndUniforms(
+    vertexShaderSource: TVert,
+    fragmentShaderSource: TFrag
+  ) {
     const attributeCount = this.#gl.getProgramParameter(
       this.#program,
       this.#gl.ACTIVE_ATTRIBUTES
@@ -184,6 +169,7 @@ export class ShaderProgram<
         }
       }
     }
+
     if (process.env.NODE_ENV !== "production") {
       for (let key in vertexShaderSource.uniforms) {
         if (!this.uniforms[key]) {
@@ -200,6 +186,74 @@ export class ShaderProgram<
         }
       }
     }
+  }
+
+  #createProgram(vertexShaderSource: TVert, fragmentShaderSource: TFrag) {
+    const program = this.#gl.createProgram()!;
+
+    const vertexShader = this.#gl.createShader(this.#gl.VERTEX_SHADER)!;
+    const vertexShaderSourceContent =
+      hotReloadCache?.get(vertexShaderSource.name) || vertexShaderSource.src;
+    this.#gl.shaderSource(vertexShader, vertexShaderSourceContent);
+    this.#gl.compileShader(vertexShader);
+
+    let output = "";
+
+    if (!this.#gl.getShaderParameter(vertexShader, this.#gl.COMPILE_STATUS)) {
+      let error = this.#gl.getShaderInfoLog(vertexShader);
+      if (error) {
+        if (process.env.NODE_ENV !== "production") {
+          output += decorateError(
+            `\nVertex Shader: ${vertexShaderSource.name}`,
+            vertexShaderSourceContent,
+            error
+          );
+        } else {
+          output += error + "\n";
+        }
+      }
+    }
+
+    const fragmentShader = this.#gl.createShader(this.#gl.FRAGMENT_SHADER)!;
+    const fragmentShaderSourceContent =
+      hotReloadCache?.get(fragmentShaderSource.name) ||
+      fragmentShaderSource.src;
+    this.#gl.shaderSource(fragmentShader, fragmentShaderSourceContent);
+    this.#gl.compileShader(fragmentShader);
+    if (!this.#gl.getShaderParameter(fragmentShader, this.#gl.COMPILE_STATUS)) {
+      let error = this.#gl.getShaderInfoLog(fragmentShader);
+      if (error) {
+        if (process.env.NODE_ENV !== "production") {
+          output += decorateError(
+            `\nFragment Shader: ${fragmentShaderSource.name}`,
+            fragmentShaderSourceContent,
+            error
+          );
+        } else {
+          output += error + "\n";
+        }
+      }
+    }
+
+    this.#gl.attachShader(program, vertexShader);
+    this.#gl.attachShader(program, fragmentShader);
+    if (output === "") {
+      this.#gl.linkProgram(program);
+      if (!this.#gl.getProgramParameter(program, this.#gl.LINK_STATUS)) {
+        const error = this.#gl.getProgramInfoLog(program);
+        if (error) {
+          output += `\nLinker: (${vertexShaderSource.name}, ${fragmentShaderSource.name}): ${error}`;
+        }
+      }
+    }
+
+    if (output !== "") {
+      throw new Error(
+        `Shader compilation of [${vertexShaderSource.name}, ${fragmentShaderSource.name}] failed:\n${output}`
+      );
+    }
+
+    return program;
   }
 
   use(scope: (program: ShaderProgram<TVert, TFrag>) => void): void {

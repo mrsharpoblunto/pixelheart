@@ -1,47 +1,6 @@
-import { vec3, mat3, vec4, ReadonlyVec4 } from "gl-matrix";
+import { vec4, ReadonlyVec4 } from "gl-matrix";
 import { GameContext } from "./game-runner";
-
-export const Tangent = vec3.set(vec3.create(), 0, 1, 0);
-export const Normal = vec3.set(vec3.create(), 0, 0, 1);
-export const Binormal = vec3.cross(vec3.create(), Tangent, Normal);
-
-export const TBN = mat3.set(
-  mat3.create(),
-  Tangent[0],
-  Binormal[0],
-  Normal[0],
-  Tangent[1],
-  Binormal[1],
-  Normal[1],
-  Tangent[2],
-  Binormal[2],
-  Normal[2]
-);
-
-export const ToTangentSpace = mat3.transpose(mat3.create(), TBN);
-
-export interface SpriteConfig {
-  readonly width: number;
-  readonly height: number;
-  readonly index: number;
-  readonly frames: Array<{
-    readonly top: number;
-    readonly left: number;
-    readonly bottom: number;
-    readonly right: number;
-  }>;
-}
-
-export interface SpriteSheetConfig {
-  urls: {
-    diffuse: string;
-    normal: string;
-    specular: string;
-    emissive: string;
-  };
-  indexes: Array<string>;
-  sprites: Record<string, SpriteConfig>;
-}
+import { SpriteSheetConfig } from "../shared/sprite-format";
 
 export interface Sprite<T> {
   readonly index: number;
@@ -68,33 +27,49 @@ export async function loadSpriteSheet<T>(
   loader: (ctx: GameContext, sheet: SpriteSheetConfig) => Promise<T>
 ): Promise<SpriteSheet<T>> {
   const textures = await loader(ctx, sheet);
-  return {
-    ...Object.keys(sheet.sprites).reduce(
-      (p: Record<string, Sprite<T>>, n: string) => {
-        const sprite = sheet.sprites[n];
-        const frames = sprite.frames.map((f) =>
-          vec4.fromValues(f.top, f.right, f.bottom, f.left)
-        );
-        p[n] = {
-          index: sprite.index,
-          width: sprite.width,
-          height: sprite.height,
-          frames,
-          draw: (
-            effect: SpriteEffect<T>,
-            position: ReadonlyVec4,
-            frame: number = 0
-          ) => {
-            effect.setTextures(textures);
-            effect.draw(position, frames[Math.floor(frame) % frames.length]);
-            return p[n];
-          },
-        };
-        return p;
-      },
-      {}
-    ),
-  };
+  const value = createSpriteFrames(sheet, textures);
+  if (process.env.NODE_ENV === "development") {
+    if (ctx.editor) {
+      ctx.editor.onEvent((event) => {
+        if (
+          event.type === "RELOAD_SPRITESHEET" &&
+          event.spriteSheet.name === sheet.name
+        ) {
+          Object.assign(value, createSpriteFrames(event.spriteSheet, textures));
+          console.log(`Reloaded ${sheet.name} sprite metadata`);
+        }
+      });
+    }
+  }
+  return value;
+}
+
+function createSpriteFrames<T>(sheet: SpriteSheetConfig, textures: T) {
+  return Object.keys(sheet.sprites).reduce(
+    (p: Record<string, Sprite<T>>, n: string) => {
+      const sprite = sheet.sprites[n];
+      const frames = sprite.frames.map((f) =>
+        vec4.fromValues(f.top, f.right, f.bottom, f.left)
+      );
+      p[n] = {
+        index: sprite.index,
+        width: sprite.width,
+        height: sprite.height,
+        frames,
+        draw: (
+          effect: SpriteEffect<T>,
+          position: ReadonlyVec4,
+          frame: number = 0
+        ) => {
+          effect.setTextures(textures);
+          effect.draw(position, frames[Math.floor(frame) % frames.length]);
+          return p[n];
+        },
+      };
+      return p;
+    },
+    {}
+  );
 }
 
 export type SpriteIndex = Array<{
@@ -103,9 +78,7 @@ export type SpriteIndex = Array<{
   readonly frames: Array<ReadonlyVec4>;
 }>;
 
-export function createSpriteIndex(
-  sheet: SpriteSheetConfig
-): SpriteIndex {
+export function createSpriteIndex(sheet: SpriteSheetConfig): SpriteIndex {
   return sheet.indexes.map((s: string, i: number) => {
     return i == 0
       ? { sprite: "", index: i, frames: [] }

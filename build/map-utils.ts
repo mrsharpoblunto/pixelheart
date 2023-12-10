@@ -10,7 +10,7 @@ import { getFileHash } from "./common-utils";
 
 export const mapsPath = path.join(__dirname, "../assets/maps");
 export const wwwPath = path.join(__dirname, "../www/maps");
-export const mapSrcPath = path.join(__dirname, "../src/shared/generated/maps");
+export const mapSrcPath = path.join(__dirname, "../src/client/generated/maps");
 
 const mapSchema = {
   properties: {

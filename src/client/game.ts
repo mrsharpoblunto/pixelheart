@@ -16,14 +16,13 @@ import {
 import { WaterEffect } from "./water-effect";
 import { NearestBlurEffect } from "./nearest-blur";
 import { SolidEffect } from "./solid-effect";
-import overworldMap from "../shared/generated/maps/overworld";
-import characterSprite from "../shared/generated/sprites/character";
-import uiSprite from "../shared/generated/sprites/ui";
+import overworldMap from "./generated/maps/overworld";
+import characterSprite from "./generated/sprites/character";
+import uiSprite from "./generated/sprites/ui";
 import * as coords from "./coordinates";
 import { vec2 } from "gl-matrix";
 import { EditorAction } from "../shared/editor-actions";
 import MapData from "./map";
-import { MapTileSource } from "../shared/map-format";
 
 const CONTROLLER_DEADZONE = 0.25;
 const TOUCH_DEADZONE = 5;

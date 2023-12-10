@@ -381,13 +381,18 @@ async function processSpriteSheetEvents(events: watcher.Event[]) {
   }
 
   for (let nom of newOrModified) {
-    await processSpriteSheet(
+    const spriteSheet = await processSpriteSheet(
       nom,
       false,
       spriteLogDecorator,
       spriteErrorDecorator
     );
-    editor?.broadcast({ type: "RELOAD_SPRITESHEET", spriteSheet: nom });
+    if (spriteSheet) {
+      editor?.broadcast({
+        type: "RELOAD_SPRITESHEET",
+        spriteSheet,
+      });
+    }
   }
 }
 
@@ -411,7 +416,9 @@ async function processShaderEvents(
             shaderLogDecorator,
             shaderErrorDecorator
           );
-          editor?.broadcast({ type: "RELOAD_SHADER", shader, src });
+          if (src) {
+            editor?.broadcast({ type: "RELOAD_SHADER", shader, src });
+          }
         }
         break;
 

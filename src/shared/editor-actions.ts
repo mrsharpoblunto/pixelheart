@@ -1,4 +1,5 @@
 import { MapTileSource } from "./map-format";
+import { SpriteSheetConfig } from "./sprite-format";
 
 export type EditorAction =
   | {
@@ -14,5 +15,5 @@ export type EditorAction =
 
 export type EditorEvent =
   | { type: "RELOAD_MAP"; map: string }
-  | { type: "RELOAD_SHADER"; shader: string, src: string }
-  | { type: "RELOAD_SPRITESHEET"; spriteSheet: string };
+  | { type: "RELOAD_SHADER"; shader: string; src: string }
+  | { type: "RELOAD_SPRITESHEET"; spriteSheet: SpriteSheetConfig };

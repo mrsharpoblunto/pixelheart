@@ -12,15 +12,6 @@ export interface CPUReadableTexture extends GPUTexture {
   image: HTMLImageElement;
 }
 
-export function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = (err) => reject(err);
-    img.src = url;
-  });
-}
-
 export async function loadTextureFromUrl(
   ctx: GameContext,
   url: string,
@@ -30,11 +21,32 @@ export async function loadTextureFromUrl(
   }
 ): Promise<GPUTexture> {
   const image = await loadImageFromUrl(url);
-  return {
+  const value = {
     [TEXTURE]: loadTextureFromImage(ctx, image, opts),
     width: image.width,
     height: image.height,
   };
+  if (process.env.NODE_ENV === "development") {
+    if (ctx.editor) {
+      ctx.editor.onEvent((event) => {
+        if (event.type === "RELOAD_SPRITESHEET") {
+          const index = url.indexOf("?v=");
+          const match = Object.values(event.spriteSheet.urls).find((u) =>
+            new RegExp(`^${url.substring(0, index)}\\?v=(.*)$`).test(u)
+          );
+          if (match) {
+            loadImageFromUrl(match).then((image) => {
+              value[TEXTURE] = loadTextureFromImage(ctx, image, opts);
+              value.width = image.width;
+              value.height = image.height;
+              console.log("Reloaded texture", match);
+            });
+          }
+        }
+      });
+    }
+  }
+  return value;
 }
 
 export async function loadCPUReadableTextureFromUrl(
@@ -46,15 +58,46 @@ export async function loadCPUReadableTextureFromUrl(
   }
 ): Promise<CPUReadableTexture> {
   const image = await loadImageFromUrl(url);
-  return {
+  const value = {
     image,
     [TEXTURE]: loadTextureFromImage(ctx, image, opts),
     width: image.width,
     height: image.height,
   };
+  if (process.env.NODE_ENV === "development") {
+    if (ctx.editor) {
+      ctx.editor.onEvent((event) => {
+        if (event.type === "RELOAD_SPRITESHEET") {
+          const index = url.indexOf("?v=");
+          const match = Object.values(event.spriteSheet.urls).find((u) =>
+            new RegExp(`^${url.substring(0, index)}\\?v=(.*)$`).test(u)
+          );
+          if (match) {
+            loadImageFromUrl(match).then((image) => {
+              value.image = image;
+              value[TEXTURE] = loadTextureFromImage(ctx, image, opts);
+              value.width = image.width;
+              value.height = image.height;
+              console.log("Reloaded texture", match);
+            });
+          }
+        }
+      });
+    }
+  }
+  return value;
 }
 
-export function loadTextureFromImage(
+function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = (err) => reject(err);
+    img.src = url;
+  });
+}
+
+function loadTextureFromImage(
   ctx: GameContext,
   img: HTMLImageElement,
   opts?: {
@@ -105,7 +148,9 @@ export function getPixelData(
   image: HTMLImageElement
 ): (x: number, y: number) => Uint8ClampedArray | null {
   if (!offscreenPixel) {
-    offscreenPixel = ctx.createOffscreenCanvas(image.width,image.height, { willReadFrequently: true});
+    offscreenPixel = ctx.createOffscreenCanvas(image.width, image.height, {
+      willReadFrequently: true,
+    });
   }
   offscreenPixel.canvas.width = Math.max(
     image.width,
