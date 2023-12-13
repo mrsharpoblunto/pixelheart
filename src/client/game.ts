@@ -41,17 +41,19 @@ export interface GameState {
   spriteEffect: DeferredSpriteEffect;
   simpleSpriteEffect: SimpleSpriteEffect;
   solidEffect: SolidEffect;
-  map: MapData;
-  overworld: DeferredSpriteSheet;
-  ui: SimpleSpriteSheet;
-  character: {
-    sprite: DeferredSpriteSheet;
-    animator: DeferredSpriteAnimator;
-    position: vec2;
-    relativePosition: vec2;
-    speed: number;
-    boundingBox: vec4;
-  };
+  resources: ResourceLoader<{
+    overworld: DeferredSpriteSheet;
+    ui: SimpleSpriteSheet;
+    map: MapData;
+    character: {
+      sprite: DeferredSpriteSheet;
+      animator: DeferredSpriteAnimator;
+      position: vec2;
+      relativePosition: vec2;
+      speed: number;
+      boundingBox: vec4;
+    };
+  }>;
   screen: {
     absolutePosition: vec2;
   };
@@ -68,20 +70,52 @@ export interface EditorState {
   pendingChanges: Map<string, EditorAction>;
 }
 
-export function onSave(state: GameState): SerializedGameState {
-  return {
-    version: CURRENT_SERIALIZATION_VERSION,
-    character: {
-      position: [state.character.position[0], state.character.position[1]],
-      direction: state.character.animator.getSpriteName(),
-    },
-  };
+export function onSave(state: GameState): SerializedGameState | null {
+  let result = null;
+  state.resources.ifReady((r) => {
+    result = {
+      version: CURRENT_SERIALIZATION_VERSION,
+      character: {
+        position: [r.character.position[0], r.character.position[1]],
+        direction: r.character.animator.getSpriteName(),
+      },
+    };
+  });
+  return result;
 }
 
-export async function onStart(
+class ResourceLoader<T extends object> {
+  #values: { [K in keyof T]: T[K] };
+  ready: boolean;
+
+  constructor(resources: { [K in keyof T]: Promise<T[K]> }) {
+    this.#values = {} as { [K in keyof T]: T[K] };
+    this.ready = false;
+
+    const keys = Object.keys(resources) as Array<keyof T>;
+    Promise.all(keys.map((key) => resources[key])).then((values) => {
+      keys.reduce((obj, key, index) => {
+        obj[key] = values[index];
+        return obj;
+      }, this.#values);
+      this.ready = true;
+    });
+  }
+
+  ifReady(callback: (obj: { [K in keyof T]: T[K] }) => void): boolean {
+    if (this.ready) {
+      callback(this.#values);
+    }
+    return this.ready;
+  }
+}
+
+// TODO this should be sync & have a better method for
+// loading async resources...
+export function onStart(
   ctx: GameContext,
   previousState?: SerializedGameState
-): Promise<GameState> {
+): GameState {
   if (
     previousState &&
     previousState.version !== CURRENT_SERIALIZATION_VERSION
@@ -91,50 +125,55 @@ export async function onStart(
     throw new Error(`Invalid save version ${previousState.version}`);
   }
 
-  const overworld = await loadSpriteSheet(
-    ctx,
-    overworldMap.spriteSheet,
-    deferredTextureLoader
-  );
-  const character = await loadSpriteSheet(
-    ctx,
-    characterSprite,
-    deferredTextureLoader
-  );
-  const map = await loadCPUReadableTextureFromUrl(ctx, overworldMap.url);
-
   const state: GameState = {
     spriteEffect: new DeferredSpriteEffect(ctx),
     simpleSpriteEffect: new SimpleSpriteEffect(ctx),
     solidEffect: new SolidEffect(ctx),
-    map: new MapData(ctx, coords.TILE_SIZE, map),
-    ui: await loadSpriteSheet(ctx, uiSprite, simpleTextureLoader),
-    overworld: overworld,
-    character: {
-      sprite: character,
-      animator: new DeferredSpriteAnimator(
-        character,
-        previousState ? previousState.character.direction : "walk_d",
-        8 / 1000
+    resources: new ResourceLoader({
+      overworld: loadSpriteSheet(
+        ctx,
+        overworldMap.spriteSheet,
+        deferredTextureLoader
       ),
-      position: previousState
-        ? vec2.fromValues(
-            previousState.character.position[0],
-            previousState.character.position[1]
-          )
-        : vec2.fromValues(
-            overworldMap.startPosition.x * coords.TILE_SIZE,
-            overworldMap.startPosition.y * coords.TILE_SIZE
+      ui: loadSpriteSheet(ctx, uiSprite, simpleTextureLoader),
+      map: (async () => {
+        const m = await loadCPUReadableTextureFromUrl(ctx, overworldMap.url);
+        return new MapData(ctx, coords.TILE_SIZE, m);
+      })(),
+      character: (async () => {
+        const c = await loadSpriteSheet(
+          ctx,
+          characterSprite,
+          deferredTextureLoader
+        );
+        return {
+          sprite: c,
+          animator: new DeferredSpriteAnimator(
+            c,
+            previousState ? previousState.character.direction : "walk_d",
+            8 / 1000
           ),
-      relativePosition: vec2.create(),
-      boundingBox: vec4.fromValues(
-        character.walk_u.height - 14,
-        character.walk_u.width - 2,
-        character.walk_u.height - 4,
-        2
-      ),
-      speed: 1,
-    },
+          position: previousState
+            ? vec2.fromValues(
+                previousState.character.position[0],
+                previousState.character.position[1]
+              )
+            : vec2.fromValues(
+                overworldMap.startPosition.x * coords.TILE_SIZE,
+                overworldMap.startPosition.y * coords.TILE_SIZE
+              ),
+          relativePosition: vec2.create(),
+          boundingBox: vec4.fromValues(
+            c.walk_u.height - 14,
+            c.walk_u.width - 2,
+            c.walk_u.height - 4,
+            2
+          ),
+          speed: 1,
+        };
+      })(),
+    }),
+
     waterEffect: new WaterEffect(ctx),
     blurEffect: new NearestBlurEffect(ctx),
     animationTimer: 0,
@@ -160,240 +199,242 @@ export function onUpdate(
   state: GameState,
   fixedDelta: number
 ) {
-  const direction: { [key: string]: boolean } = {};
+  state.resources.ifReady((r) => {
+    const direction: { [key: string]: boolean } = {};
 
-  // gamepad input
-  const gp = ctx.getGamepad();
-  if (gp) {
-    if (
-      gp.buttons[12].pressed ||
-      Math.min(0.0, gp.axes[1] + CONTROLLER_DEADZONE) < 0
-    ) {
-      direction.up = true;
-    }
-    if (
-      gp.buttons[13].pressed ||
-      Math.max(0.0, gp.axes[1] - CONTROLLER_DEADZONE) > 0
-    ) {
-      direction.down = true;
-    }
-    if (
-      gp.buttons[14].pressed ||
-      Math.min(0.0, gp.axes[0] + CONTROLLER_DEADZONE) < 0
-    ) {
-      direction.left = true;
-    }
-    if (
-      gp.buttons[15].pressed ||
-      Math.max(0.0, gp.axes[0] - CONTROLLER_DEADZONE) > 0
-    ) {
-      direction.right = true;
-    }
-  }
-
-  // keyboard input
-  if (ctx.keys.pressed.has("f") && ctx.keys.down.has("Control")) {
-    if (!document.fullscreenElement) {
-      ctx.canvas.requestFullscreen();
-    } else if (document.exitFullscreen) {
-      document.exitFullscreen();
-    }
-  }
-  if (ctx.keys.down.has("w") || ctx.keys.down.has("ArrowUp")) {
-    direction.up = true;
-  }
-  if (ctx.keys.down.has("s") || ctx.keys.down.has("ArrowDown")) {
-    direction.down = true;
-  }
-  if (ctx.keys.down.has("a") || ctx.keys.down.has("ArrowLeft")) {
-    direction.left = true;
-  }
-  if (ctx.keys.down.has("d") || ctx.keys.down.has("ArrowRight")) {
-    direction.right = true;
-  }
-
-  // touch input
-  for (let [k, v] of ctx.touches.down) {
-    if (state.moveTouch === null && Date.now() - v.started > 250) {
-      state.moveTouch = { id: k, startPosition: vec2.clone(v.position) };
-    }
-  }
-  for (let [k, _] of ctx.touches.ended) {
-    if (state.moveTouch !== null && k === state.moveTouch.id) {
-      state.moveTouch = null;
-    }
-  }
-  if (state.moveTouch !== null) {
-    const currentTouch = ctx.touches.down.get(state.moveTouch.id);
-    if (currentTouch) {
+    // gamepad input
+    const gp = ctx.getGamepad();
+    if (gp) {
       if (
-        currentTouch.position[0] - state.moveTouch.startPosition[0] <
-        -TOUCH_DEADZONE
-      ) {
-        direction.left = true;
-      }
-      if (
-        currentTouch.position[0] - state.moveTouch.startPosition[0] >
-        TOUCH_DEADZONE
-      ) {
-        direction.right = true;
-      }
-      if (
-        currentTouch.position[1] - state.moveTouch.startPosition[1] <
-        -TOUCH_DEADZONE
+        gp.buttons[12].pressed ||
+        Math.min(0.0, gp.axes[1] + CONTROLLER_DEADZONE) < 0
       ) {
         direction.up = true;
       }
       if (
-        currentTouch.position[1] - state.moveTouch.startPosition[1] >
-        TOUCH_DEADZONE
+        gp.buttons[13].pressed ||
+        Math.max(0.0, gp.axes[1] - CONTROLLER_DEADZONE) > 0
       ) {
         direction.down = true;
       }
-    } else {
-      state.moveTouch = null;
+      if (
+        gp.buttons[14].pressed ||
+        Math.min(0.0, gp.axes[0] + CONTROLLER_DEADZONE) < 0
+      ) {
+        direction.left = true;
+      }
+      if (
+        gp.buttons[15].pressed ||
+        Math.max(0.0, gp.axes[0] - CONTROLLER_DEADZONE) > 0
+      ) {
+        direction.right = true;
+      }
     }
-  }
 
-  let newDirection: keyof typeof characterSprite.sprites | null = null;
-  // direction animations are mutually exclusive
-  if (direction.left) {
-    newDirection = "walk_l";
-  } else if (direction.right) {
-    newDirection = "walk_r";
-  } else if (direction.up) {
-    newDirection = "walk_u";
-  } else if (direction.down) {
-    newDirection = "walk_d";
-  }
+    // keyboard input
+    if (ctx.keys.pressed.has("f") && ctx.keys.down.has("Control")) {
+      if (!document.fullscreenElement) {
+        ctx.canvas.requestFullscreen();
+      } else if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+    if (ctx.keys.down.has("w") || ctx.keys.down.has("ArrowUp")) {
+      direction.up = true;
+    }
+    if (ctx.keys.down.has("s") || ctx.keys.down.has("ArrowDown")) {
+      direction.down = true;
+    }
+    if (ctx.keys.down.has("a") || ctx.keys.down.has("ArrowLeft")) {
+      direction.left = true;
+    }
+    if (ctx.keys.down.has("d") || ctx.keys.down.has("ArrowRight")) {
+      direction.right = true;
+    }
 
-  if (newDirection) {
-    state.character.animator.setSpriteOrTick(newDirection, fixedDelta);
-  }
+    // touch input
+    for (let [k, v] of ctx.touches.down) {
+      if (state.moveTouch === null && Date.now() - v.started > 250) {
+        state.moveTouch = { id: k, startPosition: vec2.clone(v.position) };
+      }
+    }
+    for (let [k, _] of ctx.touches.ended) {
+      if (state.moveTouch !== null && k === state.moveTouch.id) {
+        state.moveTouch = null;
+      }
+    }
+    if (state.moveTouch !== null) {
+      const currentTouch = ctx.touches.down.get(state.moveTouch.id);
+      if (currentTouch) {
+        if (
+          currentTouch.position[0] - state.moveTouch.startPosition[0] <
+          -TOUCH_DEADZONE
+        ) {
+          direction.left = true;
+        }
+        if (
+          currentTouch.position[0] - state.moveTouch.startPosition[0] >
+          TOUCH_DEADZONE
+        ) {
+          direction.right = true;
+        }
+        if (
+          currentTouch.position[1] - state.moveTouch.startPosition[1] <
+          -TOUCH_DEADZONE
+        ) {
+          direction.up = true;
+        }
+        if (
+          currentTouch.position[1] - state.moveTouch.startPosition[1] >
+          TOUCH_DEADZONE
+        ) {
+          direction.down = true;
+        }
+      } else {
+        state.moveTouch = null;
+      }
+    }
 
-  // provide a stable looping animation
-  state.animationTimer += fixedDelta / 10;
-  if (state.animationTimer > MAX_TIME) {
-    state.animationTimer -= MAX_TIME;
-  }
+    let newDirection: keyof typeof characterSprite.sprites | null = null;
+    // direction animations are mutually exclusive
+    if (direction.left) {
+      newDirection = "walk_l";
+    } else if (direction.right) {
+      newDirection = "walk_r";
+    } else if (direction.up) {
+      newDirection = "walk_u";
+    } else if (direction.down) {
+      newDirection = "walk_d";
+    }
 
-  // but movement is not
-  const movement = vec2.create();
-  if (direction.left) {
-    movement[0]--;
-  }
-  if (direction.right) {
-    movement[0]++;
-  }
-  if (direction.up) {
-    movement[1]--;
-  }
-  if (direction.down) {
-    movement[1]++;
-  }
-  // make sure angular movement isn't faster than up/down/left/right
-  vec2.normalize(movement, movement);
-  vec2.scale(movement, movement, state.character.speed);
-  vec2.add(movement, movement, state.character.position);
+    if (newDirection) {
+      r.character.animator.setSpriteOrTick(newDirection, fixedDelta);
+    }
 
-  const renderOffset = vec2.fromValues(
-    state.character.animator.getSprite().width / 2,
-    state.character.animator.getSprite().height / 2
-  );
+    // provide a stable looping animation
+    state.animationTimer += fixedDelta / 10;
+    if (state.animationTimer > MAX_TIME) {
+      state.animationTimer -= MAX_TIME;
+    }
 
-  // check the characters bounding box against the map
-  // top left
-  const isWalkable =
-    state.map.read(
-      Math.floor(
-        (movement[0] - renderOffset[0] + state.character.boundingBox[3]) /
-          coords.TILE_SIZE
-      ),
-      Math.floor(
-        (movement[1] - renderOffset[1] + state.character.boundingBox[0]) /
-          coords.TILE_SIZE
-      )
-    ).walkable &&
-    // top right
-    state.map.read(
-      Math.floor(
-        (movement[0] - renderOffset[0] + state.character.boundingBox[1]) /
-          coords.TILE_SIZE
-      ),
-      Math.floor(
-        (movement[1] - renderOffset[1] + state.character.boundingBox[0]) /
-          coords.TILE_SIZE
-      )
-    ).walkable &&
-    // bottom left
-    state.map.read(
-      Math.floor(
-        (movement[0] - renderOffset[0] + state.character.boundingBox[3]) /
-          coords.TILE_SIZE
-      ),
-      Math.floor(
-        (movement[1] - renderOffset[1] + state.character.boundingBox[2]) /
-          coords.TILE_SIZE
-      )
-    ).walkable &&
-    // bottom right
-    state.map.read(
-      Math.floor(
-        (movement[0] - renderOffset[0] + state.character.boundingBox[1]) /
-          coords.TILE_SIZE
-      ),
-      Math.floor(
-        (movement[1] - renderOffset[1] + state.character.boundingBox[2]) /
-          coords.TILE_SIZE
-      )
-    ).walkable;
+    // but movement is not
+    const movement = vec2.create();
+    if (direction.left) {
+      movement[0]--;
+    }
+    if (direction.right) {
+      movement[0]++;
+    }
+    if (direction.up) {
+      movement[1]--;
+    }
+    if (direction.down) {
+      movement[1]++;
+    }
+    // make sure angular movement isn't faster than up/down/left/right
+    vec2.normalize(movement, movement);
+    vec2.scale(movement, movement, r.character.speed);
+    vec2.add(movement, movement, r.character.position);
 
-  if (isWalkable) {
     const renderOffset = vec2.fromValues(
-      state.character.animator.getSprite().width / 2,
-      state.character.animator.getSprite().height / 2
+      r.character.animator.getSprite().width / 2,
+      r.character.animator.getSprite().height / 2
     );
-    const mapSize = vec2.fromValues(
-      state.map.width * coords.TILE_SIZE,
-      state.map.height * coords.TILE_SIZE
+
+    // check the characters bounding box against the map
+    // top left
+    const isWalkable =
+      r.map.read(
+        Math.floor(
+          (movement[0] - renderOffset[0] + r.character.boundingBox[3]) /
+            coords.TILE_SIZE
+        ),
+        Math.floor(
+          (movement[1] - renderOffset[1] + r.character.boundingBox[0]) /
+            coords.TILE_SIZE
+        )
+      ).walkable &&
+      // top right
+      r.map.read(
+        Math.floor(
+          (movement[0] - renderOffset[0] + r.character.boundingBox[1]) /
+            coords.TILE_SIZE
+        ),
+        Math.floor(
+          (movement[1] - renderOffset[1] + r.character.boundingBox[0]) /
+            coords.TILE_SIZE
+        )
+      ).walkable &&
+      // bottom left
+      r.map.read(
+        Math.floor(
+          (movement[0] - renderOffset[0] + r.character.boundingBox[3]) /
+            coords.TILE_SIZE
+        ),
+        Math.floor(
+          (movement[1] - renderOffset[1] + r.character.boundingBox[2]) /
+            coords.TILE_SIZE
+        )
+      ).walkable &&
+      // bottom right
+      r.map.read(
+        Math.floor(
+          (movement[0] - renderOffset[0] + r.character.boundingBox[1]) /
+            coords.TILE_SIZE
+        ),
+        Math.floor(
+          (movement[1] - renderOffset[1] + r.character.boundingBox[2]) /
+            coords.TILE_SIZE
+        )
+      ).walkable;
+
+    if (isWalkable) {
+      const renderOffset = vec2.fromValues(
+        r.character.animator.getSprite().width / 2,
+        r.character.animator.getSprite().height / 2
+      );
+      const mapSize = vec2.fromValues(
+        r.map.width * coords.TILE_SIZE,
+        r.map.height * coords.TILE_SIZE
+      );
+      vec2.subtract(mapSize, mapSize, renderOffset);
+      vec2.min(r.character.position, movement, mapSize);
+      vec2.max(r.character.position, r.character.position, renderOffset);
+    }
+
+    // character position relative to the top left of the screen
+    r.character.relativePosition[0] =
+      r.character.position[0] < ctx.screen.width / 2
+        ? r.character.position[0]
+        : r.character.position[0] >
+          r.map.width * coords.TILE_SIZE - ctx.screen.width / 2
+        ? r.character.position[0] -
+          r.map.width * coords.TILE_SIZE +
+          ctx.screen.width
+        : ctx.screen.width / 2;
+    r.character.relativePosition[1] =
+      r.character.position[1] < ctx.screen.height / 2
+        ? r.character.position[1]
+        : r.character.position[1] >
+          r.map.height * coords.TILE_SIZE - ctx.screen.height / 2
+        ? r.character.position[1] -
+          r.map.height * coords.TILE_SIZE +
+          ctx.screen.height
+        : ctx.screen.height / 2;
+
+    // Record the scroll offset of the screen
+    vec2.subtract(
+      state.screen.absolutePosition,
+      r.character.position,
+      r.character.relativePosition
     );
-    vec2.subtract(mapSize, mapSize, renderOffset);
-    vec2.min(state.character.position, movement, mapSize);
-    vec2.max(state.character.position, state.character.position, renderOffset);
-  }
 
-  // character position relative to the top left of the screen
-  state.character.relativePosition[0] =
-    state.character.position[0] < ctx.screen.width / 2
-      ? state.character.position[0]
-      : state.character.position[0] >
-        state.map.width * coords.TILE_SIZE - ctx.screen.width / 2
-      ? state.character.position[0] -
-        state.map.width * coords.TILE_SIZE +
-        ctx.screen.width
-      : ctx.screen.width / 2;
-  state.character.relativePosition[1] =
-    state.character.position[1] < ctx.screen.height / 2
-      ? state.character.position[1]
-      : state.character.position[1] >
-        state.map.height * coords.TILE_SIZE - ctx.screen.height / 2
-      ? state.character.position[1] -
-        state.map.height * coords.TILE_SIZE +
-        ctx.screen.height
-      : ctx.screen.height / 2;
+    r.map.updateScreenBuffer(ctx, state.screen.absolutePosition);
 
-  // Record the scroll offset of the screen
-  vec2.subtract(
-    state.screen.absolutePosition,
-    state.character.position,
-    state.character.relativePosition
-  );
-
-  state.map.updateScreenBuffer(ctx, state.screen.absolutePosition);
-
-  if (ctx.editor) {
-    updateEditor(ctx, state, fixedDelta);
-  }
+    if (ctx.editor) {
+      updateEditor(ctx, state, fixedDelta);
+    }
+  });
 }
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
@@ -468,61 +509,63 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
         height: ctx.screen.height,
       },
       (s, pass) => {
-        if (pass === 0) {
-          // overdraw the screen by 1 tile at each edge to prevent tile pop-in
-          for (
-            let x = -1;
-            x <= (ctx.screen.width + 2) / coords.TILE_SIZE;
-            ++x
-          ) {
+        state.resources.ifReady((r) => {
+          if (pass === 0) {
+            // overdraw the screen by 1 tile at each edge to prevent tile pop-in
             for (
-              let y = -1;
-              y <= (ctx.screen.height + 2) / coords.TILE_SIZE;
-              ++y
+              let x = -1;
+              x <= (ctx.screen.width + 2) / coords.TILE_SIZE;
+              ++x
             ) {
-              const mapX = x + ssp[0];
-              const mapY = y + ssp[1];
+              for (
+                let y = -1;
+                y <= (ctx.screen.height + 2) / coords.TILE_SIZE;
+                ++y
+              ) {
+                const mapX = x + ssp[0];
+                const mapY = y + ssp[1];
 
-              const position = ctx.screen.toScreenSpace(
-                vec4.create(),
-                vec4.fromValues(
-                  y * coords.TILE_SIZE - ssp[3],
-                  x * coords.TILE_SIZE + coords.TILE_SIZE - ssp[2],
-                  y * coords.TILE_SIZE + coords.TILE_SIZE - ssp[3],
-                  x * coords.TILE_SIZE - ssp[2]
-                )
-              );
-
-              const tile = state.map.read(mapX, mapY);
-              if (tile.index !== 0) {
-                const tileName = overworldMap.spriteSheet.indexes[tile.index];
-                state.overworld[tileName].draw(
-                  s,
-                  position,
-                  tile.spatialHash ? hash(mapX, mapY) : undefined
+                const position = ctx.screen.toScreenSpace(
+                  vec4.create(),
+                  vec4.fromValues(
+                    y * coords.TILE_SIZE - ssp[3],
+                    x * coords.TILE_SIZE + coords.TILE_SIZE - ssp[2],
+                    y * coords.TILE_SIZE + coords.TILE_SIZE - ssp[3],
+                    x * coords.TILE_SIZE - ssp[2]
+                  )
                 );
+
+                const tile = r.map.read(mapX, mapY);
+                if (tile.index !== 0) {
+                  const tileName = overworldMap.spriteSheet.indexes[tile.index];
+                  r.overworld[tileName].draw(
+                    s,
+                    position,
+                    tile.spatialHash ? hash(mapX, mapY) : undefined
+                  );
+                }
               }
             }
-          }
-        } else {
-          const offset = vec2.fromValues(
-            state.character.animator.getSprite().width / 2,
-            state.character.animator.getSprite().height / 2
-          );
+          } else {
+            const offset = vec2.fromValues(
+              r.character.animator.getSprite().width / 2,
+              r.character.animator.getSprite().height / 2
+            );
 
-          state.character.animator.draw(
-            s,
-            ctx.screen.toScreenSpace(
-              vec4.create(),
-              vec4.fromValues(
-                Math.floor(state.character.relativePosition[1]) - offset[1],
-                Math.floor(state.character.relativePosition[0]) + offset[0],
-                Math.floor(state.character.relativePosition[1]) + offset[1],
-                Math.floor(state.character.relativePosition[0]) - offset[0]
+            r.character.animator.draw(
+              s,
+              ctx.screen.toScreenSpace(
+                vec4.create(),
+                vec4.fromValues(
+                  Math.floor(r.character.relativePosition[1]) - offset[1],
+                  Math.floor(r.character.relativePosition[0]) + offset[0],
+                  Math.floor(r.character.relativePosition[1]) + offset[1],
+                  Math.floor(r.character.relativePosition[0]) - offset[0]
+                )
               )
-            )
-          );
-        }
+            );
+          }
+        });
       },
       (mask) => {
         const pos = vec2.clone(state.screen.absolutePosition);
@@ -553,19 +596,22 @@ export function onDraw(ctx: GameContext, state: GameState, delta: number) {
     }
 
     if (state.moveTouch !== null) {
+      const moveTouch = state.moveTouch;
       s.setAlpha(0.5);
-      state.ui.touch.draw(
-        s,
-        ctx.screen.toScreenSpace(
-          vec4.create(),
-          vec4.fromValues(
-            Math.round(state.moveTouch.startPosition[1]) - 32,
-            Math.round(state.moveTouch.startPosition[0]) + 32,
-            Math.round(state.moveTouch.startPosition[1]) + 32,
-            Math.round(state.moveTouch.startPosition[0]) - 32
+      state.resources.ifReady((r) => {
+        r.ui.touch.draw(
+          s,
+          ctx.screen.toScreenSpace(
+            vec4.create(),
+            vec4.fromValues(
+              Math.round(moveTouch.startPosition[1]) - 32,
+              Math.round(moveTouch.startPosition[0]) + 32,
+              Math.round(moveTouch.startPosition[1]) + 32,
+              Math.round(moveTouch.startPosition[0]) - 32
+            )
           )
-        )
-      );
+        );
+      });
     }
   });
 
@@ -589,52 +635,56 @@ edgeTileSuffixes.add("i_bl");
 edgeTileSuffixes.add("i_br");
 
 function updateEditor(ctx: GameContext, state: GameState, _fixedDelta: number) {
-  if (!state.editor) return;
+  const editor = state.editor;
+  if (!editor) return;
 
   if (ctx.keys.pressed.has("m") && ctx.keys.down.has("Control")) {
-    state.editor.active = !state.editor.active;
+    editor.active = !editor.active;
   }
 
-  if (!state.editor.active) {
+  if (!editor.active) {
     return;
   }
 
-  if (ctx.mouse.down[0]) {
-    const ap = coords.pickAbsoluteTileFromRelative(
-      vec4.create(),
-      ctx.mouse.position,
-      state.screen
-    );
+  state.resources.ifReady((r) => {
+    if (ctx.mouse.down[0]) {
+      const ap = coords.pickAbsoluteTileFromRelative(
+        vec4.create(),
+        ctx.mouse.position,
+        state.screen
+      );
 
-    if (state.editor.newValue === null) {
-      const oldValue = state.map.read(ap[0], ap[1]);
-      const oldSprite = overworldMap.spriteSheet.indexes[oldValue.index];
-      state.editor.newValue = oldSprite === "" ? "grass" : "";
-    }
+      if (editor.newValue === null) {
+        const oldValue = r.map.read(ap[0], ap[1]);
+        const oldSprite = overworldMap.spriteSheet.indexes[oldValue.index];
+        editor.newValue = oldSprite === "" ? "grass" : "";
+      }
 
-    changeMapTile(state, {
-      sprite: state.editor.newValue,
-      x: ap[0],
-      y: ap[1],
-    });
-  } else {
-    state.editor.newValue = null;
-    for (let a of state.editor.pendingChanges.values()) {
-      ctx.editor?.sendAction(a);
+      changeMapTile(editor, r.map, {
+        sprite: editor.newValue,
+        x: ap[0],
+        y: ap[1],
+      });
+    } else {
+      editor.newValue = null;
+      for (let a of editor.pendingChanges.values()) {
+        ctx.editor?.sendAction(a);
+      }
+      editor.pendingChanges.clear();
     }
-    state.editor.pendingChanges.clear();
-  }
+  });
 }
 
 function changeMapTile(
-  state: GameState,
+  state: EditorState,
+  map: MapData,
   change: {
     sprite: string;
     x: number;
     y: number;
   }
 ) {
-  queueMapTileAction(state, change);
+  queueMapTileAction(state, map, change);
 
   const toRecheck = new Array<{
     sprite: string;
@@ -645,7 +695,7 @@ function changeMapTile(
   // reset all adjacent edge tiles to their base sprite
   for (let offsetX = -1; offsetX <= 1; ++offsetX) {
     for (let offsetY = -1; offsetY <= 1; ++offsetY) {
-      const tile = state.map.read(change.x + offsetX, change.y + offsetY);
+      const tile = map.read(change.x + offsetX, change.y + offsetY);
       const sprite = overworldMap.spriteSheet.indexes[tile.index];
       const splitIndex = sprite.indexOf("_");
       if (splitIndex !== -1) {
@@ -660,7 +710,7 @@ function changeMapTile(
               baseSprite as keyof typeof overworldMap.spriteSheet.sprites
             ].index;
           tile.index = index;
-          queueMapTileAction(state, {
+          queueMapTileAction(state, map, {
             sprite: baseSprite,
             x: change.x + offsetX,
             y: change.y + offsetY,
@@ -689,14 +739,14 @@ function changeMapTile(
 
   // convert any tiles that should be to edges (if a suitable sprite exists)
   for (let check of toRecheck) {
-    const top = state.map.read(check.x, check.y - 1).index === 0;
-    const left = state.map.read(check.x - 1, check.y).index === 0;
-    const bottom = state.map.read(check.x, check.y + 1).index === 0;
-    const right = state.map.read(check.x + 1, check.y).index === 0;
-    const topLeft = state.map.read(check.x - 1, check.y - 1).index === 0;
-    const topRight = state.map.read(check.x + 1, check.y - 1).index === 0;
-    const bottomLeft = state.map.read(check.x - 1, check.y + 1).index === 0;
-    const bottomRight = state.map.read(check.x + 1, check.y + 1).index === 0;
+    const top = map.read(check.x, check.y - 1).index === 0;
+    const left = map.read(check.x - 1, check.y).index === 0;
+    const bottom = map.read(check.x, check.y + 1).index === 0;
+    const right = map.read(check.x + 1, check.y).index === 0;
+    const topLeft = map.read(check.x - 1, check.y - 1).index === 0;
+    const topRight = map.read(check.x + 1, check.y - 1).index === 0;
+    const bottomLeft = map.read(check.x - 1, check.y + 1).index === 0;
+    const bottomRight = map.read(check.x + 1, check.y + 1).index === 0;
 
     if (top && left) {
       newEdges.push({ x: check.x, y: check.y, sprite: check.sprite + "_tl" });
@@ -727,13 +777,14 @@ function changeMapTile(
 
   for (let edge of newEdges) {
     if (overworldMap.spriteSheet.sprites.hasOwnProperty(edge.sprite)) {
-      queueMapTileAction(state, edge);
+      queueMapTileAction(state, map, edge);
     }
   }
 }
 
 function queueMapTileAction(
-  state: GameState,
+  state: EditorState,
+  map: MapData,
   {
     sprite,
     x,
@@ -744,7 +795,7 @@ function queueMapTileAction(
     y: number;
   }
 ) {
-  let action = state.editor?.pendingChanges.get(`${x},${y}`);
+  let action = state.pendingChanges.get(`${x},${y}`);
   if (!action) {
     action = {
       type: "TILE_CHANGE",
@@ -759,7 +810,7 @@ function queueMapTileAction(
         spatialHash: false,
       },
     };
-    state.editor?.pendingChanges.set(`${x},${y}`, action);
+    state.pendingChanges.set(`${x},${y}`, action);
   }
 
   if (action.type === "TILE_CHANGE") {
@@ -776,7 +827,7 @@ function queueMapTileAction(
         : overworldMap.spriteSheet.sprites[
             sprite as keyof typeof overworldMap.spriteSheet.sprites
           ].index;
-    state.map.write(x, y, { ...action.value, index });
+    map.write(x, y, { ...action.value, index });
   }
 }
 
@@ -784,47 +835,49 @@ function drawEditor(ctx: GameContext, state: GameState, _delta: number) {
   if (!state.editor) return;
 
   if (state.editor.active) {
-    const ap = coords.pickAbsoluteTileFromRelative(
-      vec4.create(),
-      ctx.mouse.position,
-      state.screen
-    );
-
-    state.solidEffect.use((s) => {
-      // editor cursor
-      s.draw(
-        coords.toScreenSpaceFromAbsoluteTile(vec4.create(), ap, {
-          ...state.screen,
-          ...ctx.screen,
-        }),
-        vec4.fromValues(1.0, 0, 0, 0.5)
+    state.resources.ifReady((r) => {
+      const ap = coords.pickAbsoluteTileFromRelative(
+        vec4.create(),
+        ctx.mouse.position,
+        state.screen
       );
 
-      // character bounding box
-      const offset = vec2.fromValues(
-        state.character.animator.getSprite().width / 2,
-        state.character.animator.getSprite().height / 2
-      );
-      s.draw(
-        ctx.screen.toScreenSpace(
-          vec4.create(),
-          vec4.fromValues(
-            Math.floor(state.character.relativePosition[1]) -
-              offset[1] +
-              state.character.boundingBox[0],
-            Math.floor(state.character.relativePosition[0]) -
-              offset[0] +
-              state.character.boundingBox[1],
-            Math.floor(state.character.relativePosition[1]) -
-              offset[1] +
-              state.character.boundingBox[2],
-            Math.floor(state.character.relativePosition[0]) -
-              offset[0] +
-              state.character.boundingBox[3]
-          )
-        ),
-        vec4.fromValues(0.0, 0, 1.0, 0.5)
-      );
+      state.solidEffect.use((s) => {
+        // editor cursor
+        s.draw(
+          coords.toScreenSpaceFromAbsoluteTile(vec4.create(), ap, {
+            ...state.screen,
+            ...ctx.screen,
+          }),
+          vec4.fromValues(1.0, 0, 0, 0.5)
+        );
+
+        // character bounding box
+        const offset = vec2.fromValues(
+          r.character.animator.getSprite().width / 2,
+          r.character.animator.getSprite().height / 2
+        );
+        s.draw(
+          ctx.screen.toScreenSpace(
+            vec4.create(),
+            vec4.fromValues(
+              Math.floor(r.character.relativePosition[1]) -
+                offset[1] +
+                r.character.boundingBox[0],
+              Math.floor(r.character.relativePosition[0]) -
+                offset[0] +
+                r.character.boundingBox[1],
+              Math.floor(r.character.relativePosition[1]) -
+                offset[1] +
+                r.character.boundingBox[2],
+              Math.floor(r.character.relativePosition[0]) -
+                offset[0] +
+                r.character.boundingBox[3]
+            )
+          ),
+          vec4.fromValues(0.0, 0, 1.0, 0.5)
+        );
+      });
     });
   }
 }

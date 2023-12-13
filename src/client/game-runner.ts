@@ -44,11 +44,12 @@ export interface GameContext {
 
 interface GameProps<T, U> {
   fixedUpdate: number;
-  start: (ctx: GameContext, previousState?: U) => Promise<T>;
+  start: (ctx: GameContext, previousState?: U) => T;
   saveKey: string;
-  save: (state: T) => U;
+  save: (state: T) => U | null;
   update: (ctx: GameContext, state: T, fixedDelta: number) => void;
   draw: (ctx: GameContext, state: T, delta: number) => void;
+  editorSocket: WebSocket | null;
   screen: {
     incrementSize: number;
     preferredWidthIncrements: number;
@@ -56,9 +57,12 @@ interface GameProps<T, U> {
   };
 }
 
-export default function GameRunner<T, U>(
+export default function GameRunner<T extends Object, U>(
   props: GameProps<T, U>
-): HTMLCanvasElement | null {
+): {
+  canvas: HTMLCanvasElement;
+  state: T;
+} | null {
   const canvas = document.createElement("canvas");
   canvas.style.imageRendering = "pixelated";
 
@@ -160,6 +164,19 @@ export default function GameRunner<T, U>(
         ),
     },
   };
+  if (props.editorSocket) {
+    const socket = props.editorSocket;
+    context.editor = {
+      sendAction: (action: EditorAction) => {
+        socket.send(JSON.stringify(action));
+      },
+      onEvent: (callback: (event: EditorEvent) => void) => {
+        socket.addEventListener("message", (message) => {
+          callback(JSON.parse(message.data.toString()) as EditorEvent);
+        });
+      },
+    };
+  }
 
   let pixelMultiplier = 1;
 
@@ -277,23 +294,27 @@ export default function GameRunner<T, U>(
   });
 
   let lastTime = performance.now();
-  let contextLost = false;
-  let state: T | null = null;
 
-  const startup = async () => {
+  const startup = () => {
     const saveState = localStorage.getItem(props.saveKey);
     try {
-      state = await props.start(
+      lastTime = performance.now();
+      return props.start(
         context,
         saveState ? (JSON.parse(saveState) as U) : undefined
       );
-      lastTime = performance.now();
     } catch (ex) {
-      console.warn(ex);
       // if the saved state fails to load, try again with a fresh state
-      state = await props.start(context);
+      console.warn(ex);
       lastTime = performance.now();
+      return props.start(context);
     }
+  };
+
+  let contextLost = false;
+  const result = {
+    state: startup(),
+    canvas,
   };
 
   canvas.addEventListener(
@@ -302,8 +323,11 @@ export default function GameRunner<T, U>(
       e.preventDefault();
       contextLost = true;
       console.warn("WebGL context lost, saving state...");
-      if (state) {
-        localStorage.setItem(props.saveKey, JSON.stringify(props.save(state)));
+      if (result.state) {
+        localStorage.setItem(
+          props.saveKey,
+          JSON.stringify(props.save(result.state))
+        );
       }
     },
     false
@@ -314,55 +338,29 @@ export default function GameRunner<T, U>(
       e.preventDefault();
       context.gl = canvas.getContext("webgl2")!;
       console.warn("WebGL context restored, loading state...");
-      startup().then((_) => {
-        contextLost = false;
+      // maintain the same object reference, but reload all the properties.
+      // of the state. This is necessary so that the editor can refer to the
+      // new state as we can't pass in a new refernce to the editor.
+      Object.keys(result.state).forEach((key) => {
+        delete result.state[key as keyof T];
       });
+      Object.assign(result.state, startup());
+      contextLost = false;
     },
     false
   );
 
-  if (process.env.NODE_ENV === "development") {
-    const socket = new WebSocket(
-      `ws://${window.location.hostname}:${
-        parseInt(window.location.port, 10) + 2
-      }`
-    );
-    socket.addEventListener("open", () => {
-      console.info("Connected to editor WebSocket");
-      context.editor = {
-        sendAction: (action: EditorAction) => {
-          socket.send(JSON.stringify(action));
-        },
-        onEvent: (callback: (event: EditorEvent) => void) => {
-          socket.addEventListener("message", (message) => {
-            callback(JSON.parse(message.data.toString()) as EditorEvent);
-          });
-        },
-      };
-      startup();
-    });
-    socket.addEventListener("close", (error: any) => {
-      if (!context.editor) {
-        startup();
-      }
-      context.editor = null;
-      console.error("Editor Websocket disconnected", error);
-    });
-  } else {
-    startup();
-  }
-
   let accumulatedTime = 0;
   let nextFrame: number | null = null;
   const render = () => {
-    if (state) {
+    if (result.state) {
       const currentTime = performance.now();
       const frameTime = currentTime - lastTime;
       lastTime = currentTime;
       accumulatedTime += frameTime;
 
       while (accumulatedTime >= props.fixedUpdate) {
-        props.update(context, state, props.fixedUpdate);
+        props.update(context, result.state, props.fixedUpdate);
         context.mouse.clicked = [];
         vec2.set(context.mouse.wheel, 0, 0);
         context.touches.ended.clear();
@@ -371,7 +369,7 @@ export default function GameRunner<T, U>(
       }
 
       if (!contextLost) {
-        props.draw(context, state, frameTime);
+        props.draw(context, result.state, frameTime);
       }
     }
     nextFrame = requestAnimationFrame(render);
@@ -381,9 +379,12 @@ export default function GameRunner<T, U>(
 
   const handlePersist = () => {
     if (document.visibilityState === "hidden") {
-      if (state) {
+      if (result.state) {
         console.warn("Visibility changing, saving state...");
-        localStorage.setItem(props.saveKey, JSON.stringify(props.save(state)));
+        const savedState = props.save(result.state);
+        if (savedState) {
+          localStorage.setItem(props.saveKey, JSON.stringify(savedState));
+        }
       }
       if (nextFrame) {
         cancelAnimationFrame(nextFrame);
@@ -397,6 +398,7 @@ export default function GameRunner<T, U>(
   window.addEventListener("visibilitychange", handlePersist);
 
   const handleResize = () => {
+    // TODO should be using parent container size - not window...
     pixelMultiplier = 1;
     if (window.innerWidth >= window.innerHeight) {
       contextScreen.width =
@@ -459,5 +461,5 @@ export default function GameRunner<T, U>(
   handleResize();
   window.addEventListener("resize", handleResize);
 
-  return canvas;
+  return result;
 }
