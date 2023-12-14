@@ -1,19 +1,19 @@
-import { ReadonlyVec4, mat3, vec2, vec3 } from "gl-matrix";
-import { TEXTURE, GPUTexture, loadTextureFromUrl } from "./images";
-import { GameContext } from "./game-runner";
+import { ReadonlyVec4, mat3, vec3 } from "gl-matrix";
+import { TEXTURE, GPUTexture, loadTextureFromUrl } from "@pixelheart/images";
+import { GameContext } from "@pixelheart/api";
 import {
   SpriteEffect,
   SpriteSheet,
   SpriteAnimator,
-} from "./sprite-common";
-import { SpriteViewProjection, Quad } from "./geometry";
+} from "@pixelheart/sprite-common";
+import { SpriteViewProjection, Quad } from "@pixelheart/geometry";
 import {
   ShaderProgram,
   createTexture,
   InstanceBuffer,
   FrameBuffer,
-} from "./gl-utils";
-import { SpriteSheetConfig, ToTangentSpace } from "../shared/sprite-format";
+} from "@pixelheart/gl-utils";
+import { SpriteSheetConfig, ToTangentSpace } from "@pixelheart/sprite-format";
 import vertexShader from "./generated/shaders/deferred-sprite.vert";
 import fragmentShader from "./generated/shaders/deferred-sprite.frag";
 import lightingVertexShader from "./generated/shaders/deferred-lighting.vert";

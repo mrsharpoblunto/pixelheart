@@ -1,7 +1,7 @@
 import { mat3, ReadonlyVec4 } from "gl-matrix";
-import { ShaderProgram, InstanceBuffer } from "./gl-utils";
-import { SpriteViewProjection, Quad } from "./geometry";
-import { GameContext } from "./game-runner";
+import { ShaderProgram, InstanceBuffer } from "@pixelheart/gl-utils";
+import { SpriteViewProjection, Quad } from "@pixelheart/geometry";
+import { GameContext } from "@pixelheart/api";
 
 import vertexShader from "./generated/shaders/solid.vert";
 import fragmentShader from "./generated/shaders/solid.frag";

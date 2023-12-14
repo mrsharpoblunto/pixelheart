@@ -1,6 +1,6 @@
 import { vec4, ReadonlyVec4 } from "gl-matrix";
-import { GameContext } from "./game-runner";
-import { SpriteSheetConfig } from "../shared/sprite-format";
+import { GameContext } from "./api";
+import { SpriteSheetConfig } from "./sprite-format";
 
 export interface Sprite<T> {
   readonly index: number;
@@ -21,6 +21,51 @@ export interface SpriteEffect<T> {
   draw(rect: ReadonlyVec4, textureCoords: ReadonlyVec4): SpriteEffect<T>;
 }
 
+let devSprites: Map<
+  string,
+  {
+    config: SpriteSheetConfig;
+    reloaders: Array<(config: SpriteSheetConfig) => void>;
+  }
+> | null = null;
+
+function registerSprite(
+  spriteSheet: SpriteSheetConfig,
+  reload: (config: SpriteSheetConfig) => void
+) {
+  if (process.env.NODE_ENV === "development") {
+    if (!devSprites) {
+      devSprites = new Map();
+    }
+    const sprite = devSprites.get(spriteSheet.name);
+    if (!sprite) {
+      devSprites.set(spriteSheet.name, {
+        config: spriteSheet,
+        reloaders: [reload],
+      });
+    } else {
+      sprite.reloaders.push(reload);
+    }
+  }
+}
+
+export function reloadSprite(spriteSheet: SpriteSheetConfig) {
+  if (process.env.NODE_ENV === "development" && devSprites) {
+    const sprite = devSprites.get(spriteSheet.name);
+    if (sprite) {
+      // rebuild the sprite config but maintain the same object reference
+      Object.keys(sprite.config).forEach(
+        (k) => delete sprite.config[k as keyof SpriteSheetConfig]
+      );
+      Object.assign(sprite.config, spriteSheet);
+
+      for (let reload of sprite.reloaders) {
+        reload(spriteSheet);
+      }
+    }
+  }
+}
+
 export async function loadSpriteSheet<T>(
   ctx: GameContext,
   sheet: SpriteSheetConfig,
@@ -28,19 +73,10 @@ export async function loadSpriteSheet<T>(
 ): Promise<SpriteSheet<T>> {
   const textures = await loader(ctx, sheet);
   const value = createSpriteFrames(sheet, textures);
-  if (process.env.NODE_ENV === "development") {
-    if (ctx.editor) {
-      ctx.editor.onEvent((event) => {
-        if (
-          event.type === "RELOAD_SPRITESHEET" &&
-          event.spriteSheet.name === sheet.name
-        ) {
-          Object.assign(value, createSpriteFrames(event.spriteSheet, textures));
-          console.log(`Reloaded ${sheet.name} sprite metadata`);
-        }
-      });
-    }
-  }
+  registerSprite(sheet, (newSheet) => {
+    Object.keys(value).forEach((k) => delete value[k]);
+    Object.assign(value, createSpriteFrames(newSheet, textures));
+  });
   return value;
 }
 
@@ -70,26 +106,6 @@ function createSpriteFrames<T>(sheet: SpriteSheetConfig, textures: T) {
     },
     {}
   );
-}
-
-export type SpriteIndex = Array<{
-  readonly sprite: string;
-  readonly index: number;
-  readonly frames: Array<ReadonlyVec4>;
-}>;
-
-export function createSpriteIndex(sheet: SpriteSheetConfig): SpriteIndex {
-  return sheet.indexes.map((s: string, i: number) => {
-    return i == 0
-      ? { sprite: "", index: i, frames: [] }
-      : {
-          sprite: s,
-          index: i,
-          frames: sheet.sprites[s].frames.map((f) =>
-            vec4.fromValues(f.top, f.right, f.bottom, f.left)
-          ),
-        };
-  });
 }
 
 export class SpriteAnimator<T> {

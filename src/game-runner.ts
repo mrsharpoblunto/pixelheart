@@ -1,67 +1,59 @@
-import { EditorAction, EditorEvent } from "../shared/editor-actions";
+import {
+  EditorContext,
+  GameClient,
+  EditorClient,
+  EditorAction,
+  EditorEvent,
+} from "./api";
 import { vec4, vec2, ReadonlyVec4 } from "gl-matrix";
 
-export interface EditorConnection {
-  sendAction: (action: EditorAction) => void;
-  onEvent: (callback: (event: EditorEvent) => void) => void;
-}
-
-export interface GameContext {
-  gl: WebGL2RenderingContext;
-  editor: EditorConnection | null;
-  createOffscreenCanvas: (
-    width: number,
-    height: number,
-    settings?: CanvasRenderingContext2DSettings
-  ) => CanvasRenderingContext2D;
-  canvas: HTMLCanvasElement;
-  getGamepad: () => Gamepad | null;
-  keys: {
-    down: Set<string>;
-    pressed: Set<string>;
-  };
-  mouse: {
-    position: vec2;
-    wheel: vec2;
-    down: Array<boolean>;
-    clicked: Array<boolean>;
-  };
-  touches: {
-    down: Map<number, { started: number; position: vec2 }>;
-    ended: Map<number, { position: vec2 }>;
-  };
-  screen: {
-    width: number;
-    height: number;
-    safeArea: {
-      width: number;
-      height: number;
-      boundingRect: vec4;
-    };
-    toScreenSpace: (out: vec4, relativeRect: ReadonlyVec4) => vec4;
-  };
-}
-
-interface GameProps<T, U> {
-  fixedUpdate: number;
-  start: (ctx: GameContext, previousState?: U) => T;
-  saveKey: string;
-  save: (state: T) => U | null;
-  update: (ctx: GameContext, state: T, fixedDelta: number) => void;
-  draw: (ctx: GameContext, state: T, delta: number) => void;
+interface GameProps<
+  State,
+  PersistentState,
+  EditorState,
+  PersistentEditorState,
+  Actions extends EditorAction,
+  Events extends EditorEvent
+> {
   editorSocket: WebSocket | null;
+  container: HTMLElement;
+  fixedUpdate: number;
+  saveKey: string;
   screen: {
     incrementSize: number;
     preferredWidthIncrements: number;
     preferredHeightIncrements: number;
   };
+  game: GameClient<State, PersistentState>;
+  editor: EditorClient<
+    State,
+    EditorState,
+    PersistentEditorState,
+    Actions,
+    Events
+  > | null;
 }
 
-export default function GameRunner<T extends Object, U>(
-  props: GameProps<T, U>
+export default function GameRunner<
+  State extends Object,
+  PersistentState extends Object,
+  EditorState extends Object,
+  PersistentEditorState extends Object,
+  Actions extends EditorAction,
+  Events extends EditorEvent
+>(
+  props: GameProps<
+    State,
+    PersistentState,
+    EditorState,
+    PersistentEditorState,
+    Actions,
+    Events
+  >
 ): {
   canvas: HTMLCanvasElement;
-  state: T;
+  gameState: State;
+  editorState: EditorState | null;
 } | null {
   const canvas = document.createElement("canvas");
   canvas.style.imageRendering = "pixelated";
@@ -91,9 +83,15 @@ export default function GameRunner<T extends Object, U>(
     height: 1,
   };
 
-  const context: GameContext = {
+  const socket = props.editorSocket;
+
+  const context: EditorContext<Actions> = {
     gl,
-    editor: null,
+    editor: {
+      send: (action: Actions) => {
+        socket?.send(JSON.stringify(action));
+      },
+    },
     createOffscreenCanvas: (
       width: number,
       height: number,
@@ -164,19 +162,6 @@ export default function GameRunner<T extends Object, U>(
         ),
     },
   };
-  if (props.editorSocket) {
-    const socket = props.editorSocket;
-    context.editor = {
-      sendAction: (action: EditorAction) => {
-        socket.send(JSON.stringify(action));
-      },
-      onEvent: (callback: (event: EditorEvent) => void) => {
-        socket.addEventListener("message", (message) => {
-          callback(JSON.parse(message.data.toString()) as EditorEvent);
-        });
-      },
-    };
-  }
 
   let pixelMultiplier = 1;
 
@@ -297,25 +282,67 @@ export default function GameRunner<T extends Object, U>(
 
   const startup = () => {
     const saveState = localStorage.getItem(props.saveKey);
-    try {
-      lastTime = performance.now();
-      return props.start(
-        context,
-        saveState ? (JSON.parse(saveState) as U) : undefined
-      );
-    } catch (ex) {
-      // if the saved state fails to load, try again with a fresh state
-      console.warn(ex);
-      lastTime = performance.now();
-      return props.start(context);
-    }
+    const editorSaveState = localStorage.getItem(`${props.saveKey}-editor`);
+    lastTime = performance.now();
+
+    const gameState = (() => {
+      try {
+        return props.game.onStart(
+          context,
+          saveState ? (JSON.parse(saveState) as PersistentState) : undefined
+        );
+      } catch (ex) {
+        console.warn(ex);
+        return props.game.onStart(context);
+      }
+    })();
+
+    const editorState = props.editor
+      ? (() => {
+          try {
+            props.editor?.onEnd(props.container);
+            return props.editor?.onStart(
+              context,
+              gameState,
+              props.container,
+              editorSaveState
+                ? (JSON.parse(editorSaveState) as PersistentEditorState)
+                : undefined
+            );
+          } catch (ex) {
+            console.warn(ex);
+            props.editor?.onEnd(props.container);
+            return props.editor?.onStart(context, gameState, props.container);
+          }
+        })()
+      : null;
+
+    return {
+      gameState,
+      editorState,
+    };
   };
 
   let contextLost = false;
   const result = {
-    state: startup(),
+    ...startup(),
     canvas,
   };
+
+  if (props.editor) {
+    socket?.addEventListener("message", (e) => {
+      if (result.editorState) {
+        props.editor?.onEvent(
+          context,
+          result.gameState,
+          result.editorState,
+          JSON.parse(e.data) as Events
+        );
+      }
+    });
+  } else {
+    props.container.appendChild(canvas);
+  }
 
   canvas.addEventListener(
     "webglcontextlost",
@@ -323,10 +350,16 @@ export default function GameRunner<T extends Object, U>(
       e.preventDefault();
       contextLost = true;
       console.warn("WebGL context lost, saving state...");
-      if (result.state) {
+      if (result.gameState) {
         localStorage.setItem(
           props.saveKey,
-          JSON.stringify(props.save(result.state))
+          JSON.stringify(props.game.onSave(result.gameState))
+        );
+      }
+      if (result.editorState && props.editor) {
+        localStorage.setItem(
+          `${props.saveKey}-editor`,
+          JSON.stringify(props.editor.onSave(result.editorState))
         );
       }
     },
@@ -340,11 +373,16 @@ export default function GameRunner<T extends Object, U>(
       console.warn("WebGL context restored, loading state...");
       // maintain the same object reference, but reload all the properties.
       // of the state. This is necessary so that the editor can refer to the
-      // new state as we can't pass in a new refernce to the editor.
-      Object.keys(result.state).forEach((key) => {
-        delete result.state[key as keyof T];
+      // new state as we can't pass in a new reference to the editor.
+      Object.keys(result.gameState).forEach((key) => {
+        delete result.gameState[key as keyof State];
       });
-      Object.assign(result.state, startup());
+      if (result.editorState) {
+        Object.keys(result.editorState).forEach((key) => {
+          delete result.editorState![key as keyof EditorState];
+        });
+      }
+      Object.assign(result, startup());
       contextLost = false;
     },
     false
@@ -353,23 +391,37 @@ export default function GameRunner<T extends Object, U>(
   let accumulatedTime = 0;
   let nextFrame: number | null = null;
   const render = () => {
-    if (result.state) {
-      const currentTime = performance.now();
-      const frameTime = currentTime - lastTime;
-      lastTime = currentTime;
-      accumulatedTime += frameTime;
+    const currentTime = performance.now();
+    const frameTime = currentTime - lastTime;
+    lastTime = currentTime;
+    accumulatedTime += frameTime;
 
-      while (accumulatedTime >= props.fixedUpdate) {
-        props.update(context, result.state, props.fixedUpdate);
-        context.mouse.clicked = [];
-        vec2.set(context.mouse.wheel, 0, 0);
-        context.touches.ended.clear();
-        context.keys.pressed.clear();
-        accumulatedTime -= props.fixedUpdate;
+    while (accumulatedTime >= props.fixedUpdate) {
+      props.game.onUpdate(context, result.gameState, props.fixedUpdate);
+      if (result.editorState) {
+        props.editor?.onUpdate(
+          context,
+          result.gameState,
+          result.editorState,
+          props.fixedUpdate
+        );
       }
+      context.mouse.clicked = [];
+      vec2.set(context.mouse.wheel, 0, 0);
+      context.touches.ended.clear();
+      context.keys.pressed.clear();
+      accumulatedTime -= props.fixedUpdate;
+    }
 
-      if (!contextLost) {
-        props.draw(context, result.state, frameTime);
+    if (!contextLost) {
+      props.game.onDraw(context, result.gameState, frameTime);
+      if (result.editorState) {
+        props.editor?.onDraw(
+          context,
+          result.gameState,
+          result.editorState,
+          frameTime
+        );
       }
     }
     nextFrame = requestAnimationFrame(render);
@@ -379,11 +431,18 @@ export default function GameRunner<T extends Object, U>(
 
   const handlePersist = () => {
     if (document.visibilityState === "hidden") {
-      if (result.state) {
-        console.warn("Visibility changing, saving state...");
-        const savedState = props.save(result.state);
+      console.warn("Visibility changing, saving state...");
+      const savedState = props.game.onSave(result.gameState);
+      if (savedState) {
+        localStorage.setItem(props.saveKey, JSON.stringify(savedState));
+      }
+      if (result.editorState) {
+        const savedState = props.editor?.onSave(result.editorState);
         if (savedState) {
-          localStorage.setItem(props.saveKey, JSON.stringify(savedState));
+          localStorage.setItem(
+            `${props.saveKey}-editor`,
+            JSON.stringify(savedState)
+          );
         }
       }
       if (nextFrame) {
@@ -400,47 +459,59 @@ export default function GameRunner<T extends Object, U>(
   const handleResize = () => {
     // TODO should be using parent container size - not window...
     pixelMultiplier = 1;
-    if (window.innerWidth >= window.innerHeight) {
+    if (props.container.clientWidth >= props.container.clientHeight) {
       contextScreen.width =
         Math.min(
           props.screen.preferredWidthIncrements,
-          Math.floor(window.innerWidth / props.screen.incrementSize)
+          Math.floor(props.container.clientWidth / props.screen.incrementSize)
         ) * props.screen.incrementSize;
-      while (contextScreen.width * (pixelMultiplier + 1) < window.innerWidth) {
+      while (
+        contextScreen.width * (pixelMultiplier + 1) <
+        props.container.clientWidth
+      ) {
         ++pixelMultiplier;
       }
       contextScreen.height =
         Math.floor(
-          window.innerHeight / (props.screen.incrementSize * pixelMultiplier)
+          props.container.clientHeight /
+            (props.screen.incrementSize * pixelMultiplier)
         ) * props.screen.incrementSize;
     } else {
       contextScreen.height =
         Math.min(
           props.screen.preferredHeightIncrements,
-          Math.floor(window.innerHeight / props.screen.incrementSize)
+          Math.floor(props.container.clientHeight / props.screen.incrementSize)
         ) * props.screen.incrementSize;
       while (
         contextScreen.height * (pixelMultiplier + 1) <
-        window.innerHeight
+        props.container.clientHeight
       ) {
         ++pixelMultiplier;
       }
       contextScreen.width =
         Math.floor(
-          window.innerWidth / (props.screen.incrementSize * pixelMultiplier)
+          props.container.clientWidth /
+            (props.screen.incrementSize * pixelMultiplier)
         ) * props.screen.incrementSize;
     }
-    while (contextScreen.width * pixelMultiplier < window.innerWidth) {
+    while (
+      contextScreen.width * pixelMultiplier <
+      props.container.clientWidth
+    ) {
       contextScreen.width += props.screen.incrementSize;
     }
-    while (contextScreen.height * pixelMultiplier < window.innerHeight) {
+    while (
+      contextScreen.height * pixelMultiplier <
+      props.container.clientHeight
+    ) {
       contextScreen.height += props.screen.incrementSize;
     }
 
     const xOffset =
-      (contextScreen.width * pixelMultiplier - window.innerWidth) / 2;
+      (contextScreen.width * pixelMultiplier - props.container.clientWidth) / 2;
     const yOffset =
-      (contextScreen.height * pixelMultiplier - window.innerHeight) / 2;
+      (contextScreen.height * pixelMultiplier - props.container.clientHeight) /
+      2;
 
     contextSafeScreen.offsetLeft = xOffset;
     contextSafeScreen.offsetTop = yOffset;
@@ -459,7 +530,14 @@ export default function GameRunner<T extends Object, U>(
   };
 
   handleResize();
-  window.addEventListener("resize", handleResize);
+  const resizeObserver = new ResizeObserver((entries) => {
+    for (let entry of entries) {
+      if (entry.target === props.container) {
+        handleResize();
+      }
+    }
+  });
+  resizeObserver.observe(props.container);
 
   return result;
 }

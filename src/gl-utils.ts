@@ -6,7 +6,7 @@ import {
   ReadonlyMat3,
   ReadonlyMat4,
 } from "gl-matrix";
-import { GameContext } from "./game-runner";
+import { GameContext } from "./api";
 
 type TypeMap = {
   float: number;
@@ -42,6 +42,46 @@ export interface ShaderSource {
 }
 
 let hotReloadCache: Map<string, string> | null = null;
+let devShaders: Map<string, Array<() => void>> | null = null;
+
+function registerShader<TVert extends ShaderSource, TFrag extends ShaderSource>(
+  vertexShaderSource: TVert,
+  fragmentShaderSource: TFrag,
+  reload: () => void
+) {
+  if (process.env.NODE_ENV === "development") {
+    if (!devShaders) {
+      devShaders = new Map();
+    }
+    const vs = devShaders.get(vertexShaderSource.name);
+    if (vs) {
+      vs.push(reload);
+    } else {
+      devShaders.set(vertexShaderSource.name, [reload]);
+    }
+    const fs = devShaders.get(fragmentShaderSource.name);
+    if (fs) {
+      fs.push(reload);
+    } else {
+      devShaders.set(fragmentShaderSource.name, [reload]);
+    }
+  }
+}
+
+export function reloadShader(shader: string, src: string) {
+  if (process.env.NODE_ENV === "development" && devShaders) {
+    if (!hotReloadCache) {
+      hotReloadCache = new Map();
+    }
+    hotReloadCache.set(shader, src);
+    const shaderInstances = devShaders.get(shader);
+    if (shaderInstances) {
+      for (let reload of shaderInstances) {
+        reload();
+      }
+    }
+  }
+}
 
 export class ShaderProgram<
   TVert extends ShaderSource,
@@ -49,6 +89,9 @@ export class ShaderProgram<
 > {
   #gl: WebGL2RenderingContext;
   #program: WebGLProgram;
+  #vSource: TVert;
+  #fSource: TFrag;
+
   inAttributes: Record<
     keyof TVert["inAttributes"],
     { location: number; type: keyof TypeMap }
@@ -68,33 +111,8 @@ export class ShaderProgram<
     fragmentShaderSource: TFrag
   ) {
     this.#gl = ctx.gl;
-
-  if (process.env.NODE_ENV === "development") {
-    if (ctx.editor) {
-      ctx.editor.onEvent((event) => {
-        if (event.type === "RELOAD_SHADER") {
-          if (!hotReloadCache) {
-            hotReloadCache = new Map();
-          }
-          hotReloadCache?.set(event.shader, event.src);
-          try {
-            this.#program = this.#createProgram(
-              vertexShaderSource,
-              fragmentShaderSource
-            );
-          } catch (e) {
-            console.error(e);
-            return;
-          }
-            this.setAttributesAndUniforms(
-              vertexShaderSource,
-              fragmentShaderSource
-            );
-            console.log("Reloaded shader", event.shader);
-        }
-      });
-    }
-  }
+    this.#vSource = vertexShaderSource;
+    this.#fSource = fragmentShaderSource;
 
     this.inAttributes = {} as Record<
       keyof TVert["inAttributes"],
@@ -109,11 +127,18 @@ export class ShaderProgram<
       { location: WebGLUniformLocation; type: keyof UniformTypeMap }
     >;
 
-    this.#program = this.#createProgram(
-      vertexShaderSource,
-      fragmentShaderSource
-    );
-    this.setAttributesAndUniforms(vertexShaderSource, fragmentShaderSource);
+    this.#program = this.#createProgram(this.#vSource, this.#fSource);
+    this.setAttributesAndUniforms(this.#vSource, this.#fSource);
+    registerShader(vertexShaderSource, fragmentShaderSource, () => {
+      console.log("reloading...");
+      try {
+        this.#program = this.#createProgram(this.#vSource, this.#fSource);
+      } catch (e) {
+        console.error(e);
+        return;
+      }
+      this.setAttributesAndUniforms(this.#vSource, this.#fSource);
+    });
   }
 
   setAttributesAndUniforms(

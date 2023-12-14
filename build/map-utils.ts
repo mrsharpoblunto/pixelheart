@@ -1,16 +1,16 @@
 import Ajv, { JTDDataType } from "ajv/dist/jtd";
 import { ErrorObject } from "ajv";
 import sharp from "sharp";
-import { encodeMapTile, MapTileSource } from "../src/shared/map-format";
+import { encodeMapTile, MapTileSource } from "@pixelheart/map";
 import path from "path";
 import chalk from "chalk";
 import fs from "fs/promises";
 import { spriteSrcPath } from "./sprite-utils";
 import { getFileHash } from "./common-utils";
 
-export const mapsPath = path.join(__dirname, "../assets/maps");
+export const mapsPath = path.join(__dirname, "../game/assets/maps");
 export const wwwPath = path.join(__dirname, "../www/maps");
-export const mapSrcPath = path.join(__dirname, "../src/client/generated/maps");
+export const mapSrcPath = path.join(__dirname, "../game/client/generated/maps");
 
 const mapSchema = {
   properties: {

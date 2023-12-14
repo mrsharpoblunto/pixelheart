@@ -1,4 +1,5 @@
-import { GameContext } from "./game-runner";
+import { SpriteSheetConfig } from "./sprite-format";
+import { GameContext } from "./api";
 
 export const TEXTURE = Symbol();
 
@@ -10,6 +11,40 @@ export interface GPUTexture {
 
 export interface CPUReadableTexture extends GPUTexture {
   image: HTMLImageElement;
+}
+
+let devImages: Map<string, Array<(newUrl: string) => void>> | null = null;
+
+function registerImage(url: string, reload: (newUrl: string) => void) {
+  if (process.env.NODE_ENV === "development") {
+    if (!devImages) {
+      devImages = new Map();
+    }
+    const index = url.indexOf("?v=");
+    const urlKey = url.substring(0, index);
+    const images = devImages.get(urlKey);
+    if (!images) {
+      devImages.set(urlKey, [reload]);
+    } else {
+      images.push(reload);
+    }
+  }
+}
+
+export function reloadImage(spriteSheet: SpriteSheetConfig) {
+  if (process.env.NODE_ENV === "development" && devImages) {
+    const urls = Object.values(spriteSheet.urls);
+    for (let u of urls) {
+      const index = u.indexOf("?v=");
+      const urlKey = u.substring(0, index);
+      const images = devImages.get(urlKey);
+      if (images) {
+        for (let reload of images) {
+          reload(u);
+        }
+      }
+    }
+  }
 }
 
 export async function loadTextureFromUrl(
@@ -26,26 +61,14 @@ export async function loadTextureFromUrl(
     width: image.width,
     height: image.height,
   };
-  if (process.env.NODE_ENV === "development") {
-    if (ctx.editor) {
-      ctx.editor.onEvent((event) => {
-        if (event.type === "RELOAD_SPRITESHEET") {
-          const index = url.indexOf("?v=");
-          const match = Object.values(event.spriteSheet.urls).find((u) =>
-            new RegExp(`^${url.substring(0, index)}\\?v=(.*)$`).test(u)
-          );
-          if (match) {
-            loadImageFromUrl(match).then((image) => {
-              value[TEXTURE] = loadTextureFromImage(ctx, image, opts);
-              value.width = image.width;
-              value.height = image.height;
-              console.log("Reloaded texture", match);
-            });
-          }
-        }
-      });
-    }
-  }
+
+  registerImage(url, (newUrl: string) => {
+    loadImageFromUrl(newUrl).then((image) => {
+      value[TEXTURE] = loadTextureFromImage(ctx, image, opts);
+      value.width = image.width;
+      value.height = image.height;
+    });
+  });
   return value;
 }
 
@@ -64,27 +87,15 @@ export async function loadCPUReadableTextureFromUrl(
     width: image.width,
     height: image.height,
   };
-  if (process.env.NODE_ENV === "development") {
-    if (ctx.editor) {
-      ctx.editor.onEvent((event) => {
-        if (event.type === "RELOAD_SPRITESHEET") {
-          const index = url.indexOf("?v=");
-          const match = Object.values(event.spriteSheet.urls).find((u) =>
-            new RegExp(`^${url.substring(0, index)}\\?v=(.*)$`).test(u)
-          );
-          if (match) {
-            loadImageFromUrl(match).then((image) => {
-              value.image = image;
-              value[TEXTURE] = loadTextureFromImage(ctx, image, opts);
-              value.width = image.width;
-              value.height = image.height;
-              console.log("Reloaded texture", match);
-            });
-          }
-        }
-      });
-    }
-  }
+
+  registerImage(url, (newUrl: string) => {
+    loadImageFromUrl(newUrl).then((image) => {
+      value.image = image;
+      value[TEXTURE] = loadTextureFromImage(ctx, image, opts);
+      value.width = image.width;
+      value.height = image.height;
+    });
+  });
   return value;
 }
 

@@ -14,7 +14,7 @@ export default function (production: boolean): esbuild.BuildOptions {
         production ? "production" : "development"
       }"`,
     },
-    entryPoints: [path.join(__dirname, "../src/client/index.ts")],
+    entryPoints: [path.join(__dirname, "../src/index.ts")],
     platform: "browser",
     sourcemap: true,
   };

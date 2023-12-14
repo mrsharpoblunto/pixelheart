@@ -12,14 +12,14 @@ import {
   Binormal,
   SpriteConfig,
   SpriteSheetConfig,
-} from "../src/shared/sprite-format";
+} from "@pixelheart/sprite-format";
 import { getFileHash } from "./common-utils";
 
-export const spritePath = path.join(__dirname, "../assets/sprites");
+export const spritePath = path.join(__dirname, "../game/assets/sprites");
 export const wwwPath = path.join(__dirname, "../www/sprites");
 export const spriteSrcPath = path.join(
   __dirname,
-  "../src/client/generated/sprites"
+  "../game/client/generated/sprites"
 );
 
 const PNG_REGEX = /([a-zA-Z_][a-zA-Z0-9_]*)-([0-9]+)x([0-9]+)\.(png|ase)/;

@@ -29,7 +29,7 @@ import {
   loadMapMetadata,
 } from "./map-utils";
 import { serve } from "esbuild";
-import { EditorHost } from "../src/editor/host";
+import { EditorServerHost } from "../src/editor-server-host";
 import esbuildConfig from "./esbuild-config";
 import { codeFrameColumns, SourceLocation } from "@babel/code-frame";
 
@@ -37,7 +37,7 @@ const PORT = 8000;
 const srcPath = path.join(__dirname, "..", "src");
 const wwwPath = path.join(__dirname, "..", "www");
 
-let editor: EditorHost;
+let editor: EditorServerHost;
 
 const spriteLogDecorator = (message: string) => {
   console.log(chalk.dim("[Sprites]"), message);
@@ -248,7 +248,7 @@ Promise.resolve(
   const app = express();
 
   if (!args.production) {
-    editor = new EditorHost(PORT + 2, srcPath);
+    editor = new EditorServerHost(PORT + 2, srcPath);
   } else {
     console.log(
       `${chalk.dim("[Editor]")} ${chalk.red("Disabled in production builds")}`

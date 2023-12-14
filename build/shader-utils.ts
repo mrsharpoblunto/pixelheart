@@ -3,10 +3,10 @@ import fs from "fs/promises";
 import chalk from "chalk";
 import { GlslMinify } from "webpack-glsl-minify/build/minify";
 
-export const shadersPath = path.join(__dirname, "../assets/shaders");
+export const shadersPath = path.join(__dirname, "../game/assets/shaders");
 export const shadersSrcPath = path.join(
   __dirname,
-  "../src/client/generated/shaders"
+  "../game/client/generated/shaders"
 );
 
 export function isShader(file: string) {

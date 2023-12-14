@@ -1,10 +1,76 @@
-import { GameContext } from "./game-runner";
+import { GameContext } from "./api";
 import { vec2, vec4 } from "gl-matrix";
 import * as coords from "./coordinates";
 import { CPUReadableTexture } from "./images";
-import { MapTile, decodeMapTile, encodeMapTile } from "../shared/map-format";
+import { SpriteSheetConfig } from "./sprite-format";
+import { SpriteSheet, loadSpriteSheet } from "./sprite-common";
+import { loadCPUReadableTextureFromUrl } from "./images";
 
-export default class MapData {
+export interface MapTile {
+  index: number; // 0-255
+  walkable: boolean;
+  spatialHash: boolean;
+  animated: boolean;
+  triggerId: number;
+}
+
+export interface MapTileSource {
+  sprite: string;
+  walkable: boolean;
+  spatialHash: boolean;
+  animated: boolean;
+  triggerId: number;
+}
+
+export function decodeMapTile(
+  buffer: Uint8ClampedArray | Buffer,
+  index: number
+): MapTile {
+  return {
+    index: buffer[index],
+    triggerId: buffer[index + 1],
+    walkable: (buffer[index + 2] & 1) === 1,
+    spatialHash: (buffer[index + 2] & 2) === 2,
+    animated: (buffer[index + 2] & 4) === 4,
+  };
+}
+
+export function encodeMapTile(
+  buffer: Uint8ClampedArray | Buffer,
+  index: number,
+  value: MapTile
+) {
+  buffer[index] = value.index;
+  buffer[index + 1] = value.triggerId;
+  buffer[index + 2] =
+    (value.walkable ? 1 : 0) |
+    (value.spatialHash ? 2 : 0) |
+    (value.animated ? 4 : 0);
+}
+export interface MapContainer<T> {
+  data: MapData;
+  sprite: SpriteSheet<T>;
+  spriteConfig: SpriteSheetConfig;
+}
+
+export async function loadMapContainer<T>(
+  ctx: GameContext,
+  tileSize: number,
+  map: { spriteSheet: SpriteSheetConfig; url: string },
+  loader: (ctx: GameContext, sheet: SpriteSheetConfig) => Promise<T>
+): Promise<MapContainer<T>> {
+  const [sprite, m] = await Promise.all([
+    loadSpriteSheet(ctx, map.spriteSheet, loader),
+    loadCPUReadableTextureFromUrl(ctx, map.url),
+  ]);
+  return {
+    data: new MapData(ctx, tileSize, m),
+    sprite,
+    spriteConfig: map.spriteSheet,
+  };
+}
+
+export class MapData {
   buffer: ImageData;
   width: number;
   height: number;

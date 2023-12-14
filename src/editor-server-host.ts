@@ -3,9 +3,8 @@ import WebSocket from "ws";
 import watcher from "@parcel/watcher";
 import path from "path";
 import { Worker } from "worker_threads";
-import { EditorEvent } from "../shared/editor-actions";
 
-export class EditorHost {
+export class EditorServerHost {
   wss: WebSocket.Server;
   requestBuffer: Array<Object>;
   editor: Worker | null;
@@ -42,7 +41,7 @@ export class EditorHost {
   }
 
   createEditor() {
-    this.editor = new Worker(path.join(__dirname, "worker.ts"), {
+    this.editor = new Worker(path.join(__dirname, "editor-server-worker.ts"), {
       eval: false,
       workerData: null,
       execArgv: ["-r", "ts-node/register"],
@@ -67,10 +66,13 @@ export class EditorHost {
     this.requestBuffer.length = 0;
   }
 
-  broadcast(event: EditorEvent) {
+  broadcast<T extends { type: string }>(event: T) {
     this.wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
-        console.log(chalk.dim("[Editor]"), `Sending ${chalk.green(event.type)} event.`);
+        console.log(
+          chalk.dim("[Editor]"),
+          `Sending ${chalk.green(event.type)} event.`
+        );
         client.send(JSON.stringify(event));
       }
     });

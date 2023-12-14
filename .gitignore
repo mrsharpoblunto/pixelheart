@@ -1,4 +1,4 @@
 node_modules/
 www
-src/client/generated/*
+game/client/generated/*
 .DS_Store

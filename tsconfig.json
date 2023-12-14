@@ -14,7 +14,13 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "paths": {
+      "@pixelheart/*": ["./src/*"]
+    }
   },
-  "include": ["src", "build", "types"]
+  "include": ["src", "build", "game"],
+  "ts-node": {
+    "require": ["tsconfig-paths/register"]
+  }
 }
