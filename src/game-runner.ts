@@ -340,6 +340,13 @@ export default function GameRunner<
         );
       }
     });
+    socket?.addEventListener("close", () => {
+      if (result.editorState) {
+        props.editor?.onEvent(context, result.gameState, result.editorState, {
+          type: "EDITOR_DISCONNECTED",
+        } as Events);
+      }
+    });
   } else {
     props.container.appendChild(canvas);
   }

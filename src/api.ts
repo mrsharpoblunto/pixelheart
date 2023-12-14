@@ -14,6 +14,7 @@ export interface EditorEvent {
 }
 
 export type BaseEvents =
+  | { type: "EDITOR_DISCONNECTED" }
   | { type: "RELOAD_MAP"; map: string }
   | { type: "RELOAD_SHADER"; shader: string; src: string }
   | { type: "RELOAD_SPRITESHEET"; spriteSheet: SpriteSheetConfig };

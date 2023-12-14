@@ -1,6 +1,5 @@
 import GameRunner from "./game-runner";
 import Game from "../game/client";
-import Editor from "../game/editor/client";
 
 const root = document.getElementById("root");
 if (root) {
@@ -24,22 +23,10 @@ if (root) {
         parseInt(window.location.port, 10) + 2
       }`
     );
-    let running = false;
     socket.addEventListener("open", () => {
       console.info("Connected to editor WebSocket");
-      running = true;
+      const Editor = require("../game/editor/client").default;
       GameRunner({ ...props, editor: new Editor(), editorSocket: socket });
-    });
-    socket.addEventListener("close", (error: any) => {
-      if (!running) {
-        console.warn(
-          "Editor Websocket disconnected: Starting up without editor support",
-          error
-        );
-        GameRunner(props);
-      } else {
-        console.error("Editor Websocket disconnected", error);
-      }
     });
   } else {
     GameRunner(props);
