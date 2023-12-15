@@ -1,11 +1,12 @@
+import { ReadonlyVec4, vec2, vec4 } from "gl-matrix";
+
 import {
-  EditorContext,
-  GameClient,
-  EditorClient,
   EditorAction,
+  EditorClient,
+  EditorContext,
   EditorEvent,
+  GameClient,
 } from "./api";
-import { vec4, vec2, ReadonlyVec4 } from "gl-matrix";
 
 interface GameProps<
   State,

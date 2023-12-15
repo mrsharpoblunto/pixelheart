@@ -1,10 +1,11 @@
 import { mat3 } from "gl-matrix";
+
 import {
-  Geometry,
   AttributeType,
+  Geometry,
+  InstanceBuffer,
   ShaderProgram,
   ShaderSource,
-  InstanceBuffer,
 } from "./gl-utils";
 
 const VP = mat3.create();
@@ -13,7 +14,6 @@ mat3.translate(VP, VP, [-1.0, -1.0]);
 mat3.scale(VP, VP, [2.0, 2.0]);
 
 export const SpriteViewProjection = VP;
-
 
 type QuadAttributes<TVertParams extends ShaderSource> = {
   position: AttributeType<TVertParams, "vec2">;

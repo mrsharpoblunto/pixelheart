@@ -1,5 +1,5 @@
-import { SpriteSheetConfig } from "./sprite";
 import { GameContext } from "./api";
+import { SpriteSheetConfig } from "./sprite";
 
 export const TEXTURE = Symbol();
 

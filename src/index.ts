@@ -1,5 +1,5 @@
-import GameRunner from "./game-runner";
 import Game from "../game/client";
+import GameRunner from "./game-runner";
 
 const root = document.getElementById("root");
 if (root) {

@@ -1,8 +1,8 @@
-import chalk from "chalk";
-import WebSocket from "ws";
 import watcher from "@parcel/watcher";
+import chalk from "chalk";
 import path from "path";
 import { Worker } from "worker_threads";
+import WebSocket from "ws";
 
 export class EditorServerHost {
   wss: WebSocket.Server;

@@ -1,4 +1,5 @@
-import { vec3, mat3, vec4, ReadonlyVec4 } from "gl-matrix";
+import { ReadonlyVec4, mat3, vec3, vec4 } from "gl-matrix";
+
 import { GameContext } from "./api";
 
 export interface SpriteConfig {

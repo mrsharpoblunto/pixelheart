@@ -1,7 +1,8 @@
-import { parentPort } from "worker_threads";
 import chalk from "chalk";
-import { BaseActions } from "./api";
+import { parentPort } from "worker_threads";
+
 import EditorServer from "../game/editor/server";
+import { BaseActions } from "./api";
 
 const log = (message: string) => {
   console.log(chalk.dim("[Editor]"), message);

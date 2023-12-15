@@ -1,10 +1,11 @@
-import { mat3, ReadonlyVec4 } from "gl-matrix";
-import { ShaderProgram, InstanceBuffer } from "@pixelheart/gl-utils";
-import { SpriteViewProjection, Quad } from "@pixelheart/geometry";
-import { GameContext } from "@pixelheart/api";
+import { ReadonlyVec4, mat3 } from "gl-matrix";
 
-import vertexShader from "./generated/shaders/solid.vert";
+import { GameContext } from "@pixelheart/api";
+import { Quad, SpriteViewProjection } from "@pixelheart/geometry";
+import { InstanceBuffer, ShaderProgram } from "@pixelheart/gl-utils";
+
 import fragmentShader from "./generated/shaders/solid.frag";
+import vertexShader from "./generated/shaders/solid.vert";
 
 type SpriteInstance = { mvp: mat3; color: ReadonlyVec4 };
 

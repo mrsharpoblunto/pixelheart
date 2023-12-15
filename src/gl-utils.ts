@@ -1,11 +1,12 @@
 import {
-  ReadonlyVec2,
-  ReadonlyVec3,
-  ReadonlyVec4,
   ReadonlyMat2,
   ReadonlyMat3,
   ReadonlyMat4,
+  ReadonlyVec2,
+  ReadonlyVec3,
+  ReadonlyVec4,
 } from "gl-matrix";
+
 import { GameContext } from "./api";
 
 type TypeMap = {

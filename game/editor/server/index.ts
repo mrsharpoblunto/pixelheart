@@ -1,17 +1,19 @@
-import { EditorConnection, EditorServer } from "@pixelheart/api";
-import { encodeMapTile, MapTileSource } from "@pixelheart/map";
-import { EditorActions, EditorEvents } from "../../";
-import {
-  wwwPath as mapsWwwPath,
-  loadMapMetadata,
-  mapsPath,
-  MapMetadata,
-} from "../../../build/map-utils";
-import { spriteSrcPath } from "../../../build/sprite-utils";
-import path from "path";
-import sharp from "sharp";
 import chalk from "chalk";
 import fs from "fs/promises";
+import path from "path";
+import sharp from "sharp";
+
+import { EditorConnection, EditorServer } from "@pixelheart/api";
+import { MapTileSource, encodeMapTile } from "@pixelheart/map";
+
+import { EditorActions, EditorEvents } from "../../";
+import {
+  MapMetadata,
+  loadMapMetadata,
+  mapsPath,
+  wwwPath as mapsWwwPath,
+} from "../../../build/map-utils";
+import { spriteSrcPath } from "../../../build/sprite-utils";
 
 interface WorkingMapData {
   lastAccess: number;

@@ -1,4 +1,5 @@
-import { vec2, vec4, ReadonlyVec4 } from "gl-matrix";
+import { ReadonlyVec4, vec2, vec4 } from "gl-matrix";
+
 import { SpriteSheetConfig } from "./sprite";
 
 export interface EditorAction {

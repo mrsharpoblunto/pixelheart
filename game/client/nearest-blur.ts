@@ -1,9 +1,14 @@
-import { GPUTexture, TEXTURE } from "@pixelheart/images";
-import { ShaderProgram, FrameBuffer, createTexture } from "@pixelheart/gl-utils";
-import { Quad } from "@pixelheart/geometry";
 import { GameContext } from "@pixelheart/api";
-import vertexShader from "./generated/shaders/quad.vert";
+import { Quad } from "@pixelheart/geometry";
+import {
+  FrameBuffer,
+  ShaderProgram,
+  createTexture,
+} from "@pixelheart/gl-utils";
+import { GPUTexture, TEXTURE } from "@pixelheart/images";
+
 import fragmentShader from "./generated/shaders/nearest-blur.frag";
+import vertexShader from "./generated/shaders/quad.vert";
 
 export class NearestBlurEffect {
   #gl: WebGL2RenderingContext;
@@ -54,7 +59,7 @@ export class NearestBlurEffect {
         ],
       };
     }
-    
+
     const previousBlend = this.#gl.getParameter(this.#gl.BLEND);
     this.#gl.disable(this.#gl.BLEND);
 
@@ -90,7 +95,7 @@ export class NearestBlurEffect {
     });
 
     if (previousBlend) {
-    this.#gl.enable(this.#gl.BLEND);
+      this.#gl.enable(this.#gl.BLEND);
     }
     return this;
   }

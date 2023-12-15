@@ -1,20 +1,22 @@
-import { vec4, vec2 } from "gl-matrix";
+import { vec2, vec4 } from "gl-matrix";
+import React, { useEffect, useRef } from "react";
 import { Root, createRoot } from "react-dom/client";
-import React, { useRef, useEffect } from "react";
-import { EditorContext, EditorClient } from "@pixelheart/api";
-import { MapContainer } from "@pixelheart/map";
+
+import { EditorClient, EditorContext } from "@pixelheart/api";
+import * as coords from "@pixelheart/coordinates";
 import { reloadShader } from "@pixelheart/gl-utils";
 import { reloadImage } from "@pixelheart/images";
+import { MapContainer } from "@pixelheart/map";
 import { reloadSprite } from "@pixelheart/sprite";
-import * as coords from "@pixelheart/coordinates";
-import { DeferredSpriteTextures } from "../../client/deferred-sprite-effect";
+
 import {
-  GameState,
-  EditorState,
-  PersistentEditorState,
   EditorActions,
   EditorEvents,
+  EditorState,
+  GameState,
+  PersistentEditorState,
 } from "../../";
+import { DeferredSpriteTextures } from "../../client/deferred-sprite-effect";
 
 interface EditorProps {
   state: GameState;

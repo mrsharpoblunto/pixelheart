@@ -1,23 +1,25 @@
-import { vec2, vec4, vec3 } from "gl-matrix";
-import { loadSpriteSheet } from "@pixelheart/sprite";
+import { vec2, vec3, vec4 } from "gl-matrix";
+
+import { GameClient, GameContext } from "@pixelheart/api";
 import * as coords from "@pixelheart/coordinates";
-import { ResourceLoader } from "@pixelheart/resource-loader";
 import { loadMapContainer } from "@pixelheart/map";
-import { GameContext, GameClient } from "@pixelheart/api";
 import { hash, smoothstep } from "@pixelheart/math";
+import { ResourceLoader } from "@pixelheart/resource-loader";
+import { loadSpriteSheet } from "@pixelheart/sprite";
+
+import { GameState, PersistentState } from "../";
 import {
-  deferredTextureLoader,
   DeferredSpriteAnimator,
   DeferredSpriteEffect,
+  deferredTextureLoader,
 } from "./deferred-sprite-effect";
-import { SimpleSpriteEffect, simpleTextureLoader } from "./sprite-effect";
-import { WaterEffect } from "./water-effect";
-import { NearestBlurEffect } from "./nearest-blur";
-import { SolidEffect } from "./solid-effect";
 import overworldMap from "./generated/maps/overworld";
 import characterSprite from "./generated/sprites/character";
 import uiSprite from "./generated/sprites/ui";
-import { GameState, PersistentState } from "../";
+import { NearestBlurEffect } from "./nearest-blur";
+import { SolidEffect } from "./solid-effect";
+import { SimpleSpriteEffect, simpleTextureLoader } from "./sprite-effect";
+import { WaterEffect } from "./water-effect";
 
 const CONTROLLER_DEADZONE = 0.25;
 const TOUCH_DEADZONE = 5;
