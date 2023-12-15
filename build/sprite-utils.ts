@@ -12,7 +12,7 @@ import {
   Binormal,
   SpriteConfig,
   SpriteSheetConfig,
-} from "@pixelheart/sprite-format";
+} from "@pixelheart/sprite";
 import { getFileHash } from "./common-utils";
 
 export const spritePath = path.join(__dirname, "../game/assets/sprites");

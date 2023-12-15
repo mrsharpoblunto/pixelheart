@@ -1,5 +1,5 @@
 import { vec2, vec4, vec3 } from "gl-matrix";
-import { loadSpriteSheet } from "@pixelheart/sprite-common";
+import { loadSpriteSheet } from "@pixelheart/sprite";
 import * as coords from "@pixelheart/coordinates";
 import { ResourceLoader } from "@pixelheart/resource-loader";
 import { loadMapContainer } from "@pixelheart/map";

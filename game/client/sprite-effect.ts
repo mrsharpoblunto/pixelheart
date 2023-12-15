@@ -5,8 +5,8 @@ import {
   SpriteSheet,
   SpriteAnimator,
   SpriteEffect,
-} from "@pixelheart/sprite-common";
-import { SpriteSheetConfig } from "@pixelheart/sprite-format";
+  SpriteSheetConfig
+} from "@pixelheart/sprite";
 import { SpriteViewProjection, Quad } from "@pixelheart/geometry";
 import { ShaderProgram, InstanceBuffer } from "@pixelheart/gl-utils";
 import vertexShader from "./generated/shaders/sprite.vert";

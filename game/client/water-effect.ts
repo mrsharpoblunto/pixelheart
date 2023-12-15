@@ -2,7 +2,7 @@ import { vec2 } from "gl-matrix";
 import { GPUTexture, TEXTURE } from "@pixelheart/images";
 import { ShaderProgram } from "@pixelheart/gl-utils";
 import { Quad } from "@pixelheart/geometry";
-import { ToTangentSpace, Tangent, Binormal, Normal } from "@pixelheart/sprite-format";
+import { ToTangentSpace, Tangent, Binormal, Normal } from "@pixelheart/sprite";
 import { GameContext } from "@pixelheart/api";
 import vertexShader from "./generated/shaders/quad.vert";
 import fragmentShader from "./generated/shaders/water.frag";

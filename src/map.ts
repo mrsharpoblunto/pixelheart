@@ -2,8 +2,7 @@ import { GameContext } from "./api";
 import { vec2, vec4 } from "gl-matrix";
 import * as coords from "./coordinates";
 import { CPUReadableTexture } from "./images";
-import { SpriteSheetConfig } from "./sprite-format";
-import { SpriteSheet, loadSpriteSheet } from "./sprite-common";
+import { SpriteSheetConfig, SpriteSheet, loadSpriteSheet } from "./sprite";
 import { loadCPUReadableTextureFromUrl } from "./images";
 
 export interface MapTile {

@@ -1,5 +1,5 @@
 import { vec2, vec4, ReadonlyVec4 } from "gl-matrix";
-import { SpriteSheetConfig } from "./sprite-format";
+import { SpriteSheetConfig } from "./sprite";
 
 export interface EditorAction {
   type: string;

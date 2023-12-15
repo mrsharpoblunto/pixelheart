@@ -5,7 +5,7 @@ import { EditorContext, EditorClient } from "@pixelheart/api";
 import { MapContainer } from "@pixelheart/map";
 import { reloadShader } from "@pixelheart/gl-utils";
 import { reloadImage } from "@pixelheart/images";
-import { reloadSprite } from "@pixelheart/sprite-common";
+import { reloadSprite } from "@pixelheart/sprite";
 import * as coords from "@pixelheart/coordinates";
 import { DeferredSpriteTextures } from "../../client/deferred-sprite-effect";
 import {

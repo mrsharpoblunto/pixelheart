@@ -5,7 +5,8 @@ import {
   SpriteEffect,
   SpriteSheet,
   SpriteAnimator,
-} from "@pixelheart/sprite-common";
+  SpriteSheetConfig, ToTangentSpace
+} from "@pixelheart/sprite";
 import { SpriteViewProjection, Quad } from "@pixelheart/geometry";
 import {
   ShaderProgram,
@@ -13,7 +14,6 @@ import {
   InstanceBuffer,
   FrameBuffer,
 } from "@pixelheart/gl-utils";
-import { SpriteSheetConfig, ToTangentSpace } from "@pixelheart/sprite-format";
 import vertexShader from "./generated/shaders/deferred-sprite.vert";
 import fragmentShader from "./generated/shaders/deferred-sprite.frag";
 import lightingVertexShader from "./generated/shaders/deferred-lighting.vert";
