@@ -7,9 +7,11 @@ import {
   spritePath,
   wwwPath,
   spriteSrcPath,
-  ensurePath,
   processSpriteSheet,
 } from "./sprite-utils";
+import {
+  ensurePath,
+} from "./common-utils";
 
 Promise.resolve(
   yargs(hideBin(process.argv)).scriptName("build-sprites").usage("$0 args").argv

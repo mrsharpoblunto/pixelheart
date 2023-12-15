@@ -75,7 +75,7 @@ export interface EditorClient<
     ctx: EditorContext<Actions>,
     state: State,
     container: HTMLElement,
-    persistedEditor?: PersistentEditorState
+    previousState?: PersistentEditorState
   ): EditorState;
   onEnd(container: HTMLElement): void;
   onSave(editor: EditorState): PersistentEditorState | null;
@@ -108,7 +108,7 @@ export interface EditorServer<
 }
 
 export interface GameClient<State, PersistentState> {
-  onStart(ctx: GameContext, persistedState?: PersistentState): State;
+  onStart(ctx: GameContext, previousState?: PersistentState): State;
   onSave(state: State): PersistentState | null;
   onUpdate(ctx: GameContext, state: State, fixedDelta: number): void;
   onDraw(ctx: GameContext, state: State, delta: number): void;

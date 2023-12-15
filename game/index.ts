@@ -62,7 +62,10 @@ export type EditorActions =
       value: MapTileSource;
     };
 
-export interface PersistentEditorState {}
+export interface PersistentEditorState {
+  version: number;
+  active: boolean;
+}
 
 export interface EditorState {
   active: boolean;

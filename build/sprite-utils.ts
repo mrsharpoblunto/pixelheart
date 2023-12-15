@@ -55,15 +55,6 @@ interface SpriteCompositeQueue {
   emissive: Array<OverlayOptions>;
 }
 
-export async function ensurePath(pathName: string) {
-  try {
-    await fs.mkdir(pathName, { recursive: true });
-  } catch (ex) {
-    if ((ex as NodeJS.ErrnoException).code !== "EEXIST") {
-      throw ex;
-    }
-  }
-}
 
 export function isSpriteSource(p: string): boolean {
   return path.extname(p) === ".png" || path.extname(p) === ".ase";

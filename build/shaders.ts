@@ -3,7 +3,7 @@ import { hideBin } from "yargs/helpers";
 import fs from "fs/promises";
 import chalk from "chalk";
 import { shadersPaths, isShader, processShader } from "./shader-utils";
-import { ensurePath } from "./sprite-utils";
+import { ensurePath } from "./common-utils";
 
 Promise.resolve(
   yargs(hideBin(process.argv)).scriptName("build-shaders").usage("$0 args").argv

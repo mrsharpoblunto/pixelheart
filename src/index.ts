@@ -20,7 +20,7 @@ if (root) {
   if (process.env.NODE_ENV === "development") {
     const socket = new WebSocket(
       `ws://${window.location.hostname}:${
-        parseInt(window.location.port, 10) + 2
+        parseInt(window.location.port, 10) + 1
       }`
     );
     socket.addEventListener("open", () => {

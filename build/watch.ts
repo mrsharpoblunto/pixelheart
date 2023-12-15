@@ -11,6 +11,7 @@ import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
 import { EditorServerHost } from "../src/editor-server-host";
+import { ensurePath } from "./common-utils";
 import esbuildConfig from "./esbuild-config";
 import {
   loadMapMetadata,
@@ -21,13 +22,13 @@ import {
 } from "./map-utils";
 import { isShader, processShader, shadersPaths } from "./shader-utils";
 import {
-  ensurePath,
   isSpriteSource,
   processSpriteSheet,
   spritePath,
   spriteSrcPath,
   wwwPath as spriteWwwPath,
 } from "./sprite-utils";
+import { editorClientSrcPath, processStatic, shouldWatch } from "./static-utils";
 
 const PORT = 8000;
 const srcPath = path.join(__dirname, "..", "src");
@@ -162,15 +163,21 @@ Promise.resolve(
     );
   }
 
+  // await css changes
+  if (shouldWatch()) {
+    await watcher.subscribe(editorClientSrcPath, async (_err, _events) => {
+      await processStatic(args.production);
+    });
+  }
   // await other sprite changes as they come
   await watcher.subscribe(spritePath, async (_err, events) => {
     await processSpriteSheetEvents(events);
   });
   // await other changes to shaders as they come
   for (let shaderPath of shadersPaths) {
-  await watcher.subscribe(shaderPath.assets, async (_err, events) => {
-    await processShaderEvents(args.production,shaderPath, events);
-  });
+    await watcher.subscribe(shaderPath.assets, async (_err, events) => {
+      await processShaderEvents(args.production, shaderPath, events);
+    });
   }
   // NOTE: we also watch for sprite changes here because maps depend on
   // sprites and we want to rebuild them if a sprite changes.
@@ -181,10 +188,12 @@ Promise.resolve(
     await processMapEvents(events);
   });
 
+  await processStatic(args.production);
+
   // run the esbuild watcher
   await serve(
     {
-      port: PORT + 1,
+      port: PORT,
       servedir: path.join(__dirname, "..", "www"),
       onRequest: (args) => {
         console.log(
@@ -248,43 +257,15 @@ Promise.resolve(
     console.log(chalk.dim("[TSC]"), `TSC closed ${code}`);
   });
 
-  // start the proxy to esbuild & the dev editor API
-  const app = express();
-
   if (!args.production) {
-    editor = new EditorServerHost(PORT + 2, srcPath);
+    editor = new EditorServerHost(PORT + 1, srcPath);
   } else {
     console.log(
       `${chalk.dim("[Editor]")} ${chalk.red("Disabled in production builds")}`
     );
   }
 
-  const proxyMiddleware = createProxyMiddleware({
-    target: `http://127.0.0.1:${PORT + 1}`,
-    logProvider: (provider) => {
-      provider.log = (...args: any[]) =>
-        console.log(chalk.dim("[Proxy]"), ...args);
-      provider.debug = (...args: any[]) =>
-        console.log(chalk.dim("[Proxy]"), ...args);
-      provider.info = (...args: any[]) =>
-        console.log(chalk.dim("[Proxy]"), ...args);
-      provider.warn = (...args: any[]) =>
-        console.log(chalk.dim("[Proxy]"), ...args.map((a) => chalk.yellow(a)));
-      provider.error = (...args: any[]) =>
-        console.log(chalk.dim("[Proxy]"), ...args.map((a) => chalk.red(a)));
-      return provider;
-    },
-    logLevel: "warn",
-  });
-
-  app.use((req, res, next) =>
-    req.originalUrl.startsWith("/edit")
-      ? next()
-      : proxyMiddleware(req, res, next)
-  );
-  app.listen(PORT, () => {
-    console.log(chalk.dim("[Server]"), `Listening on port ${PORT}`);
-  });
+  console.log(chalk.dim("[Server]"), `Listening on port ${PORT}`);
 });
 
 async function processMapSpriteEvents(events: watcher.Event[]) {

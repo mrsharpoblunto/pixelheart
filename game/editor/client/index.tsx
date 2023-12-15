@@ -4,6 +4,7 @@ import { Root, createRoot } from "react-dom/client";
 
 import { EditorClient, EditorContext } from "@pixelheart/api";
 import * as coords from "@pixelheart/coordinates";
+import { DeferredSpriteTextures } from "@pixelheart/effects/deferred-sprite-effect";
 import { reloadShader } from "@pixelheart/gl-utils";
 import { reloadImage } from "@pixelheart/images";
 import { MapContainer } from "@pixelheart/map";
@@ -16,7 +17,8 @@ import {
   GameState,
   PersistentEditorState,
 } from "../../";
-import { DeferredSpriteTextures } from "@pixelheart/effects/deferred-sprite-effect";
+
+const CURRENT_SERIALIZATION_VERSION = 1;
 
 interface EditorProps {
   state: GameState;
@@ -74,10 +76,19 @@ export default class Editor
     ctx: EditorContext<EditorActions>,
     state: GameState,
     container: HTMLElement,
-    persistedEditor?: PersistentEditorState
+    previousState?: PersistentEditorState
   ): EditorState {
+    if (
+      previousState &&
+      previousState.version !== CURRENT_SERIALIZATION_VERSION
+    ) {
+      // if its possible to gracefully handle loading a previous version, do so
+      // otherwise, throw an error
+      throw new Error(`Invalid save version ${previousState.version}`);
+    }
+
     const editorState = {
-      active: false,
+      active: previousState ? previousState.active : false,
       newValue: null,
       pendingChanges: new Map(),
     };
@@ -98,7 +109,10 @@ export default class Editor
   }
 
   onSave(editor: EditorState): PersistentEditorState | null {
-    return null;
+    return {
+      version: CURRENT_SERIALIZATION_VERSION,
+      active: editor.active,
+    };
   }
 
   onEvent(

@@ -4,7 +4,7 @@ import fs from "fs/promises";
 import chalk from "chalk";
 import path from "path";
 import { mapsPath, wwwPath, mapSrcPath, processMap } from "./map-utils";
-import { ensurePath } from "./sprite-utils";
+import { ensurePath } from "./common-utils";
 
 Promise.resolve(
   yargs(hideBin(process.argv)).scriptName("build-maps").usage("$0 args").argv
