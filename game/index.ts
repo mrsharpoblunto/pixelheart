@@ -10,10 +10,10 @@ import {
   DeferredSpriteEffect,
   DeferredSpriteSheet,
   DeferredSpriteTextures,
-} from "./client/deferred-sprite-effect";
+} from "@pixelheart/effects/deferred-sprite-effect";
 import { NearestBlurEffect } from "./client/nearest-blur";
-import { SolidEffect } from "./client/solid-effect";
-import { SimpleSpriteEffect, SimpleSpriteSheet } from "./client/sprite-effect";
+import { SolidEffect } from "@pixelheart/effects/solid-effect";
+import { SimpleSpriteEffect, SimpleSpriteSheet } from "@pixelheart/effects/sprite-effect";
 import { WaterEffect } from "./client/water-effect";
 
 export interface PersistentState {

@@ -1,14 +1,14 @@
-import { GameContext } from "@pixelheart/api";
-import { Quad } from "@pixelheart/geometry";
+import { GameContext } from "../api";
+import { Quad } from "../geometry";
 import {
   FrameBuffer,
   ShaderProgram,
   createTexture,
-} from "@pixelheart/gl-utils";
+} from "../gl-utils";
 import { GPUTexture, TEXTURE } from "@pixelheart/images";
 
-import fragmentShader from "./generated/shaders/gaussian-blur.frag";
-import vertexShader from "./generated/shaders/quad.vert";
+import fragmentShader from "../shaders/gaussian-blur.frag";
+import vertexShader from "../shaders/quad.vert";
 
 export class GaussianBlurEffect {
   #gl: WebGL2RenderingContext;

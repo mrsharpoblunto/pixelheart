@@ -14,7 +14,7 @@
     "build:html": "ts-node ./build/html.ts",
     "dev": "npm run clean && npm run watch",
     "watch": "ts-node ./build/watch.ts",
-    "clean": "rimraf www && mkdir www && rimraf src/client/generated"
+    "clean": "rimraf www && mkdir www && rimraf src/shaders game/client/generated"
   },
   "keywords": [],
   "author": "",

@@ -1,37 +1,33 @@
-import yargs from "yargs";
-import { hideBin } from "yargs/helpers";
-import express from "express";
-import { createProxyMiddleware } from "http-proxy-middleware";
-import fs from "fs/promises";
-import path from "path";
+import { SourceLocation, codeFrameColumns } from "@babel/code-frame";
 import watcher from "@parcel/watcher";
 import chalk from "chalk";
 import { spawn } from "child_process";
-import {
-  spritePath,
-  wwwPath as spriteWwwPath,
-  spriteSrcPath,
-  ensurePath,
-  processSpriteSheet,
-  isSpriteSource,
-} from "./sprite-utils";
-import {
-  shadersPath,
-  shadersSrcPath,
-  processShader,
-  isShader,
-} from "./shader-utils";
-import {
-  mapsPath,
-  mapSrcPath,
-  wwwPath as mapsWwwPath,
-  processMap,
-  loadMapMetadata,
-} from "./map-utils";
 import { serve } from "esbuild";
+import express from "express";
+import fs from "fs/promises";
+import { createProxyMiddleware } from "http-proxy-middleware";
+import path from "path";
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
+
 import { EditorServerHost } from "../src/editor-server-host";
 import esbuildConfig from "./esbuild-config";
-import { codeFrameColumns, SourceLocation } from "@babel/code-frame";
+import {
+  loadMapMetadata,
+  mapSrcPath,
+  mapsPath,
+  wwwPath as mapsWwwPath,
+  processMap,
+} from "./map-utils";
+import { isShader, processShader, shadersPaths } from "./shader-utils";
+import {
+  ensurePath,
+  isSpriteSource,
+  processSpriteSheet,
+  spritePath,
+  spriteSrcPath,
+  wwwPath as spriteWwwPath,
+} from "./sprite-utils";
 
 const PORT = 8000;
 const srcPath = path.join(__dirname, "..", "src");
@@ -72,7 +68,9 @@ Promise.resolve(
   await ensurePath(mapsWwwPath);
   await ensurePath(spriteSrcPath);
   await ensurePath(mapSrcPath);
-  await ensurePath(shadersSrcPath);
+  for (let shaderPath of shadersPaths) {
+    await ensurePath(shaderPath.src);
+  }
   await fs.cp(
     path.join(srcPath, "index.html"),
     path.join(wwwPath, "index.html")
@@ -130,44 +128,50 @@ Promise.resolve(
 
   // on first run, check if any shader type definitions are missing or older
   // than the source and build them
-  const sourceShaders = await fs.readdir(shadersPath);
-  const destShaders = await fs.readdir(shadersSrcPath);
-  const shadersToType = [];
-  for (const src of sourceShaders) {
-    const srcStat = await fs.stat(path.join(shadersPath, src));
-    if (!isShader(src)) {
-      continue;
-    }
+  for (let shaderPath of shadersPaths) {
+    const sourceShaders = await fs.readdir(shaderPath.assets);
+    const destShaders = await fs.readdir(shaderPath.src);
+    const shadersToType = [];
+    for (const src of sourceShaders) {
+      const srcStat = await fs.stat(path.join(shaderPath.assets, src));
+      if (!isShader(src)) {
+        continue;
+      }
 
-    const dest = `${src}.ts`;
-    if (
-      // doesn't exist
-      destShaders.indexOf(dest) < 0 ||
-      // or is older than the source
-      srcStat.mtimeMs > (await fs.stat(path.join(shadersSrcPath, dest))).mtimeMs
-    ) {
-      shadersToType.push(src);
+      const dest = `${src}.ts`;
+      if (
+        // doesn't exist
+        destShaders.indexOf(dest) < 0 ||
+        // or is older than the source
+        srcStat.mtimeMs >
+          (await fs.stat(path.join(shaderPath.src, dest))).mtimeMs
+      ) {
+        shadersToType.push(src);
+      }
     }
-  }
-  await Promise.all(
-    shadersToType.map((s) =>
-      processShader(
-        s,
-        args.production,
-        shaderLogDecorator,
-        shaderErrorDecorator
+    await Promise.all(
+      shadersToType.map((s) =>
+        processShader(
+          shaderPath,
+          s,
+          args.production,
+          shaderLogDecorator,
+          shaderErrorDecorator
+        )
       )
-    )
-  );
+    );
+  }
 
   // await other sprite changes as they come
   await watcher.subscribe(spritePath, async (_err, events) => {
     await processSpriteSheetEvents(events);
   });
   // await other changes to shaders as they come
-  await watcher.subscribe(shadersPath, async (_err, events) => {
-    await processShaderEvents(args.production, events);
+  for (let shaderPath of shadersPaths) {
+  await watcher.subscribe(shaderPath.assets, async (_err, events) => {
+    await processShaderEvents(args.production,shaderPath, events);
   });
+  }
   // NOTE: we also watch for sprite changes here because maps depend on
   // sprites and we want to rebuild them if a sprite changes.
   await watcher.subscribe(spriteSrcPath, async (_err, events) => {
@@ -398,6 +402,7 @@ async function processSpriteSheetEvents(events: watcher.Event[]) {
 
 async function processShaderEvents(
   production: boolean,
+  shaderPath: { assets: string; src: string },
   events: watcher.Event[]
 ) {
   for (let e of events) {
@@ -411,6 +416,7 @@ async function processShaderEvents(
         {
           const shader = path.basename(e.path);
           const src = await processShader(
+            shaderPath,
             shader,
             production,
             shaderLogDecorator,

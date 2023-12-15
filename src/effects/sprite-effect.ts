@@ -1,18 +1,18 @@
 import { ReadonlyVec4, mat3 } from "gl-matrix";
 
-import { GameContext } from "@pixelheart/api";
-import { Quad, SpriteViewProjection } from "@pixelheart/geometry";
-import { InstanceBuffer, ShaderProgram } from "@pixelheart/gl-utils";
-import { GPUTexture, TEXTURE, loadTextureFromUrl } from "@pixelheart/images";
+import { GameContext } from "../api";
+import { Quad, SpriteViewProjection } from "../geometry";
+import { InstanceBuffer, ShaderProgram } from "../gl-utils";
+import { GPUTexture, TEXTURE, loadTextureFromUrl } from "../images";
 import {
   SpriteAnimator,
   SpriteEffect,
   SpriteSheet,
   SpriteSheetConfig,
-} from "@pixelheart/sprite";
+} from "../sprite";
 
-import fragmentShader from "./generated/shaders/sprite.frag";
-import vertexShader from "./generated/shaders/sprite.vert";
+import fragmentShader from "../shaders/sprite.frag";
+import vertexShader from "../shaders/sprite.vert";
 
 export type SimpleSpriteTextures = GPUTexture;
 export type SimpleSpriteSheet = SpriteSheet<SimpleSpriteTextures>;

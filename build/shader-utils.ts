@@ -1,13 +1,18 @@
-import path from "path";
-import fs from "fs/promises";
 import chalk from "chalk";
+import fs from "fs/promises";
+import path from "path";
 import { GlslMinify } from "webpack-glsl-minify/build/minify";
 
-export const shadersPath = path.join(__dirname, "../game/assets/shaders");
-export const shadersSrcPath = path.join(
-  __dirname,
-  "../game/client/generated/shaders"
-);
+export const shadersPaths = [
+  {
+    assets: path.join(__dirname, "../game/assets/shaders"),
+    src: path.join(__dirname, "../game/client/generated/shaders"),
+  },
+  {
+    assets: path.join(__dirname, "../src/shader-assets"),
+    src: path.join(__dirname, "../src/shaders"),
+  },
+];
 
 export function isShader(file: string) {
   return path.extname(file) === ".vert" || path.extname(file) === ".frag";
@@ -20,6 +25,7 @@ const CONST_REGEX = /^const\s+\w+\s+(\w+)\s*=\s*([0-9]+);/;
 const NO_MANGLE = ["texture"];
 
 export async function processShader(
+  shaderPath: { assets: string; src: string },
   shader: string,
   production: boolean,
   log: (message: string) => void,
@@ -30,7 +36,7 @@ export async function processShader(
   );
 
   try {
-    const shaderFile = path.join(shadersPath, shader);
+    const shaderFile = path.join(shaderPath.assets, shader);
     let src = await fs.readFile(shaderFile, "utf-8");
     const isVertexShader = path.extname(shader) === ".vert";
     const lines = src.split("\n");
@@ -153,7 +159,7 @@ export default value;
 `;
 
     await fs.writeFile(
-      `${path.join(shadersSrcPath, shader)}.ts`,
+      `${path.join(shaderPath.src, shader)}.ts`,
       output,
       "utf-8"
     );

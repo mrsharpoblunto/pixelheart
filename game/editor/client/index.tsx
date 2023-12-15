@@ -16,7 +16,7 @@ import {
   GameState,
   PersistentEditorState,
 } from "../../";
-import { DeferredSpriteTextures } from "../../client/deferred-sprite-effect";
+import { DeferredSpriteTextures } from "@pixelheart/effects/deferred-sprite-effect";
 
 interface EditorProps {
   state: GameState;

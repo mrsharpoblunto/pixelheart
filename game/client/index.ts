@@ -12,13 +12,13 @@ import {
   DeferredSpriteAnimator,
   DeferredSpriteEffect,
   deferredTextureLoader,
-} from "./deferred-sprite-effect";
+} from "@pixelheart/effects/deferred-sprite-effect";
 import overworldMap from "./generated/maps/overworld";
 import characterSprite from "./generated/sprites/character";
 import uiSprite from "./generated/sprites/ui";
 import { NearestBlurEffect } from "./nearest-blur";
-import { SolidEffect } from "./solid-effect";
-import { SimpleSpriteEffect, simpleTextureLoader } from "./sprite-effect";
+import { SolidEffect } from "@pixelheart/effects/solid-effect";
+import { SimpleSpriteEffect, simpleTextureLoader } from "@pixelheart/effects/sprite-effect";
 import { WaterEffect } from "./water-effect";
 
 const CONTROLLER_DEADZONE = 0.25;

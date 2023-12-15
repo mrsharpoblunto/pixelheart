@@ -1,28 +1,28 @@
 import { ReadonlyVec4, mat3, vec3 } from "gl-matrix";
 
-import { GameContext } from "@pixelheart/api";
-import { Quad, SpriteViewProjection } from "@pixelheart/geometry";
+import { GameContext } from "../api";
+import { Quad, SpriteViewProjection } from "../geometry";
 import {
   FrameBuffer,
   InstanceBuffer,
   ShaderProgram,
   createTexture,
-} from "@pixelheart/gl-utils";
-import { GPUTexture, TEXTURE, loadTextureFromUrl } from "@pixelheart/images";
+} from "../gl-utils";
+import { GPUTexture, TEXTURE, loadTextureFromUrl } from "../images";
 import {
   SpriteAnimator,
   SpriteEffect,
   SpriteSheet,
   SpriteSheetConfig,
   ToTangentSpace,
-} from "@pixelheart/sprite";
+} from "../sprite";
 
 import lightingFragmentShader, {
   Constants as LightingConstants,
-} from "./generated/shaders/deferred-lighting.frag";
-import lightingVertexShader from "./generated/shaders/deferred-lighting.vert";
-import fragmentShader from "./generated/shaders/deferred-sprite.frag";
-import vertexShader from "./generated/shaders/deferred-sprite.vert";
+} from "../shaders/deferred-lighting.frag";
+import lightingVertexShader from "../shaders/deferred-lighting.vert";
+import fragmentShader from "../shaders/deferred-sprite.frag";
+import vertexShader from "../shaders/deferred-sprite.vert";
 
 export type DeferredSpriteTextures = {
   diffuseTexture: GPUTexture;

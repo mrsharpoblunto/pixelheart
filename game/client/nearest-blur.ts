@@ -6,9 +6,9 @@ import {
   createTexture,
 } from "@pixelheart/gl-utils";
 import { GPUTexture, TEXTURE } from "@pixelheart/images";
+import vertexShader from "@pixelheart/shaders/quad.vert";
 
 import fragmentShader from "./generated/shaders/nearest-blur.frag";
-import vertexShader from "./generated/shaders/quad.vert";
 
 export class NearestBlurEffect {
   #gl: WebGL2RenderingContext;

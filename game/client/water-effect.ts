@@ -6,7 +6,7 @@ import { ShaderProgram } from "@pixelheart/gl-utils";
 import { GPUTexture, TEXTURE } from "@pixelheart/images";
 import { Binormal, Normal, Tangent, ToTangentSpace } from "@pixelheart/sprite";
 
-import vertexShader from "./generated/shaders/quad.vert";
+import vertexShader from "@pixelheart/shaders/quad.vert";
 import fragmentShader from "./generated/shaders/water.frag";
 
 export class WaterEffect {
