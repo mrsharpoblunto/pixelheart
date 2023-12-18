@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 
-import { EditorConnection, EditorServer } from "@pixelheart/api";
+import { EditorConnection, EditorMutation } from "@pixelheart/api";
 import { MapTileSource, encodeMapTile } from "@pixelheart/map";
 
 import { EditorActions, EditorEvents } from "../../";
@@ -39,41 +39,40 @@ const logError = (message: string) => {
   console.log(chalk.dim("[Editor]"), chalk.red(message));
 };
 
-export default class Server
-  implements EditorServer<EditorActions, EditorEvents>
-{
+export default class Server {
   #mapUpdateInterval: NodeJS.Timeout | undefined;
   #mapCache: Map<string, WorkingMapData>;
   #pendingMapActions: Map<string, Array<EditorActions>>;
+  #connection: EditorConnection<EditorEvents, EditorActions>;
 
-  constructor() {
+  constructor(connection: EditorConnection<EditorEvents, EditorActions>) {
+    this.#connection = connection;
     this.#mapCache = new Map<string, WorkingMapData>();
     this.#pendingMapActions = new Map<string, Array<EditorActions>>();
-  }
-
-  async onConnect(_editorConnection: EditorConnection<EditorEvents>) {
     this.#mapUpdateInterval = setInterval(() => this.#flushMapChanges(), 5000);
-  }
-
-  async onAction(a: EditorActions): Promise<void> {
-    switch (a.type) {
-      case "TILE_CHANGE":
-        {
-          let actions = this.#pendingMapActions.get(a.map);
-          if (!actions) {
-            actions = [];
-            this.#pendingMapActions.set(a.map, actions);
+    this.#connection.onEvent((a) => {
+      switch (a.type) {
+        case "TILE_CHANGE":
+          {
+            let actions = this.#pendingMapActions.get(a.map);
+            if (!actions) {
+              actions = [];
+              this.#pendingMapActions.set(a.map, actions);
+            }
+            actions.push(a);
           }
-          actions.push(a);
-        }
-        break;
-      case "RESTART":
-        clearInterval(this.#mapUpdateInterval);
-        await this.#flushMapChanges();
-        process.exit(0);
-      default:
-        throw new Error("Unknown Editor action");
-    }
+          break;
+        case "RESTART":
+          {
+            clearInterval(this.#mapUpdateInterval);
+            this.#flushMapChanges().then(() => {
+              process.exit(0);
+            });
+          }
+          break;
+      }
+    });
+    log("Running");
   }
 
   async #flushMapChanges() {

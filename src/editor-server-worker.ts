@@ -1,31 +1,15 @@
-import chalk from "chalk";
 import { parentPort } from "worker_threads";
 
+import { EditorActions, EditorEvents } from "../game";
 import EditorServer from "../game/editor/server";
-import { BaseActions } from "./api";
-
-const log = (message: string) => {
-  console.log(chalk.dim("[Editor]"), message);
-};
-
-const logError = (message: string) => {
-  console.log(chalk.dim("[Editor]"), chalk.red(message));
-};
+import { ServerWorkerEditorConnection } from "./editor-connections";
 
 if (parentPort) {
-  log("Running.");
-
-  const connection = {
-    send: (message: any) => {
-      parentPort!.postMessage(message);
-    },
-  };
-  const server = new EditorServer();
-  server.onConnect(connection).then(() => {
-    parentPort!.on("message", async (message: any) => {
-      const a = message as BaseActions;
-      log(`Processing ${chalk.green(a.type)} action`);
-      await server.onAction(a);
-    });
-  });
+  // editor server sends events and receives actions, the opposite to the
+  // client
+  const connection = new ServerWorkerEditorConnection<
+    EditorEvents,
+    EditorActions
+  >(parentPort);
+  new EditorServer(connection);
 }

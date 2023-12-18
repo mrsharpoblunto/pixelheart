@@ -26,7 +26,11 @@ import {
   spriteSrcPath,
   wwwPath as spriteWwwPath,
 } from "./sprite-utils";
-import { editorClientSrcPath, processStatic, shouldWatch } from "./static-utils";
+import {
+  editorClientSrcPath,
+  processStatic,
+  shouldWatch,
+} from "./static-utils";
 
 const PORT = 8000;
 const srcPath = path.join(__dirname, "..", "src");
@@ -164,7 +168,8 @@ Promise.resolve(
   // await css changes
   if (shouldWatch()) {
     await watcher.subscribe(editorClientSrcPath, async (_err, _events) => {
-      await processStatic(args.production);
+      const resources = await processStatic(args.production);
+      editor?.send({ type: "RELOAD_STATIC", resources });
     });
   }
   // await other sprite changes as they come
@@ -283,7 +288,7 @@ async function processMapSpriteEvents(events: watcher.Event[]) {
         const result = await loadMapMetadata(map);
         if (result.ok && result.metadata.spriteSheet === sprite) {
           await processMap(map, mapsLogDecorator, mapsErrorDecorator);
-          editor?.broadcast({ type: "RELOAD_MAP", map });
+          editor?.send({ type: "RELOAD_MAP", map });
         }
       }
     }
@@ -320,7 +325,7 @@ async function processMapEvents(events: watcher.Event[]) {
 
   for (const nom of newOrModified) {
     await processMap(nom, mapsLogDecorator, mapsErrorDecorator);
-    editor?.broadcast({ type: "RELOAD_MAP", map: nom });
+    editor?.send({ type: "RELOAD_MAP", map: nom });
   }
 }
 
@@ -371,7 +376,7 @@ async function processSpriteSheetEvents(events: watcher.Event[]) {
       spriteErrorDecorator
     );
     if (spriteSheet) {
-      editor?.broadcast({
+      editor?.send({
         type: "RELOAD_SPRITESHEET",
         spriteSheet,
       });
@@ -402,7 +407,7 @@ async function processShaderEvents(
             shaderErrorDecorator
           );
           if (src) {
-            editor?.broadcast({ type: "RELOAD_SHADER", shader, src });
+            editor?.send({ type: "RELOAD_SHADER", shader, src });
           }
         }
         break;

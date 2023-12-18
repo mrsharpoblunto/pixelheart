@@ -2,23 +2,26 @@ import { vec2, vec3, vec4 } from "gl-matrix";
 
 import { GameClient, GameContext } from "@pixelheart/api";
 import * as coords from "@pixelheart/coordinates";
+import {
+  DeferredSpriteAnimator,
+  DeferredSpriteEffect,
+  deferredTextureLoader,
+} from "@pixelheart/effects/deferred-sprite-effect";
+import { SolidEffect } from "@pixelheart/effects/solid-effect";
+import {
+  SimpleSpriteEffect,
+  simpleTextureLoader,
+} from "@pixelheart/effects/sprite-effect";
 import { loadMapContainer } from "@pixelheart/map";
 import { hash, smoothstep } from "@pixelheart/math";
 import { ResourceLoader } from "@pixelheart/resource-loader";
 import { loadSpriteSheet } from "@pixelheart/sprite";
 
 import { GameState, PersistentState } from "../";
-import {
-  DeferredSpriteAnimator,
-  DeferredSpriteEffect,
-  deferredTextureLoader,
-} from "@pixelheart/effects/deferred-sprite-effect";
 import overworldMap from "./generated/maps/overworld";
 import characterSprite from "./generated/sprites/character";
 import uiSprite from "./generated/sprites/ui";
 import { NearestBlurEffect } from "./nearest-blur";
-import { SolidEffect } from "@pixelheart/effects/solid-effect";
-import { SimpleSpriteEffect, simpleTextureLoader } from "@pixelheart/effects/sprite-effect";
 import { WaterEffect } from "./water-effect";
 
 const CONTROLLER_DEADZONE = 0.25;
@@ -29,7 +32,10 @@ const MAX_TIME = 1000;
 export default class Game implements GameClient<GameState, PersistentState> {
   constructor() {}
 
-  onStart(ctx: GameContext, previousState?: PersistentState): GameState {
+  onStart(
+    ctx: GameContext,
+    previousState?: PersistentState
+  ): GameState {
     if (
       previousState &&
       previousState.version !== CURRENT_SERIALIZATION_VERSION

@@ -19,6 +19,12 @@ export async function getFileHash(file: string): Promise<string> {
   }
 }
 
+export function getStringHash(content: string): string {
+  const hash = createHash("sha256");
+  hash.update(content);
+  return hash.digest("hex");
+}
+
 export async function ensurePath(pathName: string) {
   try {
     await fs.promises.mkdir(pathName, { recursive: true });

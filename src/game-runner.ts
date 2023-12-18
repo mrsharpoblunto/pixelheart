@@ -1,20 +1,20 @@
 import { ReadonlyVec4, vec2, vec4 } from "gl-matrix";
 
 import {
-  EditorAction,
   EditorClient,
   EditorContext,
-  EditorEvent,
+  EditorMutation,
   GameClient,
 } from "./api";
+import { ClientEditorConnection } from "./editor-connections";
 
 interface GameProps<
   State,
   PersistentState,
   EditorState,
   PersistentEditorState,
-  Actions extends EditorAction,
-  Events extends EditorEvent
+  Actions extends EditorMutation,
+  Events extends EditorMutation
 > {
   editorSocket: WebSocket | null;
   container: HTMLElement;
@@ -40,8 +40,8 @@ export default function GameRunner<
   PersistentState extends Object,
   EditorState extends Object,
   PersistentEditorState extends Object,
-  Actions extends EditorAction,
-  Events extends EditorEvent
+  Actions extends EditorMutation,
+  Events extends EditorMutation
 >(
   props: GameProps<
     State,
@@ -58,6 +58,7 @@ export default function GameRunner<
 } | null {
   const canvas = document.createElement("canvas");
   canvas.style.imageRendering = "pixelated";
+  canvas.style.position = "relative";
 
   const gl = canvas.getContext("webgl2", {
     alpha: false,
@@ -84,15 +85,9 @@ export default function GameRunner<
     height: 1,
   };
 
-  const socket = props.editorSocket;
-
-  const context: EditorContext<Actions> = {
+  const context: EditorContext<Actions, Events> = {
     gl,
-    editor: {
-      send: (action: Actions) => {
-        socket?.send(JSON.stringify(action));
-      },
-    },
+    editorServer: new ClientEditorConnection(props.editorSocket),
     createOffscreenCanvas: (
       width: number,
       height: number,
@@ -330,28 +325,6 @@ export default function GameRunner<
     canvas,
   };
 
-  if (props.editor) {
-    socket?.addEventListener("message", (e) => {
-      if (result.editorState) {
-        props.editor?.onEvent(
-          context,
-          result.gameState,
-          result.editorState,
-          JSON.parse(e.data) as Events
-        );
-      }
-    });
-    socket?.addEventListener("close", () => {
-      if (result.editorState) {
-        props.editor?.onEvent(context, result.gameState, result.editorState, {
-          type: "EDITOR_DISCONNECTED",
-        } as Events);
-      }
-    });
-  } else {
-    props.container.appendChild(canvas);
-  }
-
   canvas.addEventListener(
     "webglcontextlost",
     (e) => {
@@ -396,40 +369,44 @@ export default function GameRunner<
     false
   );
 
+  let currentParent: HTMLElement | null = canvas.parentElement;
+
   let accumulatedTime = 0;
   let nextFrame: number | null = null;
   const render = () => {
-    const currentTime = performance.now();
-    const frameTime = currentTime - lastTime;
-    lastTime = currentTime;
-    accumulatedTime += frameTime;
+    if (currentParent) {
+      const currentTime = performance.now();
+      const frameTime = currentTime - lastTime;
+      lastTime = currentTime;
+      accumulatedTime += frameTime;
 
-    while (accumulatedTime >= props.fixedUpdate) {
-      props.game.onUpdate(context, result.gameState, props.fixedUpdate);
-      if (result.editorState) {
-        props.editor?.onUpdate(
-          context,
-          result.gameState,
-          result.editorState,
-          props.fixedUpdate
-        );
+      while (accumulatedTime >= props.fixedUpdate) {
+        props.game.onUpdate(context, result.gameState, props.fixedUpdate);
+        if (result.editorState) {
+          props.editor?.onUpdate(
+            context,
+            result.gameState,
+            result.editorState,
+            props.fixedUpdate
+          );
+        }
+        context.mouse.clicked = [];
+        vec2.set(context.mouse.wheel, 0, 0);
+        context.touches.ended.clear();
+        context.keys.pressed.clear();
+        accumulatedTime -= props.fixedUpdate;
       }
-      context.mouse.clicked = [];
-      vec2.set(context.mouse.wheel, 0, 0);
-      context.touches.ended.clear();
-      context.keys.pressed.clear();
-      accumulatedTime -= props.fixedUpdate;
-    }
 
-    if (!contextLost) {
-      props.game.onDraw(context, result.gameState, frameTime);
-      if (result.editorState) {
-        props.editor?.onDraw(
-          context,
-          result.gameState,
-          result.editorState,
-          frameTime
-        );
+      if (!contextLost) {
+        props.game.onDraw(context, result.gameState, frameTime);
+        if (result.editorState) {
+          props.editor?.onDraw(
+            context,
+            result.gameState,
+            result.editorState,
+            frameTime
+          );
+        }
       }
     }
     nextFrame = requestAnimationFrame(render);
@@ -465,61 +442,50 @@ export default function GameRunner<
   window.addEventListener("visibilitychange", handlePersist);
 
   const handleResize = () => {
+    const parent = canvas.parentElement || props.container;
     // TODO should be using parent container size - not window...
     pixelMultiplier = 1;
-    if (props.container.clientWidth >= props.container.clientHeight) {
+    if (parent.clientWidth >= parent.clientHeight) {
       contextScreen.width =
         Math.min(
           props.screen.preferredWidthIncrements,
-          Math.floor(props.container.clientWidth / props.screen.incrementSize)
+          Math.floor(parent.clientWidth / props.screen.incrementSize)
         ) * props.screen.incrementSize;
-      while (
-        contextScreen.width * (pixelMultiplier + 1) <
-        props.container.clientWidth
-      ) {
+      while (contextScreen.width * (pixelMultiplier + 1) < parent.clientWidth) {
         ++pixelMultiplier;
       }
       contextScreen.height =
         Math.floor(
-          props.container.clientHeight /
-            (props.screen.incrementSize * pixelMultiplier)
+          parent.clientHeight / (props.screen.incrementSize * pixelMultiplier)
         ) * props.screen.incrementSize;
     } else {
       contextScreen.height =
         Math.min(
           props.screen.preferredHeightIncrements,
-          Math.floor(props.container.clientHeight / props.screen.incrementSize)
+          Math.floor(parent.clientHeight / props.screen.incrementSize)
         ) * props.screen.incrementSize;
       while (
         contextScreen.height * (pixelMultiplier + 1) <
-        props.container.clientHeight
+        parent.clientHeight
       ) {
         ++pixelMultiplier;
       }
       contextScreen.width =
         Math.floor(
-          props.container.clientWidth /
-            (props.screen.incrementSize * pixelMultiplier)
+          parent.clientWidth / (props.screen.incrementSize * pixelMultiplier)
         ) * props.screen.incrementSize;
     }
-    while (
-      contextScreen.width * pixelMultiplier <
-      props.container.clientWidth
-    ) {
+    while (contextScreen.width * pixelMultiplier < parent.clientWidth) {
       contextScreen.width += props.screen.incrementSize;
     }
-    while (
-      contextScreen.height * pixelMultiplier <
-      props.container.clientHeight
-    ) {
+    while (contextScreen.height * pixelMultiplier < parent.clientHeight) {
       contextScreen.height += props.screen.incrementSize;
     }
 
     const xOffset =
-      (contextScreen.width * pixelMultiplier - props.container.clientWidth) / 2;
+      (contextScreen.width * pixelMultiplier - parent.clientWidth) / 2;
     const yOffset =
-      (contextScreen.height * pixelMultiplier - props.container.clientHeight) /
-      2;
+      (contextScreen.height * pixelMultiplier - parent.clientHeight) / 2;
 
     contextSafeScreen.offsetLeft = xOffset;
     contextSafeScreen.offsetTop = yOffset;
@@ -537,15 +503,33 @@ export default function GameRunner<
     }
   };
 
-  handleResize();
   const resizeObserver = new ResizeObserver((entries) => {
     for (let entry of entries) {
-      if (entry.target === props.container) {
+      if (entry.target === currentParent) {
         handleResize();
       }
     }
   });
-  resizeObserver.observe(props.container);
+
+  setInterval(() => {
+    const newParent = canvas.parentElement;
+    if (newParent != currentParent) {
+      if (currentParent) {
+        resizeObserver.unobserve(currentParent);
+      }
+      currentParent = newParent;
+      if (currentParent) {
+        // once its added to the DOM, we can set the initial size relative
+        // to the parent container and can start listening for resize events.
+        handleResize();
+        resizeObserver.observe(currentParent);
+      }
+    }
+  }, 100);
+
+  if (!props.editor) {
+    props.container.appendChild(canvas);
+  }
 
   return result;
 }

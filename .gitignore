@@ -1,5 +1,6 @@
 node_modules/
-www
-game/client/generated/*
 src/shaders/*
+www
+game/node_modules/*
+game/client/generated/*
 .DS_Store

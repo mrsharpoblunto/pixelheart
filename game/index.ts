@@ -2,18 +2,21 @@ import { ReadonlyVec2, vec4 } from "gl-matrix";
 import { vec2 } from "gl-matrix";
 
 import { BaseActions, BaseEvents } from "@pixelheart/api";
-import { MapContainer, MapTileSource } from "@pixelheart/map";
-import { ResourceLoader } from "@pixelheart/resource-loader";
-
 import {
   DeferredSpriteAnimator,
   DeferredSpriteEffect,
   DeferredSpriteSheet,
   DeferredSpriteTextures,
 } from "@pixelheart/effects/deferred-sprite-effect";
-import { NearestBlurEffect } from "./client/nearest-blur";
 import { SolidEffect } from "@pixelheart/effects/solid-effect";
-import { SimpleSpriteEffect, SimpleSpriteSheet } from "@pixelheart/effects/sprite-effect";
+import {
+  SimpleSpriteEffect,
+  SimpleSpriteSheet,
+} from "@pixelheart/effects/sprite-effect";
+import { MapContainer, MapTileSource } from "@pixelheart/map";
+import { ResourceLoader } from "@pixelheart/resource-loader";
+
+import { NearestBlurEffect } from "./client/nearest-blur";
 import { WaterEffect } from "./client/water-effect";
 
 export interface PersistentState {
@@ -65,10 +68,12 @@ export type EditorActions =
 export interface PersistentEditorState {
   version: number;
   active: boolean;
+  panels: { [key: string]: string };
 }
 
 export interface EditorState {
   active: boolean;
   newValue: string | null;
   pendingChanges: Map<string, EditorActions>;
+  panels: { [key: string]: string };
 }

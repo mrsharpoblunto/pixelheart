@@ -1,5 +1,5 @@
 import { vec2, vec4 } from "gl-matrix";
-import React, { useEffect, useRef } from "react";
+import React from "react";
 import { Root, createRoot } from "react-dom/client";
 
 import { EditorClient, EditorContext } from "@pixelheart/api";
@@ -17,31 +17,9 @@ import {
   GameState,
   PersistentEditorState,
 } from "../../";
+import { EditorComponent } from "./editor";
 
-const CURRENT_SERIALIZATION_VERSION = 1;
-
-interface EditorProps {
-  state: GameState;
-  editorState: EditorState;
-  canvas: HTMLCanvasElement;
-}
-
-function EditorComponent({ state, editorState, canvas }: EditorProps) {
-  const canvasRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (canvasRef.current) {
-      canvasRef.current.appendChild(canvas);
-    }
-    return () => {
-      if (canvasRef.current) {
-        canvasRef.current.removeChild(canvas);
-      }
-    };
-  }, [state, editorState]);
-
-  return <div ref={canvasRef}></div>;
-}
+const CURRENT_SERIALIZATION_VERSION = 2;
 
 export default class Editor
   implements
@@ -73,7 +51,7 @@ export default class Editor
   }
 
   onStart(
-    ctx: EditorContext<EditorActions>,
+    ctx: EditorContext<EditorActions, EditorEvents>,
     state: GameState,
     container: HTMLElement,
     previousState?: PersistentEditorState
@@ -91,15 +69,46 @@ export default class Editor
       active: previousState ? previousState.active : false,
       newValue: null,
       pendingChanges: new Map(),
+      panels: previousState?.panels || {},
     };
+
+    ctx.editorServer.onEvent((e) => {
+      switch (e.type) {
+        case "RELOAD_SHADER": {
+          reloadShader(e.shader, e.src);
+          break;
+        }
+        case "RELOAD_SPRITESHEET": {
+          reloadImage(e.spriteSheet);
+          reloadSprite(e.spriteSheet);
+          break;
+        }
+        case "RELOAD_STATIC": {
+          const links = document.head.querySelectorAll("link");
+          for (let l of links) {
+            if (
+              l.href.includes("/editor.css") &&
+              e.resources["/editor.css"] &&
+              l.href !== e.resources["/editor.css"]
+            ) {
+              const newLink = document.createElement("link");
+              newLink.rel = "stylesheet";
+              newLink.href = e.resources["/editor.css"];
+              newLink.onload = () => {
+              document.head.removeChild(l);
+              };
+              document.head.appendChild(newLink);
+            }
+          }
+        }
+      }
+    });
+
     this.#root = createRoot(container);
     this.#root.render(
-      <EditorComponent
-        state={state}
-        canvas={ctx.canvas}
-        editorState={editorState}
-      />
+      <EditorComponent ctx={ctx} game={state} editor={editorState} />
     );
+
     return editorState;
   }
 
@@ -112,30 +121,12 @@ export default class Editor
     return {
       version: CURRENT_SERIALIZATION_VERSION,
       active: editor.active,
+      panels: editor.panels,
     };
   }
 
-  onEvent(
-    ctx: EditorContext<EditorActions>,
-    state: GameState,
-    editor: EditorState,
-    event: EditorEvents
-  ) {
-    switch (event.type) {
-      case "RELOAD_SHADER": {
-        reloadShader(event.shader, event.src);
-        break;
-      }
-      case "RELOAD_SPRITESHEET": {
-        reloadImage(event.spriteSheet);
-        reloadSprite(event.spriteSheet);
-        break;
-      }
-    }
-  }
-
   onUpdate(
-    ctx: EditorContext<EditorActions>,
+    ctx: EditorContext<EditorActions, EditorEvents>,
     state: GameState,
     editor: EditorState,
     fixedDelta: number
@@ -170,7 +161,7 @@ export default class Editor
       } else {
         editor.newValue = null;
         for (let a of editor.pendingChanges.values()) {
-          ctx.editor.send(a);
+          ctx.editorServer.send(a);
         }
         editor.pendingChanges.clear();
       }
@@ -382,7 +373,7 @@ export default class Editor
   }
 
   onDraw(
-    ctx: EditorContext<EditorActions>,
+    ctx: EditorContext<EditorActions, EditorEvents>,
     state: GameState,
     editor: EditorState,
     delta: number

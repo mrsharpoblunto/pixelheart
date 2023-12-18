@@ -6,7 +6,7 @@ import path from "path";
 import postcss from "postcss";
 import tailwindcss from "tailwindcss";
 
-import { ensurePath, getFileHash } from "./common-utils";
+import { ensurePath, getFileHash, getStringHash } from "./common-utils";
 
 export const wwwPath = path.join(__dirname, "..", "www");
 export const editorClientSrcPath = path.join(
@@ -34,7 +34,9 @@ function getTailwindConfig(): any {
   return existsSync(editorTailwindFile) ? require(editorTailwindFile) : null;
 }
 
-export async function processStatic(production: boolean) {
+export async function processStatic(
+  production: boolean
+): Promise<{ [key: string]: string }> {
   await ensurePath(wwwPath);
 
   const tailwindConfig = getTailwindConfig();
@@ -43,23 +45,26 @@ export async function processStatic(production: boolean) {
   }
 
   staticLogDecorator(`Building ${chalk.green("index.html")}`);
-  await fs.writeFile(
-    path.join(wwwPath, "index.html"),
-    await generateHtml(production, tailwindConfig)
-  );
+  return await generateHtml(production, tailwindConfig);
 }
 
 async function generateHtml(
   production: boolean,
   tailwindConfig: boolean
-): Promise<string> {
-  const hash = production
-    ? await getFileHash(path.join(wwwPath, "index.js"))
+): Promise<{ [key: string]: string }> {
+  const result: { [key: string]: string } = {};
+
+  const jsHash = production
+    ? await getFileHash(path.join(wwwPath, "js", "index.js"))
     : null;
+  result["/js/index.js"] = jsHash ? `/js/index.js?v=${jsHash}` : "/js/index.js";
 
-  const css = await generateCss(production, tailwindConfig);
+  const cssHash = await generateCss(production, tailwindConfig);
+  if (cssHash) {
+    result["/editor.css"] = `/editor.css?v=${cssHash}`;
+  }
 
-  return `<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -77,24 +82,30 @@ async function generateHtml(
         overflow: hidden;
         width: 100vw;
         height: 100vh;
-      }
-      #root canvas {
-        position: relative;
+        display: flex;
       }
     </style>
-    ${css ? '<link rel="stylesheet" href="/editor.css">' : ""}
+    ${
+      result["/editor.css"]
+        ? `<link rel="stylesheet" href="${result["/editor.css"]}">`
+        : ""
+    }
   </head>
   <body>
     <div id="root"></div>
-    <script src="/js/index.js${hash ? "?v=" + hash : ""}"></script>
+    <script src="${result["/js/index.js"]}"></script>
   </body>
 </html>`;
+
+  await fs.writeFile(path.join(wwwPath, "index.html"), html);
+  result["/index.html"] = `/index.html?v=${getStringHash(html)}`;
+  return result;
 }
 
 async function generateCss(
   production: boolean,
   tailwindConfig: any
-): Promise<boolean> {
+): Promise<string | null> {
   if (!production && tailwindConfig) {
     staticLogDecorator(`Building ${chalk.green("editor.css")}`);
     const result = await postcss([
@@ -113,7 +124,7 @@ async function generateCss(
       { from: undefined, to: "www/editor.css" }
     );
     await fs.writeFile(path.join(wwwPath, "editor.css"), result.css);
-    return true;
+    return getStringHash(result.css);
   }
-  return false;
+  return null;
 }

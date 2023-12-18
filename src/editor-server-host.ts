@@ -4,6 +4,8 @@ import path from "path";
 import { Worker } from "worker_threads";
 import WebSocket from "ws";
 
+import { BaseEvents } from "./api";
+
 export class EditorServerHost {
   wss: WebSocket.Server;
   requestBuffer: Array<Object>;
@@ -57,7 +59,7 @@ export class EditorServerHost {
     });
 
     this.editor.on("message", (message: any) => {
-      this.broadcast(message);
+      this.send(message);
     });
 
     for (const request of this.requestBuffer) {
@@ -66,7 +68,7 @@ export class EditorServerHost {
     this.requestBuffer.length = 0;
   }
 
-  broadcast<T extends { type: string }>(event: T) {
+  send(event: BaseEvents) {
     this.wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
         console.log(

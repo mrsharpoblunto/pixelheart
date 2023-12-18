@@ -2,7 +2,7 @@ import { ReadonlyVec4, vec2, vec4 } from "gl-matrix";
 
 import { SpriteSheetConfig } from "./sprite";
 
-export interface EditorAction {
+export interface EditorMutation {
   type: string;
 }
 
@@ -10,18 +10,16 @@ export type BaseActions = {
   type: "RESTART";
 };
 
-export interface EditorEvent {
-  type: string;
-}
-
 export type BaseEvents =
   | { type: "EDITOR_DISCONNECTED" }
+  | { type: "RELOAD_STATIC"; resources: { [key: string]: string } }
   | { type: "RELOAD_MAP"; map: string }
   | { type: "RELOAD_SHADER"; shader: string; src: string }
   | { type: "RELOAD_SPRITESHEET"; spriteSheet: SpriteSheetConfig };
 
-export interface EditorConnection<Events> {
-  send: (data: Events) => void;
+export interface EditorConnection<Actions, Events> {
+  send: (data: Actions) => void;
+  onEvent(cb: (data: Events) => void): void;
 }
 
 export interface GameContext {
@@ -59,52 +57,41 @@ export interface GameContext {
   };
 }
 
-export interface EditorContext<Actions extends EditorAction>
-  extends GameContext {
-  editor: EditorConnection<Actions>;
+export interface EditorContext<
+  Actions extends EditorMutation,
+  Events extends EditorMutation
+> extends GameContext {
+  // the client recieves events and sends actions
+  editorServer: EditorConnection<Actions, Events>;
 }
 
 export interface EditorClient<
   State,
   EditorState,
   PersistentEditorState,
-  Actions extends EditorAction,
-  Events extends EditorEvent
+  Actions extends EditorMutation,
+  Events extends EditorMutation
 > {
   onStart(
-    ctx: EditorContext<Actions>,
+    ctx: EditorContext<Actions, Events>,
     state: State,
     container: HTMLElement,
     previousState?: PersistentEditorState
   ): EditorState;
   onEnd(container: HTMLElement): void;
   onSave(editor: EditorState): PersistentEditorState | null;
-  onEvent(
-    ctx: EditorContext<Actions>,
-    state: State,
-    editor: EditorState,
-    event: Events
-  ): void;
   onUpdate(
-    ctx: EditorContext<Actions>,
+    ctx: EditorContext<Actions, Events>,
     state: State,
     editor: EditorState,
     fixedDelta: number
   ): void;
   onDraw(
-    ctx: EditorContext<Actions>,
+    ctx: EditorContext<Actions, Events>,
     state: State,
     editor: EditorState,
     delta: number
   ): void;
-}
-
-export interface EditorServer<
-  Actions extends EditorAction,
-  Events extends EditorEvent
-> {
-  onConnect(editorConnection: EditorConnection<Events>): Promise<void>;
-  onAction(action: Actions): Promise<void>;
 }
 
 export interface GameClient<State, PersistentState> {
