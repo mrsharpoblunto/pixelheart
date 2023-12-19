@@ -8,7 +8,8 @@ import {
 
 import { EditorContext } from "@pixelheart/api";
 
-import { EditorActions, EditorEvents, EditorState, GameState } from "../../";
+import { EditorActions, EditorEvents, EditorState } from "./";
+import { GameState } from "../../client";
 
 interface EditorClientState {
   game: GameState;

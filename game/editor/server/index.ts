@@ -3,10 +3,9 @@ import fs from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 
-import { EditorConnection, EditorMutation } from "@pixelheart/api";
+import { EditorConnection } from "@pixelheart/api";
 import { MapTileSource, encodeMapTile } from "@pixelheart/map";
 
-import { EditorActions, EditorEvents } from "../../";
 import {
   MapMetadata,
   loadMapMetadata,
@@ -14,6 +13,7 @@ import {
   wwwPath as mapsWwwPath,
 } from "../../../build/map-utils";
 import { spriteSrcPath } from "../../../build/sprite-utils";
+import { EditorActions, EditorEvents } from "../client";
 
 interface WorkingMapData {
   lastAccess: number;

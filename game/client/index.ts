@@ -1,23 +1,25 @@
-import { vec2, vec3, vec4 } from "gl-matrix";
+import { ReadonlyVec2, vec2, vec3, vec4 } from "gl-matrix";
 
 import { GameClient, GameContext } from "@pixelheart/api";
 import * as coords from "@pixelheart/coordinates";
 import {
   DeferredSpriteAnimator,
   DeferredSpriteEffect,
+  DeferredSpriteSheet,
+  DeferredSpriteTextures,
   deferredTextureLoader,
 } from "@pixelheart/effects/deferred-sprite-effect";
 import { SolidEffect } from "@pixelheart/effects/solid-effect";
 import {
   SimpleSpriteEffect,
+  SimpleSpriteSheet,
   simpleTextureLoader,
 } from "@pixelheart/effects/sprite-effect";
-import { loadMapContainer } from "@pixelheart/map";
+import { MapContainer, loadMapContainer } from "@pixelheart/map";
 import { hash, smoothstep } from "@pixelheart/math";
 import { ResourceLoader } from "@pixelheart/resource-loader";
 import { loadSpriteSheet } from "@pixelheart/sprite";
 
-import { GameState, PersistentState } from "../";
 import overworldMap from "./generated/maps/overworld";
 import characterSprite from "./generated/sprites/character";
 import uiSprite from "./generated/sprites/ui";
@@ -29,13 +31,43 @@ const TOUCH_DEADZONE = 5;
 const CURRENT_SERIALIZATION_VERSION = 2;
 const MAX_TIME = 1000;
 
+export interface PersistentState {
+  version: number;
+  character: {
+    position: [number, number];
+    direction: string;
+  };
+}
+
+export interface GameState {
+  spriteEffect: DeferredSpriteEffect;
+  simpleSpriteEffect: SimpleSpriteEffect;
+  solidEffect: SolidEffect;
+  resources: ResourceLoader<{
+    ui: SimpleSpriteSheet;
+    map: MapContainer<DeferredSpriteTextures>;
+    character: {
+      sprite: DeferredSpriteSheet;
+      animator: DeferredSpriteAnimator;
+      position: vec2;
+      relativePosition: vec2;
+      speed: number;
+      boundingBox: vec4;
+    };
+  }>;
+  screen: {
+    absolutePosition: vec2;
+  };
+  animationTimer: number;
+  waterEffect: WaterEffect;
+  blurEffect: NearestBlurEffect;
+  moveTouch: { id: number; startPosition: ReadonlyVec2 } | null;
+}
+
 export default class Game implements GameClient<GameState, PersistentState> {
   constructor() {}
 
-  onStart(
-    ctx: GameContext,
-    previousState?: PersistentState
-  ): GameState {
+  onStart(ctx: GameContext, previousState?: PersistentState): GameState {
     if (
       previousState &&
       previousState.version !== CURRENT_SERIALIZATION_VERSION

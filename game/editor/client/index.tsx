@@ -2,22 +2,46 @@ import { vec2, vec4 } from "gl-matrix";
 import React from "react";
 import { Root, createRoot } from "react-dom/client";
 
-import { EditorClient, EditorContext } from "@pixelheart/api";
+import {
+  BaseActions,
+  BaseEvents,
+  EditorClient,
+  EditorContext,
+} from "@pixelheart/api";
 import * as coords from "@pixelheart/coordinates";
 import { DeferredSpriteTextures } from "@pixelheart/effects/deferred-sprite-effect";
 import { reloadShader } from "@pixelheart/gl-utils";
 import { reloadImage } from "@pixelheart/images";
-import { MapContainer } from "@pixelheart/map";
+import { MapContainer, MapTileSource } from "@pixelheart/map";
 import { reloadSprite } from "@pixelheart/sprite";
 
-import {
-  EditorActions,
-  EditorEvents,
-  EditorState,
-  GameState,
-  PersistentEditorState,
-} from "../../";
+import { GameState } from "../../client";
 import { EditorComponent } from "./editor";
+
+export type EditorEvents = BaseEvents;
+
+export type EditorActions =
+  | BaseActions
+  | {
+      type: "TILE_CHANGE";
+      x: number;
+      y: number;
+      map: string;
+      value: MapTileSource;
+    };
+
+export interface PersistentEditorState {
+  version: number;
+  active: boolean;
+  panels: { [key: string]: string };
+}
+
+export interface EditorState {
+  active: boolean;
+  newValue: string | null;
+  pendingChanges: Map<string, EditorActions>;
+  panels: { [key: string]: string };
+}
 
 const CURRENT_SERIALIZATION_VERSION = 2;
 
@@ -72,37 +96,7 @@ export default class Editor
       panels: previousState?.panels || {},
     };
 
-    ctx.editorServer.onEvent((e) => {
-      switch (e.type) {
-        case "RELOAD_SHADER": {
-          reloadShader(e.shader, e.src);
-          break;
-        }
-        case "RELOAD_SPRITESHEET": {
-          reloadImage(e.spriteSheet);
-          reloadSprite(e.spriteSheet);
-          break;
-        }
-        case "RELOAD_STATIC": {
-          const links = document.head.querySelectorAll("link");
-          for (let l of links) {
-            if (
-              l.href.includes("/editor.css") &&
-              e.resources["/editor.css"] &&
-              l.href !== e.resources["/editor.css"]
-            ) {
-              const newLink = document.createElement("link");
-              newLink.rel = "stylesheet";
-              newLink.href = e.resources["/editor.css"];
-              newLink.onload = () => {
-              document.head.removeChild(l);
-              };
-              document.head.appendChild(newLink);
-            }
-          }
-        }
-      }
-    });
+
 
     this.#root = createRoot(container);
     this.#root.render(

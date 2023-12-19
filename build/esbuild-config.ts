@@ -1,5 +1,5 @@
-import path from "path";
 import * as esbuild from "esbuild";
+import path from "path";
 
 export default function (production: boolean): esbuild.BuildOptions {
   return {
@@ -14,7 +14,12 @@ export default function (production: boolean): esbuild.BuildOptions {
         production ? "production" : "development"
       }"`,
     },
-    entryPoints: [path.join(__dirname, "../src/index.ts")],
+    format: "esm",
+    entryNames: "[name]",
+    entryPoints: [
+      path.join(__dirname, "../game/game-plugin.ts"),
+      path.join(__dirname, "../src/index.ts"),
+    ],
     platform: "browser",
     sourcemap: true,
   };

@@ -19,6 +19,9 @@ jobs:
       - name: Install
         run: npm install
 
+      - name: GameInstall
+        run: cd game && npm install
+
       - name: Build
         run: npm run dist:build
 

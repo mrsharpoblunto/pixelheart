@@ -1,9 +1,14 @@
 import { ReadonlyVec4, vec2, vec4 } from "gl-matrix";
 
+import { reloadShader } from "@pixelheart/gl-utils";
+import { reloadImage } from "@pixelheart/images";
+import { reloadSprite } from "@pixelheart/sprite";
+
 import {
+  BaseActions,
+  BaseEvents,
   EditorClient,
   EditorContext,
-  EditorMutation,
   GameClient,
 } from "./api";
 import { ClientEditorConnection } from "./editor-connections";
@@ -13,10 +18,9 @@ interface GameProps<
   PersistentState,
   EditorState,
   PersistentEditorState,
-  Actions extends EditorMutation,
-  Events extends EditorMutation
+  Actions extends BaseActions,
+  Events extends BaseEvents
 > {
-  editorSocket: WebSocket | null;
   container: HTMLElement;
   fixedUpdate: number;
   saveKey: string;
@@ -25,8 +29,8 @@ interface GameProps<
     preferredWidthIncrements: number;
     preferredHeightIncrements: number;
   };
-  game: GameClient<State, PersistentState>;
-  editor: EditorClient<
+  game: () => GameClient<State, PersistentState>;
+  editor: () => EditorClient<
     State,
     EditorState,
     PersistentEditorState,
@@ -40,8 +44,8 @@ export default function GameRunner<
   PersistentState extends Object,
   EditorState extends Object,
   PersistentEditorState extends Object,
-  Actions extends EditorMutation,
-  Events extends EditorMutation
+  Actions extends BaseActions,
+  Events extends BaseEvents
 >(
   props: GameProps<
     State,
@@ -74,6 +78,9 @@ export default function GameRunner<
 
   let selectedGamepadIndex: number | null = null;
 
+  let game = props.game();
+  const editor = props.editor();
+
   const contextScreen = {
     width: 1,
     height: 1,
@@ -87,7 +94,7 @@ export default function GameRunner<
 
   const context: EditorContext<Actions, Events> = {
     gl,
-    editorServer: new ClientEditorConnection(props.editorSocket),
+    editorServer: new ClientEditorConnection(),
     createOffscreenCanvas: (
       width: number,
       height: number,
@@ -283,21 +290,21 @@ export default function GameRunner<
 
     const gameState = (() => {
       try {
-        return props.game.onStart(
+        return game.onStart(
           context,
           saveState ? (JSON.parse(saveState) as PersistentState) : undefined
         );
       } catch (ex) {
         console.warn(ex);
-        return props.game.onStart(context);
+        return game.onStart(context);
       }
     })();
 
-    const editorState = props.editor
+    const editorState = editor
       ? (() => {
           try {
-            props.editor?.onEnd(props.container);
-            return props.editor?.onStart(
+            editor?.onEnd(props.container);
+            return editor?.onStart(
               context,
               gameState,
               props.container,
@@ -307,8 +314,8 @@ export default function GameRunner<
             );
           } catch (ex) {
             console.warn(ex);
-            props.editor?.onEnd(props.container);
-            return props.editor?.onStart(context, gameState, props.container);
+            editor?.onEnd(props.container);
+            return editor?.onStart(context, gameState, props.container);
           }
         })()
       : null;
@@ -318,6 +325,55 @@ export default function GameRunner<
       editorState,
     };
   };
+
+  context.editorServer.onEvent((e) => {
+    switch (e.type) {
+      case "RELOAD_SHADER": {
+        reloadShader(e.shader, e.src);
+        break;
+      }
+      case "RELOAD_SPRITESHEET": {
+        reloadImage(e.spriteSheet);
+        reloadSprite(e.spriteSheet);
+        break;
+      }
+      case "RELOAD_STATIC": {
+        const links = document.head.querySelectorAll("link");
+        for (let l of links) {
+          if (
+            l.href.includes("/editor.css") &&
+            e.resources["/editor.css"] &&
+            l.href !== e.resources["/editor.css"]
+          ) {
+            const newLink = document.createElement("link");
+            newLink.rel = "stylesheet";
+            newLink.href = e.resources["/editor.css"];
+            newLink.onload = () => {
+              document.head.removeChild(l);
+            };
+            document.head.appendChild(newLink);
+          }
+        }
+      }
+    }
+  });
+  if (editor) {
+    let v = 1;
+    new EventSource("/esbuild").addEventListener("change", (e) => {
+      const message = JSON.parse(e.data);
+      if (message.updated.find((f: string) => f === "/js/game-plugin.js")) {
+        console.log("Saving state before reloading game plugin...");
+        const savedState = game.onSave(result.gameState);
+        if (savedState) {
+          localStorage.setItem(props.saveKey, JSON.stringify(savedState));
+        }
+        import("/js/game-plugin.js?v=" + v++).then((plugin) => {
+          game = plugin.createGameClient();
+          console.log("Reloaded game plugin.");
+        });
+      }
+    });
+  }
 
   let contextLost = false;
   const result = {
@@ -334,13 +390,13 @@ export default function GameRunner<
       if (result.gameState) {
         localStorage.setItem(
           props.saveKey,
-          JSON.stringify(props.game.onSave(result.gameState))
+          JSON.stringify(game.onSave(result.gameState))
         );
       }
-      if (result.editorState && props.editor) {
+      if (result.editorState && editor) {
         localStorage.setItem(
           `${props.saveKey}-editor`,
-          JSON.stringify(props.editor.onSave(result.editorState))
+          JSON.stringify(editor.onSave(result.editorState))
         );
       }
     },
@@ -381,9 +437,9 @@ export default function GameRunner<
       accumulatedTime += frameTime;
 
       while (accumulatedTime >= props.fixedUpdate) {
-        props.game.onUpdate(context, result.gameState, props.fixedUpdate);
+        game.onUpdate(context, result.gameState, props.fixedUpdate);
         if (result.editorState) {
-          props.editor?.onUpdate(
+          editor?.onUpdate(
             context,
             result.gameState,
             result.editorState,
@@ -398,9 +454,9 @@ export default function GameRunner<
       }
 
       if (!contextLost) {
-        props.game.onDraw(context, result.gameState, frameTime);
+        game.onDraw(context, result.gameState, frameTime);
         if (result.editorState) {
-          props.editor?.onDraw(
+          editor?.onDraw(
             context,
             result.gameState,
             result.editorState,
@@ -417,12 +473,12 @@ export default function GameRunner<
   const handlePersist = () => {
     if (document.visibilityState === "hidden") {
       console.warn("Visibility changing, saving state...");
-      const savedState = props.game.onSave(result.gameState);
+      const savedState = game.onSave(result.gameState);
       if (savedState) {
         localStorage.setItem(props.saveKey, JSON.stringify(savedState));
       }
       if (result.editorState) {
-        const savedState = props.editor?.onSave(result.editorState);
+        const savedState = editor?.onSave(result.editorState);
         if (savedState) {
           localStorage.setItem(
             `${props.saveKey}-editor`,
@@ -527,7 +583,7 @@ export default function GameRunner<
     }
   }, 100);
 
-  if (!props.editor) {
+  if (!result.editorState) {
     props.container.appendChild(canvas);
   }
 

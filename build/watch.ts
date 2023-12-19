@@ -2,7 +2,7 @@ import { SourceLocation, codeFrameColumns } from "@babel/code-frame";
 import watcher from "@parcel/watcher";
 import chalk from "chalk";
 import { spawn } from "child_process";
-import { serve } from "esbuild";
+import * as esbuild from "esbuild";
 import fs from "fs/promises";
 import path from "path";
 import yargs from "yargs";
@@ -193,27 +193,28 @@ Promise.resolve(
 
   await processStatic(args.production);
 
-  // run the esbuild watcher
-  await serve(
-    {
-      port: PORT,
-      servedir: path.join(__dirname, "..", "www"),
-      onRequest: (args) => {
-        console.log(
-          chalk.dim("[Server]"),
-          `[${args.method}] ${args.path} ${(args.status >= 200 &&
-            args.status < 400
-            ? chalk.green
-            : chalk.red)(args.status)}`
-        );
-      },
+  const ctx = await esbuild.context({
+    color: true,
+    logLevel: "silent",
+    ...esbuildConfig(args.production),
+  });
+
+  // run the esbuild server
+  const { port } = await ctx.serve({
+    port: PORT,
+    servedir: path.join(__dirname, "..", "www"),
+    onRequest: (args: any) => {
+      console.log(
+        chalk.dim("[Server]"),
+        `[${args.method}] ${args.path} ${(args.status >= 200 &&
+          args.status < 400
+          ? chalk.green
+          : chalk.red)(args.status)}`
+      );
     },
-    {
-      color: true,
-      logLevel: "info",
-      ...esbuildConfig(args.production),
-    }
-  );
+  });
+  await ctx.watch({});
+  console.log(chalk.dim("[Server]"), `Listening on ${port}`);
 
   // avoid having to constantly reload files to display TSC errors
   const fileCache = new Map<string, string>();
@@ -250,7 +251,9 @@ Promise.resolve(
       );
       console.log(result);
     } else {
-      console.log(chalk.dim("[TSC]"), str);
+      if (str != "") {
+        console.log(chalk.dim("[TSC]"), str);
+      }
     }
   });
   tsc.stderr.on("data", (data) => {
@@ -267,8 +270,6 @@ Promise.resolve(
       `${chalk.dim("[Editor]")} ${chalk.red("Disabled in production builds")}`
     );
   }
-
-  console.log(chalk.dim("[Server]"), `Listening on port ${PORT}`);
 });
 
 async function processMapSpriteEvents(events: watcher.Event[]) {

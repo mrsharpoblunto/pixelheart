@@ -10,9 +10,15 @@ export class ClientEditorConnection<
   #eventHandlers: Array<(event: Events) => void>;
   #socket: WebSocket | null;
 
-  constructor(socket: WebSocket | null) {
+  constructor() {
     this.#eventHandlers = [];
-    this.#socket = socket;
+    this.#socket = process.env.NODE_ENV === "development"
+          ? new WebSocket(
+              `ws://${window.location.hostname}:${
+                parseInt(window.location.port, 10) + 1
+              }`
+            )
+          : null,
     this.#socket?.addEventListener("message", (e) => {
       for (const handler of this.#eventHandlers) {
         handler(JSON.parse(e.data) as Events);

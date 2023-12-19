@@ -1,34 +1,23 @@
-import Game from "../game/client";
 import GameRunner from "./game-runner";
 
 const root = document.getElementById("root");
 if (root) {
-  const props = {
-    fixedUpdate: 1000 / 60,
-    saveKey: "pixelheart",
-    game: new Game(),
-    editor: null,
-    editorSocket: null,
-    screen: {
-      incrementSize: 16,
-      preferredWidthIncrements: 20,
-      preferredHeightIncrements: 13,
-    },
-    container: root,
-  };
+  // @ts-ignore
+  const gamePlugin = import(window.__gamePluginUrl);
+  gamePlugin.then((plugin) => {
+    const props = {
+      fixedUpdate: 1000 / 60,
+      saveKey: "pixelheart",
+      game: plugin.createGameClient,
+      editor: plugin.createEditorClient,
+      screen: {
+        incrementSize: 16,
+        preferredWidthIncrements: 20,
+        preferredHeightIncrements: 13,
+      },
+      container: root,
+    };
 
-  if (process.env.NODE_ENV === "development") {
-    const socket = new WebSocket(
-      `ws://${window.location.hostname}:${
-        parseInt(window.location.port, 10) + 1
-      }`
-    );
-    socket.addEventListener("open", () => {
-      console.info("Connected to editor WebSocket");
-      const Editor = require("../game/editor/client").default;
-      GameRunner({ ...props, editor: new Editor(), editorSocket: socket });
-    });
-  } else {
     GameRunner(props);
-  }
+  });
 }

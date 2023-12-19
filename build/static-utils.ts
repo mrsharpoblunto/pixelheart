@@ -48,6 +48,20 @@ export async function processStatic(
   return await generateHtml(production, tailwindConfig);
 }
 
+async function getStaticHashes(root: string, base: string, files: Map<string, string>): Promise<void> {
+  const found = await fs.readdir(base);
+  for (const file of found) {
+    const absolutePath = path.join(base, file);
+    const stat = await fs.stat(absolutePath);
+    if (stat.isDirectory()) {
+      await getStaticHashes(root, absolutePath, files);
+    } else {
+      const relativePath = absolutePath.substring(root.length);
+      files.set(relativePath, await getFileHash(absolutePath));
+    }
+}
+}
+
 async function generateHtml(
   production: boolean,
   tailwindConfig: boolean
@@ -93,6 +107,9 @@ async function generateHtml(
   </head>
   <body>
     <div id="root"></div>
+    <script type="text/javascript">
+    window.__gamePluginUrl = "/js/game-plugin.js";
+    </script>
     <script src="${result["/js/index.js"]}"></script>
   </body>
 </html>`;
