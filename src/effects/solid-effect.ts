@@ -4,8 +4,8 @@ import { GameContext } from "../api";
 import { Quad, SpriteViewProjection } from "../geometry";
 import { InstanceBuffer, ShaderProgram } from "../gl-utils";
 
-import fragmentShader from "../shaders/solid.frag";
-import vertexShader from "../shaders/solid.vert";
+import fragmentShader from "../generated/shaders/solid.frag";
+import vertexShader from "../generated/shaders/solid.vert";
 
 type SpriteInstance = { mvp: mat3; color: ReadonlyVec4 };
 

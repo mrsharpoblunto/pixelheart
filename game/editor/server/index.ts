@@ -3,16 +3,11 @@ import fs from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 
-import { EditorConnection } from "@pixelheart/api";
+import { EditorConnection, EditorServerContext } from "@pixelheart/api";
+import { loadJson } from "@pixelheart/file-utils";
 import { MapTileSource, encodeMapTile } from "@pixelheart/map";
+import { MapMetadata, loadMapMetadata } from "@pixelheart/map-loader";
 
-import {
-  MapMetadata,
-  loadMapMetadata,
-  mapsPath,
-  wwwPath as mapsWwwPath,
-} from "../../../build/map-utils";
-import { spriteSrcPath } from "../../../build/sprite-utils";
 import { EditorActions, EditorEvents } from "../client";
 
 interface WorkingMapData {
@@ -44,12 +39,20 @@ export default class Server {
   #mapCache: Map<string, WorkingMapData>;
   #pendingMapActions: Map<string, Array<EditorActions>>;
   #connection: EditorConnection<EditorEvents, EditorActions>;
+  #context: EditorServerContext;
 
-  constructor(connection: EditorConnection<EditorEvents, EditorActions>) {
+  constructor(
+    context: EditorServerContext,
+    connection: EditorConnection<EditorEvents, EditorActions>
+  ) {
+    this.#context = context;
     this.#connection = connection;
     this.#mapCache = new Map<string, WorkingMapData>();
     this.#pendingMapActions = new Map<string, Array<EditorActions>>();
-    this.#mapUpdateInterval = setInterval(() => this.#flushMapChanges(), 5000);
+    this.#mapUpdateInterval = setInterval(
+      () => this.#flushMapChanges(),
+      5000
+    );
     this.#connection.onEvent((a) => {
       switch (a.type) {
         case "TILE_CHANGE":
@@ -90,11 +93,15 @@ export default class Server {
       }
 
       const revIndex = await loadJson(
-        path.join(spriteSrcPath, `${existing.src.meta.spriteSheet}.json`)
+        path.join(
+          this.#context.generatedSrcRoot,
+          "sprites",
+          `${existing.src.meta.spriteSheet}.json`
+        )
       );
       if (!revIndex.ok) {
         logError(
-          `Failed to sprite sheet ${existing.src.meta.spriteSheet} for map ${map}`
+          `Failed to load sprite sheet ${existing.src.meta.spriteSheet} for map ${map}`
         );
         continue;
       }
@@ -152,10 +159,15 @@ export default class Server {
   async #getMap(map: string): Promise<WorkingMapData | null> {
     let existing = this.#mapCache.get(map);
     if (!existing) {
-      const imagePath = path.join(mapsWwwPath, `${map}.png`);
+      const imagePath = path.join(
+        this.#context.outputRoot,
+        "maps",
+        `${map}.png`
+      );
+      const mapsPath = path.join(this.#context.assetsRoot, "maps");
       const image = sharp(imagePath);
       const metadata = await image.metadata();
-      const result = await loadMapMetadata(map);
+      const result = await loadMapMetadata(mapsPath, map);
       if (!result.ok) {
         return null;
       }
@@ -187,21 +199,5 @@ export default class Server {
       existing.lastAccess = Date.now();
     }
     return existing;
-  }
-}
-
-async function loadJson(file: string): Promise<
-  | {
-      ok: true;
-      data: any;
-    }
-  | {
-      ok: false;
-    }
-> {
-  try {
-    return { ok: true, data: JSON.parse(await fs.readFile(file, "utf8")) };
-  } catch (ex) {
-    return { ok: false };
   }
 }

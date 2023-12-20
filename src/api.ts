@@ -66,6 +66,13 @@ export interface EditorContext<
   editorServer: EditorConnection<Actions, Events>;
 }
 
+export interface EditorServerContext {
+  outputRoot: string;
+  gameRoot: string;
+  assetsRoot: string;
+  generatedSrcRoot: string;
+}
+
 export interface EditorClient<
   State,
   EditorState,

@@ -1,4 +1,5 @@
 import { GameContext } from "@pixelheart/api";
+import vertexShader from "@pixelheart/generated/shaders/quad.vert";
 import { Quad } from "@pixelheart/geometry";
 import {
   FrameBuffer,
@@ -6,7 +7,6 @@ import {
   createTexture,
 } from "@pixelheart/gl-utils";
 import { GPUTexture, TEXTURE } from "@pixelheart/images";
-import vertexShader from "@pixelheart/shaders/quad.vert";
 
 import fragmentShader from "./generated/shaders/nearest-blur.frag";
 

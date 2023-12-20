@@ -1,6 +1,8 @@
 import { ReadonlyVec4, mat3 } from "gl-matrix";
 
 import { GameContext } from "../api";
+import fragmentShader from "../generated/shaders/sprite.frag";
+import vertexShader from "../generated/shaders/sprite.vert";
 import { Quad, SpriteViewProjection } from "../geometry";
 import { InstanceBuffer, ShaderProgram } from "../gl-utils";
 import { GPUTexture, TEXTURE, loadTextureFromUrl } from "../images";
@@ -10,9 +12,6 @@ import {
   SpriteSheet,
   SpriteSheetConfig,
 } from "../sprite";
-
-import fragmentShader from "../shaders/sprite.frag";
-import vertexShader from "../shaders/sprite.vert";
 
 export type SimpleSpriteTextures = GPUTexture;
 export type SimpleSpriteSheet = SpriteSheet<SimpleSpriteTextures>;

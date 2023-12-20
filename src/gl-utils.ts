@@ -42,18 +42,28 @@ export interface ShaderSource {
   uniforms: { [name: string]: keyof UniformTypeMap };
 }
 
-let hotReloadCache: Map<string, string> | null = null;
-let devShaders: Map<string, Array<() => void>> | null = null;
+function getShaderState(): {
+  cache: Map<string, string>;
+  programs: Map<string, Array<() => void>>;
+} | null {
+  return process.env.NODE_ENV === "development"
+    ? // @ts-ignore
+      window.__PIXELHEART_SHADER_STATE__ ||
+        // @ts-ignore
+        (window.__PIXELHEART_SHADER_STATE__ = {
+          cache: new Map(),
+          programs: new Map(),
+        })
+    : null;
+}
 
 function registerShader<TVert extends ShaderSource, TFrag extends ShaderSource>(
   vertexShaderSource: TVert,
   fragmentShaderSource: TFrag,
   reload: () => void
 ) {
-  if (process.env.NODE_ENV === "development") {
-    if (!devShaders) {
-      devShaders = new Map();
-    }
+  const devShaders = getShaderState()?.programs;
+  if (devShaders) {
     const vs = devShaders.get(vertexShaderSource.name);
     if (vs) {
       vs.push(reload);
@@ -70,12 +80,11 @@ function registerShader<TVert extends ShaderSource, TFrag extends ShaderSource>(
 }
 
 export function reloadShader(shader: string, src: string) {
-  if (process.env.NODE_ENV === "development" && devShaders) {
-    if (!hotReloadCache) {
-      hotReloadCache = new Map();
-    }
-    hotReloadCache.set(shader, src);
-    const shaderInstances = devShaders.get(shader);
+  const state = getShaderState();
+  if (state) {
+    console.log("reloading shader", shader);
+    state.cache.set(shader, src);
+    const shaderInstances = state.programs.get(shader);
     if (shaderInstances) {
       for (let reload of shaderInstances) {
         reload();
@@ -131,7 +140,6 @@ export class ShaderProgram<
     this.#program = this.#createProgram(this.#vSource, this.#fSource);
     this.setAttributesAndUniforms(this.#vSource, this.#fSource);
     registerShader(vertexShaderSource, fragmentShaderSource, () => {
-      console.log("reloading...");
       try {
         this.#program = this.#createProgram(this.#vSource, this.#fSource);
       } catch (e) {
@@ -219,7 +227,8 @@ export class ShaderProgram<
 
     const vertexShader = this.#gl.createShader(this.#gl.VERTEX_SHADER)!;
     const vertexShaderSourceContent =
-      hotReloadCache?.get(vertexShaderSource.name) || vertexShaderSource.src;
+      getShaderState()?.cache?.get(vertexShaderSource.name) ||
+      vertexShaderSource.src;
     this.#gl.shaderSource(vertexShader, vertexShaderSourceContent);
     this.#gl.compileShader(vertexShader);
 
@@ -242,7 +251,7 @@ export class ShaderProgram<
 
     const fragmentShader = this.#gl.createShader(this.#gl.FRAGMENT_SHADER)!;
     const fragmentShaderSourceContent =
-      hotReloadCache?.get(fragmentShaderSource.name) ||
+      getShaderState()?.cache?.get(fragmentShaderSource.name) ||
       fragmentShaderSource.src;
     this.#gl.shaderSource(fragmentShader, fragmentShaderSourceContent);
     this.#gl.compileShader(fragmentShader);

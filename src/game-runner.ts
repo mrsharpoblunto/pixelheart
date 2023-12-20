@@ -340,14 +340,14 @@ export default function GameRunner<
       case "RELOAD_STATIC": {
         const links = document.head.querySelectorAll("link");
         for (let l of links) {
-          if (
-            l.href.includes("/editor.css") &&
-            e.resources["/editor.css"] &&
-            l.href !== e.resources["/editor.css"]
-          ) {
+          const href = l.getAttribute("href");
+          const hrefBase = href?.split("?")[0];
+          const match = hrefBase ? e.resources[hrefBase] : null;
+          if (match && href !== match) {
+            console.log(`Reloading stylesheet ${hrefBase}...`);
             const newLink = document.createElement("link");
             newLink.rel = "stylesheet";
-            newLink.href = e.resources["/editor.css"];
+            newLink.href = match;
             newLink.onload = () => {
               document.head.removeChild(l);
             };

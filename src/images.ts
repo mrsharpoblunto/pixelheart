@@ -13,13 +13,18 @@ export interface CPUReadableTexture extends GPUTexture {
   image: HTMLImageElement;
 }
 
-let devImages: Map<string, Array<(newUrl: string) => void>> | null = null;
+function getImageState(): Map<string, Array<(newUrl: string) => void>> | null {
+  return process.env.NODE_ENV === "development"
+    ? // @ts-ignore
+    window.__PIXELHEART_IMAGE_STATE__ ||
+     // @ts-ignore
+      (window.__PIXELHEART_IMAGE_STATE__ = new Map())
+      : null;
+}
 
 function registerImage(url: string, reload: (newUrl: string) => void) {
-  if (process.env.NODE_ENV === "development") {
-    if (!devImages) {
-      devImages = new Map();
-    }
+  const devImages = getImageState();
+  if (devImages) {
     const index = url.indexOf("?v=");
     const urlKey = url.substring(0, index);
     const images = devImages.get(urlKey);
@@ -32,7 +37,8 @@ function registerImage(url: string, reload: (newUrl: string) => void) {
 }
 
 export function reloadImage(spriteSheet: SpriteSheetConfig) {
-  if (process.env.NODE_ENV === "development" && devImages) {
+  const devImages = getImageState();
+  if (devImages) {
     const urls = Object.values(spriteSheet.urls);
     for (let u of urls) {
       const index = u.indexOf("?v=");

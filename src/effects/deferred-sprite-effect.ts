@@ -19,10 +19,10 @@ import {
 
 import lightingFragmentShader, {
   Constants as LightingConstants,
-} from "../shaders/deferred-lighting.frag";
-import lightingVertexShader from "../shaders/deferred-lighting.vert";
-import fragmentShader from "../shaders/deferred-sprite.frag";
-import vertexShader from "../shaders/deferred-sprite.vert";
+} from "../generated/shaders/deferred-lighting.frag";
+import lightingVertexShader from "../generated/shaders/deferred-lighting.vert";
+import fragmentShader from "../generated/shaders/deferred-sprite.frag";
+import vertexShader from "../generated/shaders/deferred-sprite.vert";
 
 export type DeferredSpriteTextures = {
   diffuseTexture: GPUTexture;

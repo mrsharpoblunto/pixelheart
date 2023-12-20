@@ -57,29 +57,34 @@ export interface Sprite<T> {
   ): Sprite<T>;
 }
 
-export interface SpriteSheet<T> extends Record<string, Sprite<T>> {}
+export interface SpriteSheet<T> extends Record<string, Sprite<T>> { }
 
 export interface SpriteEffect<T> {
   setTextures(texture: T): SpriteEffect<T>;
   draw(rect: ReadonlyVec4, textureCoords: ReadonlyVec4): SpriteEffect<T>;
 }
 
-let devSprites: Map<
+function getSpriteState(): Map<
   string,
   {
     config: SpriteSheetConfig;
     reloaders: Array<(config: SpriteSheetConfig) => void>;
   }
-> | null = null;
+> | null {
+  return process.env.NODE_ENV === "development"
+    ? // @ts-ignore
+    window.__PIXELHEART_SPRITE_STATE__ ||
+     // @ts-ignore
+      (window.__PIXELHEART_SPRITE_STATE__ = new Map())
+      : null;
+}
 
 function registerSprite(
   spriteSheet: SpriteSheetConfig,
   reload: (config: SpriteSheetConfig) => void
 ) {
-  if (process.env.NODE_ENV === "development") {
-    if (!devSprites) {
-      devSprites = new Map();
-    }
+  const devSprites = getSpriteState();
+  if (devSprites) {
     const sprite = devSprites.get(spriteSheet.name);
     if (!sprite) {
       devSprites.set(spriteSheet.name, {
@@ -93,7 +98,8 @@ function registerSprite(
 }
 
 export function reloadSprite(spriteSheet: SpriteSheetConfig) {
-  if (process.env.NODE_ENV === "development" && devSprites) {
+  const devSprites = getSpriteState();
+  if (devSprites) {
     const sprite = devSprites.get(spriteSheet.name);
     if (sprite) {
       // rebuild the sprite config but maintain the same object reference

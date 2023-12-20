@@ -7,8 +7,8 @@ import {
 } from "../gl-utils";
 import { GPUTexture, TEXTURE } from "@pixelheart/images";
 
-import fragmentShader from "../shaders/gaussian-blur.frag";
-import vertexShader from "../shaders/quad.vert";
+import fragmentShader from "../generated/shaders/gaussian-blur.frag";
+import vertexShader from "../generated/shaders/quad.vert";
 
 export class GaussianBlurEffect {
   #gl: WebGL2RenderingContext;

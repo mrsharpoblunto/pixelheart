@@ -1,17 +1,19 @@
 import watcher from "@parcel/watcher";
 import chalk from "chalk";
+import { EventEmitter } from "events";
 import path from "path";
 import { Worker } from "worker_threads";
 import WebSocket from "ws";
 
-import { BaseEvents } from "./api";
+import { EditorMutation } from "./api";
 
-export class EditorServerHost {
+export class EditorServerHost extends EventEmitter {
   wss: WebSocket.Server;
   requestBuffer: Array<Object>;
   editor: Worker | null;
 
   constructor(port: number, srcPath: string) {
+    super();
     this.wss = new WebSocket.Server({ port });
     this.wss.on("listening", () => {
       console.log(chalk.dim("[Editor]"), `Listening on port ${port}`);
@@ -40,6 +42,18 @@ export class EditorServerHost {
     );
     this.editor = null;
     this.createEditor();
+
+    this.on("event", (event: EditorMutation) => {
+      this.wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          console.log(
+            chalk.dim("[Editor]"),
+            `Sending ${chalk.green(event.type)} event.`
+          );
+          client.send(JSON.stringify(event));
+        }
+      });
+    });
   }
 
   createEditor() {
@@ -59,24 +73,12 @@ export class EditorServerHost {
     });
 
     this.editor.on("message", (message: any) => {
-      this.send(message);
+      this.emit("event", message);
     });
 
     for (const request of this.requestBuffer) {
       this.editor.postMessage(request);
     }
     this.requestBuffer.length = 0;
-  }
-
-  send(event: BaseEvents) {
-    this.wss.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        console.log(
-          chalk.dim("[Editor]"),
-          `Sending ${chalk.green(event.type)} event.`
-        );
-        client.send(JSON.stringify(event));
-      }
-    });
   }
 }
