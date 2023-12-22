@@ -14,8 +14,8 @@ import {
   SpriteSheetConfig,
   Tangent,
   ToTangentSpace,
-  glm,
 } from "@pixelheart/client";
+import { vec3, vec4 } from "@pixelheart/client/gl-matrix";
 
 import { ensurePath, getFileHash } from "../file-utils";
 import { BuildContext, BuildWatchEvent, BuildPlugin } from "../plugin";
@@ -27,11 +27,11 @@ const SPECULAR_LAYER = "specular";
 const EMISSIVE_LAYER = "emissive";
 const SHEET_FORMAT = "png";
 
-const DEFAULT_TANGENT_NORMAL = glm.vec3.normalize(
-  glm.vec3.create(),
-  glm.vec3.transformMat3(glm.vec3.create(), Normal, ToTangentSpace)
+const DEFAULT_TANGENT_NORMAL = vec3.normalize(
+  vec3.create(),
+  vec3.transformMat3(vec3.create(), Normal, ToTangentSpace)
 );
-const DEFAULT_NORMAL_BG = glm.vec4.fromValues(
+const DEFAULT_NORMAL_BG = vec4.fromValues(
   DEFAULT_TANGENT_NORMAL[0] * 128 + 127,
   DEFAULT_TANGENT_NORMAL[1] * 128 + 127,
   DEFAULT_TANGENT_NORMAL[2] * 128 + 127,
@@ -605,8 +605,8 @@ function isSpriteSource(p: string): boolean {
 type PixelProcessor = (
   x: number,
   y: number,
-  px: (xp: number, yp: number) => glm.vec4
-) => glm.vec4;
+  px: (xp: number, yp: number) => vec4
+) => vec4;
 
 // converts the heightmap to a tangent space normal map by taking the
 // heights around each pixel, using a sobel operator to calculate edge gradients,
@@ -614,12 +614,12 @@ type PixelProcessor = (
 // tangent space
 function toTangentNormal(): PixelProcessor {
   const vecStorage = [
-    glm.vec3.create(),
-    glm.vec3.create(),
-    glm.vec3.create(),
-    glm.vec3.create(),
-    glm.vec3.create(),
-    glm.vec3.create(),
+    vec3.create(),
+    vec3.create(),
+    vec3.create(),
+    vec3.create(),
+    vec3.create(),
+    vec3.create(),
   ];
 
   return (x, y, px) => {
@@ -654,35 +654,35 @@ function toTangentNormal(): PixelProcessor {
     // [ -1.0   -2.0   -1.0 ]
     const gy = 2 * (h00 + 2.0 * h10 + h20 - h02 - 2.0 * h12 - h22);
 
-    const scaledYNormal = glm.vec3.scale(
+    const scaledYNormal = vec3.scale(
       vecStorage[0],
       Normal,
       gy * NORMAL_ROUGHNESS
     );
-    const scaledXNormal = glm.vec3.scale(
+    const scaledXNormal = vec3.scale(
       vecStorage[1],
       Normal,
       gx * NORMAL_ROUGHNESS
     );
-    const tangentDisplacement = glm.vec3.normalize(
+    const tangentDisplacement = vec3.normalize(
       vecStorage[2],
-      glm.vec3.subtract(vecStorage[2], Tangent, scaledYNormal)
+      vec3.subtract(vecStorage[2], Tangent, scaledYNormal)
     );
-    const binormalDisplacement = glm.vec3.normalize(
+    const binormalDisplacement = vec3.normalize(
       vecStorage[3],
-      glm.vec3.subtract(vecStorage[3], Binormal, scaledXNormal)
+      vec3.subtract(vecStorage[3], Binormal, scaledXNormal)
     );
-    const localNormal = glm.vec3.cross(
+    const localNormal = vec3.cross(
       vecStorage[4],
       binormalDisplacement,
       tangentDisplacement
     );
-    const tangentNormal = glm.vec3.normalize(
+    const tangentNormal = vec3.normalize(
       vecStorage[5],
-      glm.vec3.transformMat3(vecStorage[5], localNormal, ToTangentSpace)
+      vec3.transformMat3(vecStorage[5], localNormal, ToTangentSpace)
     );
 
-    return glm.vec4.fromValues(
+    return vec4.fromValues(
       tangentNormal[0] * 128 + 127,
       tangentNormal[1] * 128 + 127,
       tangentNormal[2] * 128 + 127,
@@ -700,7 +700,7 @@ function normalizeCell(
   width: number,
   height: number,
   background: { r: number; g: number; b: number; alpha: number },
-  process?: (x: number, y: number, px: (xp: number, yp: number) => glm.vec4) => glm.vec4
+  process?: (x: number, y: number, px: (xp: number, yp: number) => vec4) => vec4
 ): sharp.Sharp {
   let src = c.rawCelData;
   if (process) {
@@ -708,7 +708,7 @@ function normalizeCell(
     const px = (x: number, y: number) => {
       x = Math.max(0, Math.min(c.w - 1, x));
       y = Math.max(0, Math.min(c.h - 1, y));
-      return glm.vec4.fromValues(
+      return vec4.fromValues(
         src[y * c.w * 4 + x * 4],
         src[y * c.w * 4 + x * 4 + 1],
         src[y * c.w * 4 + x * 4 + 2],

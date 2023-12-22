@@ -6,7 +6,7 @@ import {
   PanelResizeHandle,
 } from "react-resizable-panels";
 
-import { EditorContext } from "@pixelheart/api";
+import { EditorContext } from "@pixelheart/client";
 
 import { GameState } from "../../client";
 import { EditorActions, EditorEvents, EditorState } from "./";

@@ -4,13 +4,14 @@ import {
   SpriteViewProjection,
   InstanceBuffer,
   ShaderProgram,
-  glm,
 } from "@pixelheart/client";
+
+import { mat3, ReadonlyVec4 } from "@pixelheart/client/gl-matrix";
 
 import fragmentShader from "./shaders/solid.frag";
 import vertexShader from "./shaders/solid.vert";
 
-type SpriteInstance = { mvp: glm.mat3; color: glm.ReadonlyVec4 };
+type SpriteInstance = { mvp: mat3; color: ReadonlyVec4 };
 
 export class SolidEffect {
   #gl: WebGL2RenderingContext;
@@ -37,11 +38,11 @@ export class SolidEffect {
     });
   }
 
-  draw(bounds: glm.ReadonlyVec4, color: glm.ReadonlyVec4): SolidEffect {
-    const mvp = glm.mat3.create();
-    glm.mat3.translate(mvp, mvp, [bounds[3], bounds[0]]);
-    glm.mat3.scale(mvp, mvp, [bounds[1] - bounds[3], bounds[2] - bounds[0]]);
-    glm.mat3.multiply(mvp, SpriteViewProjection, mvp);
+  draw(bounds: ReadonlyVec4, color: ReadonlyVec4): SolidEffect {
+    const mvp = mat3.create();
+    mat3.translate(mvp, mvp, [bounds[3], bounds[0]]);
+    mat3.scale(mvp, mvp, [bounds[1] - bounds[3], bounds[2] - bounds[0]]);
+    mat3.multiply(mvp, SpriteViewProjection, mvp);
 
     this.#pending.push({ mvp, color });
     return this;

@@ -14,8 +14,8 @@ import {
   SpriteSheet,
   SpriteSheetConfig,
   ToTangentSpace,
-  glm,
 } from "@pixelheart/client";
+import { vec3, mat3, ReadonlyVec4 } from "@pixelheart/client/gl-matrix";
 
 import lightingFragmentShader, {
   Constants as LightingConstants,
@@ -33,13 +33,13 @@ export type DeferredSpriteTextures = {
 export type DeferredSpriteSheet = SpriteSheet<DeferredSpriteTextures>;
 export class DeferredSpriteAnimator extends SpriteAnimator<DeferredSpriteTextures> {}
 
-const BLACK: glm.vec3 = glm.vec3.fromValues(0, 0, 0);
-const FULL_MVP = glm.mat3.create();
-glm.mat3.scale(FULL_MVP, FULL_MVP, [1, -1]);
-glm.mat3.mul(FULL_MVP, FULL_MVP, SpriteViewProjection);
-const FULL_UV = glm.mat3.create();
-glm.mat3.translate(FULL_UV, FULL_UV, [0, 0]);
-glm.mat3.scale(FULL_UV, FULL_UV, [1, 1]);
+const BLACK: vec3 = vec3.fromValues(0, 0, 0);
+const FULL_MVP = mat3.create();
+mat3.scale(FULL_MVP, FULL_MVP, [1, -1]);
+mat3.mul(FULL_MVP, FULL_MVP, SpriteViewProjection);
+const FULL_UV = mat3.create();
+mat3.translate(FULL_UV, FULL_UV, [0, 0]);
+mat3.scale(FULL_UV, FULL_UV, [1, 1]);
 
 export async function deferredTextureLoader(
   ctx: GameContext,
@@ -61,28 +61,28 @@ export async function deferredTextureLoader(
 }
 
 export type ScreenSpaceDirectionalLight = {
-  diffuse: glm.vec3;
-  ambient: glm.vec3;
-  direction: glm.vec3;
+  diffuse: vec3;
+  ambient: vec3;
+  direction: vec3;
 };
 
 export type ScreenSpacePointLight = {
-  diffuse: glm.vec3;
-  position: glm.vec3;
+  diffuse: vec3;
+  position: vec3;
   radius: number;
 };
 
 type SpriteInstance = {
-  mvp: glm.mat3;
-  uv: glm.mat3;
+  mvp: mat3;
+  uv: mat3;
 };
 
 type LightInstance = {
-  mvp: glm.mat3;
-  uv: glm.mat3;
-  ambient: glm.vec3;
-  diffuse: glm.vec3;
-  direction: glm.vec3;
+  mvp: mat3;
+  uv: mat3;
+  ambient: vec3;
+  diffuse: vec3;
+  direction: vec3;
   radius: number;
 };
 
@@ -275,7 +275,7 @@ export class DeferredSpriteEffect
           u_normalTexture: g.normal,
           u_specularTexture: g.specular,
           u_toTangentSpace: ToTangentSpace,
-          u_viewDirection: glm.vec3.fromValues(0, 0, -1),
+          u_viewDirection: vec3.fromValues(0, 0, -1),
         });
 
         if (this.#pendingDirectionalLights.length) {
@@ -335,29 +335,29 @@ export class DeferredSpriteEffect
       light.radius * light.radius - light.position[2] * light.position[2]
     );
 
-    const mvp = glm.mat3.create();
-    glm.mat3.translate(mvp, mvp, [
+    const mvp = mat3.create();
+    mat3.translate(mvp, mvp, [
       light.position[0] - intersectingRadius,
       light.position[1] - intersectingRadius,
     ]);
-    glm.mat3.scale(mvp, mvp, [intersectingRadius * 2, intersectingRadius * 2]);
-    glm.mat3.mul(mvp, SpriteViewProjection, mvp);
-    const uv = glm.mat3.create();
-    glm.mat3.translate(uv, uv, [
+    mat3.scale(mvp, mvp, [intersectingRadius * 2, intersectingRadius * 2]);
+    mat3.mul(mvp, SpriteViewProjection, mvp);
+    const uv = mat3.create();
+    mat3.translate(uv, uv, [
       light.position[0] - intersectingRadius,
       // OpenGL has the origin at the bottom left, so we need to flip the Y axis
       // to match the UV coordinates which have the origin at the top left
       1.0 - light.position[1] + intersectingRadius,
     ]);
-    glm.mat3.scale(uv, uv, [intersectingRadius * 2, intersectingRadius * 2]);
-    glm.mat3.scale(uv, uv, [1, -1]);
+    mat3.scale(uv, uv, [intersectingRadius * 2, intersectingRadius * 2]);
+    mat3.scale(uv, uv, [1, -1]);
 
     this.#pendingPointLights.push({
       mvp,
       uv,
       ambient: BLACK,
       diffuse: light.diffuse,
-      direction: glm.vec3.fromValues(
+      direction: vec3.fromValues(
         light.position[0],
         1.0 - light.position[1],
         light.position[2]
@@ -390,24 +390,24 @@ export class DeferredSpriteEffect
   }
 
   draw(
-    screenSpaceRect: glm.ReadonlyVec4,
-    textureCoords: glm.ReadonlyVec4
+    screenSpaceRect: ReadonlyVec4,
+    textureCoords: ReadonlyVec4
   ): DeferredSpriteEffect {
     if (this.#texture) {
-      const mvp = glm.mat3.create();
-      glm.mat3.translate(mvp, mvp, [screenSpaceRect[3], screenSpaceRect[0]]);
-      glm.mat3.scale(mvp, mvp, [
+      const mvp = mat3.create();
+      mat3.translate(mvp, mvp, [screenSpaceRect[3], screenSpaceRect[0]]);
+      mat3.scale(mvp, mvp, [
         screenSpaceRect[1] - screenSpaceRect[3],
         screenSpaceRect[2] - screenSpaceRect[0],
       ]);
-      glm.mat3.multiply(mvp, SpriteViewProjection, mvp);
+      mat3.multiply(mvp, SpriteViewProjection, mvp);
 
-      const uv = glm.mat3.create();
-      glm.mat3.translate(uv, uv, [
+      const uv = mat3.create();
+      mat3.translate(uv, uv, [
         textureCoords[3] / this.#texture.diffuseTexture.width,
         textureCoords[0] / this.#texture.diffuseTexture.height,
       ]);
-      glm.mat3.scale(uv, uv, [
+      mat3.scale(uv, uv, [
         (textureCoords[1] - textureCoords[3]) /
           this.#texture.diffuseTexture.width,
         (textureCoords[2] - textureCoords[0]) /

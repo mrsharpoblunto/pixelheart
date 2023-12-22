@@ -1,5 +1,3 @@
-import { vec2 } from "gl-matrix";
-
 import {
   Binormal,
   GPUTexture,
@@ -11,6 +9,7 @@ import {
   Tangent,
   ToTangentSpace,
 } from "@pixelheart/client";
+import { vec2 } from "@pixelheart/client/gl-matrix";
 import vertexShader from "@pixelheart/effects/shaders/quad.vert";
 
 import fragmentShader from "./shaders/water.frag";

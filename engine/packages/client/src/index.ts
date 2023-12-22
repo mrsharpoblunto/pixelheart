@@ -1,4 +1,3 @@
-export * as glm from "gl-matrix";
 export * from "./game";
 export * from "./editor";
 export * from "./map";

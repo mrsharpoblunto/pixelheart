@@ -4,11 +4,11 @@ import {
   MapContainer,
   ResourceLoader,
   coords,
-  glm,
   loadMapContainer,
   loadSpriteSheet,
   math,
 } from "@pixelheart/client";
+import { vec2, vec3, vec4, ReadonlyVec2 } from "@pixelheart/client/gl-matrix";
 import {
   DeferredSpriteAnimator,
   DeferredSpriteEffect,
@@ -50,23 +50,23 @@ export interface GameState {
     character: {
       sprite: DeferredSpriteSheet;
       animator: DeferredSpriteAnimator;
-      position: glm.vec2;
-      relativePosition: glm.vec2;
+      position: vec2;
+      relativePosition: vec2;
       speed: number;
-      boundingBox: glm.vec4;
+      boundingBox: vec4;
     };
   }>;
   screen: {
-    absolutePosition: glm.vec2;
+    absolutePosition: vec2;
   };
   animationTimer: number;
   waterEffect: WaterEffect;
   blurEffect: NearestBlurEffect;
-  moveTouch: { id: number; startPosition: glm.ReadonlyVec2 } | null;
+  moveTouch: { id: number; startPosition: ReadonlyVec2 } | null;
 }
 
 export default class Game implements GameClient<GameState, PersistentState> {
-  constructor() {}
+  constructor() { }
 
   onStart(ctx: GameContext, previousState?: PersistentState): GameState {
     if (
@@ -104,16 +104,16 @@ export default class Game implements GameClient<GameState, PersistentState> {
               8 / 1000
             ),
             position: previousState
-              ? glm.vec2.fromValues(
-                  previousState.character.position[0],
-                  previousState.character.position[1]
-                )
-              : glm.vec2.fromValues(
-                  overworldMap.startPosition.x * coords.TILE_SIZE,
-                  overworldMap.startPosition.y * coords.TILE_SIZE
-                ),
-            relativePosition: glm.vec2.create(),
-            boundingBox: glm.vec4.fromValues(
+              ? vec2.fromValues(
+                previousState.character.position[0],
+                previousState.character.position[1]
+              )
+              : vec2.fromValues(
+                overworldMap.startPosition.x * coords.TILE_SIZE,
+                overworldMap.startPosition.y * coords.TILE_SIZE
+              ),
+            relativePosition: vec2.create(),
+            boundingBox: vec4.fromValues(
               c.walk_u.height - 14,
               c.walk_u.width - 2,
               c.walk_u.height - 4,
@@ -128,7 +128,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
       blurEffect: new NearestBlurEffect(ctx),
       animationTimer: 0,
       screen: {
-        absolutePosition: glm.vec2.create(),
+        absolutePosition: vec2.create(),
       },
       moveTouch: null,
     };
@@ -209,7 +209,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
         if (state.moveTouch === null && Date.now() - v.started > 250) {
           state.moveTouch = {
             id: k,
-            startPosition: glm.vec2.clone(v.position),
+            startPosition: vec2.clone(v.position),
           };
         }
       }
@@ -273,7 +273,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
       }
 
       // but movement is not
-      const movement = glm.vec2.create();
+      const movement = vec2.create();
       if (direction.left) {
         movement[0]--;
       }
@@ -287,11 +287,11 @@ export default class Game implements GameClient<GameState, PersistentState> {
         movement[1]++;
       }
       // make sure angular movement isn't faster than up/down/left/right
-      glm.vec2.normalize(movement, movement);
-      glm.vec2.scale(movement, movement, r.character.speed);
-      glm.vec2.add(movement, movement, r.character.position);
+      vec2.normalize(movement, movement);
+      vec2.scale(movement, movement, r.character.speed);
+      vec2.add(movement, movement, r.character.position);
 
-      const renderOffset = glm.vec2.fromValues(
+      const renderOffset = vec2.fromValues(
         r.character.animator.getSprite().width / 2,
         r.character.animator.getSprite().height / 2
       );
@@ -302,59 +302,59 @@ export default class Game implements GameClient<GameState, PersistentState> {
         r.map.data.read(
           Math.floor(
             (movement[0] - renderOffset[0] + r.character.boundingBox[3]) /
-              coords.TILE_SIZE
+            coords.TILE_SIZE
           ),
           Math.floor(
             (movement[1] - renderOffset[1] + r.character.boundingBox[0]) /
-              coords.TILE_SIZE
+            coords.TILE_SIZE
           )
         ).walkable &&
         // top right
         r.map.data.read(
           Math.floor(
             (movement[0] - renderOffset[0] + r.character.boundingBox[1]) /
-              coords.TILE_SIZE
+            coords.TILE_SIZE
           ),
           Math.floor(
             (movement[1] - renderOffset[1] + r.character.boundingBox[0]) /
-              coords.TILE_SIZE
+            coords.TILE_SIZE
           )
         ).walkable &&
         // bottom left
         r.map.data.read(
           Math.floor(
             (movement[0] - renderOffset[0] + r.character.boundingBox[3]) /
-              coords.TILE_SIZE
+            coords.TILE_SIZE
           ),
           Math.floor(
             (movement[1] - renderOffset[1] + r.character.boundingBox[2]) /
-              coords.TILE_SIZE
+            coords.TILE_SIZE
           )
         ).walkable &&
         // bottom right
         r.map.data.read(
           Math.floor(
             (movement[0] - renderOffset[0] + r.character.boundingBox[1]) /
-              coords.TILE_SIZE
+            coords.TILE_SIZE
           ),
           Math.floor(
             (movement[1] - renderOffset[1] + r.character.boundingBox[2]) /
-              coords.TILE_SIZE
+            coords.TILE_SIZE
           )
         ).walkable;
 
       if (isWalkable) {
-        const renderOffset = glm.vec2.fromValues(
+        const renderOffset = vec2.fromValues(
           r.character.animator.getSprite().width / 2,
           r.character.animator.getSprite().height / 2
         );
-        const mapSize = glm.vec2.fromValues(
+        const mapSize = vec2.fromValues(
           r.map.data.width * coords.TILE_SIZE,
           r.map.data.height * coords.TILE_SIZE
         );
-        glm.vec2.subtract(mapSize, mapSize, renderOffset);
-        glm.vec2.min(r.character.position, movement, mapSize);
-        glm.vec2.max(r.character.position, r.character.position, renderOffset);
+        vec2.subtract(mapSize, mapSize, renderOffset);
+        vec2.min(r.character.position, movement, mapSize);
+        vec2.max(r.character.position, r.character.position, renderOffset);
       }
 
       // character position relative to the top left of the screen
@@ -363,22 +363,22 @@ export default class Game implements GameClient<GameState, PersistentState> {
           ? r.character.position[0]
           : r.character.position[0] >
             r.map.data.width * coords.TILE_SIZE - ctx.screen.width / 2
-          ? r.character.position[0] -
+            ? r.character.position[0] -
             r.map.data.width * coords.TILE_SIZE +
             ctx.screen.width
-          : ctx.screen.width / 2;
+            : ctx.screen.width / 2;
       r.character.relativePosition[1] =
         r.character.position[1] < ctx.screen.height / 2
           ? r.character.position[1]
           : r.character.position[1] >
             r.map.data.height * coords.TILE_SIZE - ctx.screen.height / 2
-          ? r.character.position[1] -
+            ? r.character.position[1] -
             r.map.data.height * coords.TILE_SIZE +
             ctx.screen.height
-          : ctx.screen.height / 2;
+            : ctx.screen.height / 2;
 
       // Record the scroll offset of the screen
-      glm.vec2.subtract(
+      vec2.subtract(
         state.screen.absolutePosition,
         r.character.position,
         r.character.relativePosition
@@ -393,7 +393,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
     ctx.gl.blendFunc(ctx.gl.SRC_ALPHA, ctx.gl.ONE_MINUS_SRC_ALPHA);
 
     const ssp = coords.toAbsoluteTileFromAbsolute(
-      glm.vec4.create(),
+      vec4.create(),
       state.screen.absolutePosition
     );
 
@@ -404,46 +404,46 @@ export default class Game implements GameClient<GameState, PersistentState> {
       state.animationTimer < MAX_TIME * 0.25
         ? math.smoothstep(0, MAX_TIME * 0.25, state.animationTimer)
         : state.animationTimer < MAX_TIME * 0.5
-        ? 1.0
-        : state.animationTimer < MAX_TIME * 0.75
-        ? 1.0 -
-          math.smoothstep(MAX_TIME * 0.5, MAX_TIME * 0.75, state.animationTimer)
-        : 0.0;
+          ? 1.0
+          : state.animationTimer < MAX_TIME * 0.75
+            ? 1.0 -
+            math.smoothstep(MAX_TIME * 0.5, MAX_TIME * 0.75, state.animationTimer)
+            : 0.0;
     const sunDirection = Math.cos(
       (Math.min(state.animationTimer, MAX_TIME * 0.75) * Math.PI) /
-        (MAX_TIME * 0.75)
+      (MAX_TIME * 0.75)
     );
 
     state.spriteEffect
       .addDirectionalLight({
-        ambient: glm.vec3.fromValues(
+        ambient: vec3.fromValues(
           0.2 + day * 0.3,
           0.2 + day * 0.3,
           0.4 + day * 0.1
         ),
-        direction: glm.vec3.fromValues(sunDirection, day * 0.3 + 0.2, -1.0),
-        diffuse: glm.vec3.fromValues(
+        direction: vec3.fromValues(sunDirection, day * 0.3 + 0.2, -1.0),
+        diffuse: vec3.fromValues(
           Math.pow(day, 0.25) * (1 - day) + day * 0.5,
           day * 0.5,
           day * 0.45
         ),
       })
       .addDirectionalLight({
-        ambient: glm.vec3.create(),
-        direction: glm.vec3.fromValues(0.0, (1 - day) * 0.5, -1.0),
-        diffuse: glm.vec3.fromValues(
+        ambient: vec3.create(),
+        direction: vec3.fromValues(0.0, (1 - day) * 0.5, -1.0),
+        diffuse: vec3.fromValues(
           (1 - day) * 0.2,
           (1 - day) * 0.2,
           (1 - day) * 0.2
         ),
       })
       .addPointLight({
-        diffuse: glm.vec3.fromValues(
+        diffuse: vec3.fromValues(
           0.6 * (1 - day),
           0.6 * (1 - day),
           0.3 * (1 - day)
         ),
-        position: glm.vec3.fromValues(
+        position: vec3.fromValues(
           ctx.mouse.position[0] / ctx.screen.width,
           ctx.mouse.position[1] / ctx.screen.height,
           0.1
@@ -473,8 +473,8 @@ export default class Game implements GameClient<GameState, PersistentState> {
                   const mapY = y + ssp[1];
 
                   const position = ctx.screen.toScreenSpace(
-                    glm.vec4.create(),
-                    glm.vec4.fromValues(
+                    vec4.create(),
+                    vec4.fromValues(
                       y * coords.TILE_SIZE - ssp[3],
                       x * coords.TILE_SIZE + coords.TILE_SIZE - ssp[2],
                       y * coords.TILE_SIZE + coords.TILE_SIZE - ssp[3],
@@ -494,7 +494,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
                 }
               }
             } else {
-              const offset = glm.vec2.fromValues(
+              const offset = vec2.fromValues(
                 r.character.animator.getSprite().width / 2,
                 r.character.animator.getSprite().height / 2
               );
@@ -502,8 +502,8 @@ export default class Game implements GameClient<GameState, PersistentState> {
               r.character.animator.draw(
                 s,
                 ctx.screen.toScreenSpace(
-                  glm.vec4.create(),
-                  glm.vec4.fromValues(
+                  vec4.create(),
+                  vec4.fromValues(
                     Math.floor(r.character.relativePosition[1]) - offset[1],
                     Math.floor(r.character.relativePosition[0]) + offset[0],
                     Math.floor(r.character.relativePosition[1]) + offset[1],
@@ -515,11 +515,11 @@ export default class Game implements GameClient<GameState, PersistentState> {
           });
         },
         (mask) => {
-          const pos = glm.vec2.clone(state.screen.absolutePosition);
-          glm.vec2.div(
+          const pos = vec2.clone(state.screen.absolutePosition);
+          vec2.div(
             pos,
             pos,
-            glm.vec2.fromValues(ctx.screen.width, ctx.screen.height)
+            vec2.fromValues(ctx.screen.width, ctx.screen.height)
           );
           state.blurEffect.draw(mask, 3.0);
           state.waterEffect.draw(
@@ -537,13 +537,8 @@ export default class Game implements GameClient<GameState, PersistentState> {
       if (lightingTexture) {
         s.setTextures(lightingTexture);
         s.draw(
-          glm.vec4.fromValues(1.0, 1.0, 0, 0),
-          glm.vec4.fromValues(
-            0,
-            lightingTexture.width,
-            lightingTexture.height,
-            0
-          )
+          vec4.fromValues(1.0, 1.0, 0, 0),
+          vec4.fromValues(0, lightingTexture.width, lightingTexture.height, 0)
         );
       }
 
@@ -554,8 +549,8 @@ export default class Game implements GameClient<GameState, PersistentState> {
           r.ui.touch.draw(
             s,
             ctx.screen.toScreenSpace(
-              glm.vec4.create(),
-              glm.vec4.fromValues(
+              vec4.create(),
+              vec4.fromValues(
                 Math.round(moveTouch.startPosition[1]) - 32,
                 Math.round(moveTouch.startPosition[0]) + 32,
                 Math.round(moveTouch.startPosition[1]) + 32,

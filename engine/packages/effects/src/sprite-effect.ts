@@ -11,8 +11,8 @@ import {
   SpriteViewProjection,
   TEXTURE,
   loadTextureFromUrl,
-  glm,
 } from "@pixelheart/client";
+import { mat3, ReadonlyVec4 } from "@pixelheart/client/gl-matrix";
 
 import fragmentShader from "./shaders/sprite.frag";
 import vertexShader from "./shaders/sprite.vert";
@@ -29,8 +29,8 @@ export async function simpleTextureLoader(
 }
 
 type SpriteInstance = {
-  mvp: glm.mat3;
-  uv: glm.mat3;
+  mvp: mat3;
+  uv: mat3;
   alpha: number;
 };
 
@@ -84,19 +84,19 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
     return this;
   }
 
-  draw(rect: glm.ReadonlyVec4, textureCoords: glm.ReadonlyVec4): SimpleSpriteEffect {
+  draw(rect: ReadonlyVec4, textureCoords: ReadonlyVec4): SimpleSpriteEffect {
     if (this.#texture) {
-      const mvp = glm.mat3.create();
-      glm.mat3.translate(mvp, mvp, [rect[3], rect[0]]);
-      glm.mat3.scale(mvp, mvp, [rect[1] - rect[3], rect[2] - rect[0]]);
-      glm.mat3.multiply(mvp, SpriteViewProjection, mvp);
+      const mvp = mat3.create();
+      mat3.translate(mvp, mvp, [rect[3], rect[0]]);
+      mat3.scale(mvp, mvp, [rect[1] - rect[3], rect[2] - rect[0]]);
+      mat3.multiply(mvp, SpriteViewProjection, mvp);
 
-      const uv = glm.mat3.create();
-      glm.mat3.translate(uv, uv, [
+      const uv = mat3.create();
+      mat3.translate(uv, uv, [
         textureCoords[3] / this.#texture.width,
         textureCoords[0] / this.#texture.height,
       ]);
-      glm.mat3.scale(uv, uv, [
+      mat3.scale(uv, uv, [
         (textureCoords[1] - textureCoords[3]) / this.#texture.width,
         (textureCoords[2] - textureCoords[0]) / this.#texture.height,
       ]);

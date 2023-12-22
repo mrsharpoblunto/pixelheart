@@ -273,7 +273,9 @@ Promise.resolve(
     .scriptName("pixelheart")
     .usage("$0 <cmd> args")
     .fail((msg, err, yargs) => {
-      console.error(msg);
+      if (msg) {
+        console.error(msg);
+      }
       process.exit(1);
     }).argv
 );
@@ -296,8 +298,8 @@ async function loadBuildPlugins(
       }
       const pluginName = p.replace(path.extname(p), "");
       if (!filter || filter.includes(pluginName)) {
-        const pluginPath = path.join(r, pluginName);
-        const plugin = await import(pluginPath);
+        const pluginPath = path.join(r, p);
+        const plugin = require(pluginPath);
         plugins.push({
           name: pluginName,
           plugin: new plugin.default() as BuildPlugin,
