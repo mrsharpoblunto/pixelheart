@@ -79,10 +79,21 @@ export default class ESBuildPlugin extends EventEmitter implements BuildPlugin {
         ["process.env.NODE_ENV"]: `"${
           ctx.production ? "production" : "development"
         }"`,
+        ["process.env.GAME_CLIENT"]: `"${path.join(
+          ctx.gameRoot,
+          "client",
+          "index.ts"
+        )}"`,
+        ["process.env.GAME_EDITOR"]: `"${path.join(
+          ctx.gameRoot,
+          "editor",
+          "client",
+          "index.ts"
+        )}"`,
       },
       format: "esm",
       entryNames: "[name]",
-      entryPoints: [path.join(ctx.gameRoot, "index.ts")],
+      entryPoints: ["@pixelheart/client/entrypoint"],
       platform: "browser",
       sourcemap: true,
     };

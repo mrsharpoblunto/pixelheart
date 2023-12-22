@@ -1,19 +1,16 @@
 import { ReadonlyVec4, vec2, vec4 } from "gl-matrix";
 
-import { reloadShader } from "./gl-utils";
-import { reloadImage } from "./images";
-import { reloadSprite } from "./sprite";
-
 import {
   BaseActions,
   BaseEvents,
+  ClientEditorConnection,
   EditorClient,
   EditorContext,
-  ClientEditorConnection,
 } from "./editor";
-import {
-  GameClient,
-} from "./game";
+import { GameClient } from "./game";
+import { reloadShader } from "./gl-utils";
+import { reloadImage } from "./images";
+import { reloadSprite } from "./sprite";
 
 interface GameProps<
   State,
@@ -31,8 +28,8 @@ interface GameProps<
     preferredWidthIncrements: number;
     preferredHeightIncrements: number;
   };
-  game: () => GameClient<State, PersistentState>;
-  editor: () => EditorClient<
+  game: GameClient<State, PersistentState>;
+  editor: EditorClient<
     State,
     EditorState,
     PersistentEditorState,
@@ -80,8 +77,8 @@ export default function GameRunner<
 
   let selectedGamepadIndex: number | null = null;
 
-  let game = props.game();
-  const editor = props.editor();
+  let game = props.game;
+  const editor = props.editor;
 
   const contextScreen = {
     width: 1,
@@ -304,22 +301,22 @@ export default function GameRunner<
 
     const editorState = editor
       ? (() => {
-          try {
-            editor?.onEnd(props.container);
-            return editor?.onStart(
-              context,
-              gameState,
-              props.container,
-              editorSaveState
-                ? (JSON.parse(editorSaveState) as PersistentEditorState)
-                : undefined
-            );
-          } catch (ex) {
-            console.warn(ex);
-            editor?.onEnd(props.container);
-            return editor?.onStart(context, gameState, props.container);
-          }
-        })()
+        try {
+          editor?.onEnd(props.container);
+          return editor?.onStart(
+            context,
+            gameState,
+            props.container,
+            editorSaveState
+              ? (JSON.parse(editorSaveState) as PersistentEditorState)
+              : undefined
+          );
+        } catch (ex) {
+          console.warn(ex);
+          editor?.onEnd(props.container);
+          return editor?.onStart(context, gameState, props.container);
+        }
+      })()
       : null;
 
     return {
@@ -363,14 +360,14 @@ export default function GameRunner<
     let v = 1;
     new EventSource("/esbuild").addEventListener("change", (e) => {
       const message = JSON.parse(e.data);
-      if (message.updated.find((f: string) => f === "/js/index.js")) {
+      if (message.updated.find((f: string) => f === "/js/entrypoint.js")) {
         console.log("Saving state before reloading game plugin...");
         const savedState = game.onSave(result.gameState);
         if (savedState) {
           localStorage.setItem(props.saveKey, JSON.stringify(savedState));
         }
-        import("/js/index.js?v=" + v++).then((plugin) => {
-          game = plugin.createGameClient();
+        import("/js/entrypoint.js?v=" + v++).then((module) => {
+          game = module.default.createGameClient();
           console.log("Reloaded game plugin.");
         });
       }

@@ -4,7 +4,8 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": "./dist/index.js",
-    "./gl-matrix": "./dist/gl-matrix.js"
+    "./gl-matrix": "./dist/gl-matrix.js",
+    "./entrypoint": "./dist/entrypoint.js"
   },
   "scripts": {
     "clean": "rm -rf dist && rm tsconfig.tsbuildinfo",

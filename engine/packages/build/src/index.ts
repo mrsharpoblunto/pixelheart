@@ -434,14 +434,14 @@ function watchTypescript(gameRoot: string) {
       console.log(result);
     } else {
       if (str != "") {
-        console.log(chalk.dim("[TSC]"), str);
+        console.log(chalk.dim("[tsc]"), str);
       }
     }
   });
   tsc.stderr.on("data", (data) => {
-    console.log(chalk.dim("[TSC]"), chalk.red(data.toString()));
+    console.log(chalk.dim("[tsc]"), chalk.red(data.toString()));
   });
   tsc.on("close", (code) => {
-    console.log(chalk.dim("[TSC]"), `TSC closed ${code}`);
+    console.log(chalk.dim("[tsc]"), `TSC closed ${code}`);
   });
 }

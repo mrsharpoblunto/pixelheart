@@ -1,4 +1,3 @@
-import React from "react";
 import { Root, createRoot } from "react-dom/client";
 
 import {
@@ -14,7 +13,7 @@ import { vec2, vec4 } from "@pixelheart/client/gl-matrix";
 import { DeferredSpriteTextures } from "@pixelheart/effects";
 
 import { GameState } from "../../client";
-import { EditorComponent } from "./editor";
+import { renderEditor } from "./editor";
 
 export type EditorEvents = BaseEvents;
 
@@ -95,9 +94,7 @@ export default class Editor
     };
 
     this.#root = createRoot(container);
-    this.#root.render(
-      <EditorComponent ctx={ctx} game={state} editor={editorState} />
-    );
+    renderEditor(this.#root, ctx, state, editorState);
 
     return editorState;
   }

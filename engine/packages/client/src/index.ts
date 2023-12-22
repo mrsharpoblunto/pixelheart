@@ -8,4 +8,3 @@ export * from "./images";
 export * as coords from "./coordinates";
 export * as math from "./math";
 export * from "./resource-loader";
-export * from "./entrypoint";

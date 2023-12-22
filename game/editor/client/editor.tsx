@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { Root } from "react-dom/client";
 import {
   Panel,
   PanelGroup,
@@ -23,6 +24,15 @@ type EditorUIActions =
   | {
       type: "TOGGLE_EDITOR";
     };
+
+export function renderEditor(
+  root: Root,
+  ctx: EditorContext<EditorActions, EditorEvents>,
+  state: GameState,
+  editorState: EditorState
+) {
+  root.render(<EditorComponent ctx={ctx} game={state} editor={editorState} />);
+}
 
 function reducer(
   state: EditorClientState,
@@ -60,7 +70,7 @@ function EditorButton(props: {
   );
 }
 
-export function EditorComponent(props: EditorClientState) {
+function EditorComponent(props: EditorClientState) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   const [state, dispatch] = useReducer(reducer, props);

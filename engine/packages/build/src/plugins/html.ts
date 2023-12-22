@@ -83,7 +83,7 @@ export default class HtmlPlugin extends EventEmitter implements BuildPlugin {
     <div id="root"></div>
     ${await this.#includeFile(
       ctx,
-      "/js/index.js",
+      "/js/entrypoint.js",
       true,
       (e) => `<script src="${e}" type="module"></script>`
     )}
