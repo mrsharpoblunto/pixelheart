@@ -21,11 +21,11 @@ import {
   simpleTextureLoader,
 } from "@pixelheart/effects";
 
-import overworldMap from "./maps/overworld";
-import { NearestBlurEffect } from "./nearest-blur";
-import characterSprite from "./sprites/character";
-import uiSprite from "./sprites/ui";
-import { WaterEffect } from "./water-effect";
+import overworldMap from "./maps/overworld.js";
+import { NearestBlurEffect } from "./nearest-blur.js";
+import characterSprite from "./sprites/character.js";
+import uiSprite from "./sprites/ui.js";
+import { WaterEffect } from "./water-effect.js";
 
 const CONTROLLER_DEADZONE = 0.25;
 const TOUCH_DEADZONE = 5;

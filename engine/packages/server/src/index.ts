@@ -1,3 +1,3 @@
-export * from "./file-utils";
-export * from "./map-loader";
-export * from "./editor";
+export * from "./file-utils.js";
+export * from "./map-loader.js";
+export * from "./editor.js";

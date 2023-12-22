@@ -9,7 +9,7 @@ import {
 } from "@pixelheart/client";
 import vertexShader from "@pixelheart/effects/shaders/quad.vert";
 
-import fragmentShader from "./shaders/nearest-blur.frag";
+import fragmentShader from "./shaders/nearest-blur.frag.js";
 
 export class NearestBlurEffect {
   #gl: WebGL2RenderingContext;

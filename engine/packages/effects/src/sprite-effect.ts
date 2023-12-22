@@ -14,8 +14,8 @@ import {
 } from "@pixelheart/client";
 import { mat3, ReadonlyVec4 } from "@pixelheart/client/gl-matrix";
 
-import fragmentShader from "./shaders/sprite.frag";
-import vertexShader from "./shaders/sprite.vert";
+import fragmentShader from "./shaders/sprite.frag.js";
+import vertexShader from "./shaders/sprite.vert.js";
 
 export type SimpleSpriteTextures = GPUTexture;
 export type SimpleSpriteSheet = SpriteSheet<SimpleSpriteTextures>;

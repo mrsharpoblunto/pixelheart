@@ -19,10 +19,10 @@ import { vec3, mat3, ReadonlyVec4 } from "@pixelheart/client/gl-matrix";
 
 import lightingFragmentShader, {
   Constants as LightingConstants,
-} from "./shaders/deferred-lighting.frag";
-import lightingVertexShader from "./shaders/deferred-lighting.vert";
-import fragmentShader from "./shaders/deferred-sprite.frag";
-import vertexShader from "./shaders/deferred-sprite.vert";
+} from "./shaders/deferred-lighting.frag.js";
+import lightingVertexShader from "./shaders/deferred-lighting.vert.js";
+import fragmentShader from "./shaders/deferred-sprite.frag.js";
+import vertexShader from "./shaders/deferred-sprite.vert.js";
 
 export type DeferredSpriteTextures = {
   diffuseTexture: GPUTexture;

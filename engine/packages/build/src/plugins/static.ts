@@ -1,12 +1,11 @@
-import { EventEmitter } from "events";
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 
-import { ensurePath, getFileHash } from "../file-utils";
-import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin";
+import { ensurePath, getFileHash } from "../file-utils.js";
+import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin.js";
 
-export default class StaticPlugin extends EventEmitter implements BuildPlugin {
+export default class StaticPlugin implements BuildPlugin {
   depends = [];
 
   async init(ctx: BuildContext): Promise<boolean> {
@@ -94,7 +93,7 @@ export default class StaticPlugin extends EventEmitter implements BuildPlugin {
             }
         }
       }
-      this.emit("event", {
+      ctx.event({
         type: "RELOAD_STATIC",
         resources,
       });

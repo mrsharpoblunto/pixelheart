@@ -12,7 +12,7 @@ import {
 import { vec2 } from "@pixelheart/client/gl-matrix";
 import vertexShader from "@pixelheart/effects/shaders/quad.vert";
 
-import fragmentShader from "./shaders/water.frag";
+import fragmentShader from "./shaders/water.frag.js";
 
 export class WaterEffect {
   #gl: WebGL2RenderingContext;

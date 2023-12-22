@@ -6,11 +6,11 @@ import {
   ClientEditorConnection,
   EditorClient,
   EditorContext,
-} from "./editor";
-import { GameClient } from "./game";
-import { reloadShader } from "./gl-utils";
-import { reloadImage } from "./images";
-import { reloadSprite } from "./sprite";
+} from "./editor.js";
+import { GameClient } from "./game.js";
+import { reloadShader } from "./gl-utils.js";
+import { reloadImage } from "./images.js";
+import { reloadSprite } from "./sprite.js";
 
 interface GameProps<
   State,
@@ -367,7 +367,7 @@ export default function GameRunner<
           localStorage.setItem(props.saveKey, JSON.stringify(savedState));
         }
         import("/js/entrypoint.js?v=" + v++).then((module) => {
-          game = module.default.createGameClient();
+          game = module.createGameClient();
           console.log("Reloaded game plugin.");
         });
       }

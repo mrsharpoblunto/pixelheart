@@ -1,6 +1,6 @@
 import { ReadonlyVec4, mat3, vec3, vec4 } from "gl-matrix";
 
-import { GameContext } from "./game";
+import { GameContext } from "./game.js";
 
 export interface SpriteConfig {
   readonly width: number;

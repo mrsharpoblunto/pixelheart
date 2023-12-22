@@ -1,19 +1,14 @@
 import chalk from "chalk";
 import * as esbuild from "esbuild";
-import { EventEmitter } from "events";
 import fs from "fs/promises";
 import path from "path";
 
-import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin";
+import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin.js";
 
-export default class ESBuildPlugin extends EventEmitter implements BuildPlugin {
+export default class ESBuildPlugin implements BuildPlugin {
   depends = ["sprite", "map", "shader"];
 
   #ctx: esbuild.BuildContext<esbuild.BuildOptions> | null = null;
-
-  constructor() {
-    super();
-  }
 
   async init(ctx: BuildContext): Promise<boolean> {
     return true;

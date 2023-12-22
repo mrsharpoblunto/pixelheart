@@ -9,8 +9,8 @@ import {
 
 import { EditorContext } from "@pixelheart/client";
 
-import { GameState } from "../../client";
-import { EditorActions, EditorEvents, EditorState } from "./";
+import { GameState } from "../../client/index.js";
+import { EditorActions, EditorEvents, EditorState } from "./index.js";
 
 interface EditorClientState {
   game: GameState;

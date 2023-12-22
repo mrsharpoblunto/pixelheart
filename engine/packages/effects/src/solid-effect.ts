@@ -8,8 +8,8 @@ import {
 
 import { mat3, ReadonlyVec4 } from "@pixelheart/client/gl-matrix";
 
-import fragmentShader from "./shaders/solid.frag";
-import vertexShader from "./shaders/solid.vert";
+import fragmentShader from "./shaders/solid.frag.js";
+import vertexShader from "./shaders/solid.vert.js";
 
 type SpriteInstance = { mvp: mat3; color: ReadonlyVec4 };
 

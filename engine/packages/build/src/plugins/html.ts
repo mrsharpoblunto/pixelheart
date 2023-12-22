@@ -4,17 +4,13 @@ import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 
-import { ensurePath, getFileHash } from "../file-utils";
-import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin";
+import { ensurePath, getFileHash } from "../file-utils.js";
+import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin.js";
 
-export default class HtmlPlugin extends EventEmitter implements BuildPlugin {
+export default class HtmlPlugin implements BuildPlugin {
   depends = ["esbuild", "static", "editor-tailwindcss"];
 
   #deps: Set<string> = new Set();
-
-  constructor() {
-    super();
-  }
 
   async init(ctx: BuildContext): Promise<boolean> {
     await ensurePath(ctx.outputRoot);

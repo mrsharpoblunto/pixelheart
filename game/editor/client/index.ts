@@ -12,20 +12,20 @@ import {
 import { vec2, vec4 } from "@pixelheart/client/gl-matrix";
 import { DeferredSpriteTextures } from "@pixelheart/effects";
 
-import { GameState } from "../../client";
-import { renderEditor } from "./editor";
+import { GameState } from "../../client/index.js";
+import { renderEditor } from "./editor.js";
 
 export type EditorEvents = BaseEvents;
 
 export type EditorActions =
   | BaseActions
   | {
-      type: "TILE_CHANGE";
-      x: number;
-      y: number;
-      map: string;
-      value: MapTileSource;
-    };
+    type: "TILE_CHANGE";
+    x: number;
+    y: number;
+    map: string;
+    value: MapTileSource;
+  };
 
 export interface PersistentEditorState {
   version: number;
@@ -44,13 +44,13 @@ const CURRENT_SERIALIZATION_VERSION = 2;
 
 export default class Editor
   implements
-    EditorClient<
-      GameState,
-      EditorState,
-      PersistentEditorState,
-      EditorActions,
-      EditorEvents
-    >
+  EditorClient<
+    GameState,
+    EditorState,
+    PersistentEditorState,
+    EditorActions,
+    EditorEvents
+  >
 {
   #edges: Set<string>;
   #root: Root | null = null;
@@ -353,8 +353,8 @@ export default class Editor
         sprite === ""
           ? 0
           : map.spriteConfig.sprites[
-              sprite as keyof typeof map.spriteConfig.sprites
-            ].index;
+            sprite as keyof typeof map.spriteConfig.sprites
+          ].index;
       map.data.write(x, y, { ...action.value, index });
     }
   }
@@ -395,17 +395,17 @@ export default class Editor
             vec4.create(),
             vec4.fromValues(
               Math.floor(r.character.relativePosition[1]) -
-                offset[1] +
-                r.character.boundingBox[0],
+              offset[1] +
+              r.character.boundingBox[0],
               Math.floor(r.character.relativePosition[0]) -
-                offset[0] +
-                r.character.boundingBox[1],
+              offset[0] +
+              r.character.boundingBox[1],
               Math.floor(r.character.relativePosition[1]) -
-                offset[1] +
-                r.character.boundingBox[2],
+              offset[1] +
+              r.character.boundingBox[2],
               Math.floor(r.character.relativePosition[0]) -
-                offset[0] +
-                r.character.boundingBox[3]
+              offset[0] +
+              r.character.boundingBox[3]
             )
           ),
           vec4.fromValues(0.0, 0, 1.0, 0.5)

@@ -1,22 +1,17 @@
 import chalk from "chalk";
-import { EventEmitter } from "events";
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import sharp from "sharp";
 
-import { ensurePath, getFileHash } from "../file-utils";
 import { MapTileSource, encodeMapTile } from "@pixelheart/client";
 import { loadJson, loadMapMetadata } from "@pixelheart/server";
 
-import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin";
+import { ensurePath, getFileHash } from "../file-utils.js";
+import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin.js";
 
-export default class MapPlugin extends EventEmitter implements BuildPlugin {
+export default class MapPlugin implements BuildPlugin {
   depends = ["sprite"];
-
-  constructor() {
-    super();
-  }
 
   async init(ctx: BuildContext): Promise<boolean> {
     if (existsSync(path.join(ctx.assetRoot, "maps"))) {
@@ -30,18 +25,17 @@ export default class MapPlugin extends EventEmitter implements BuildPlugin {
 
   async clean(ctx: BuildContext) {
     try {
-    await Promise.all([
-      fs.rm(path.join(ctx.outputRoot, "maps"), {
-        recursive: true,
-        force: true,
-      }),
-      fs.rm(path.join(ctx.srcRoot, "maps"), {
-        recursive: true,
-        force: true,
-      }),
-    ]);
-    } catch (e) {
-    }
+      await Promise.all([
+        fs.rm(path.join(ctx.outputRoot, "maps"), {
+          recursive: true,
+          force: true,
+        }),
+        fs.rm(path.join(ctx.srcRoot, "maps"), {
+          recursive: true,
+          force: true,
+        }),
+      ]);
+    } catch (e) {}
   }
 
   async build(ctx: BuildContext, incremental: boolean) {
@@ -106,7 +100,7 @@ export default class MapPlugin extends EventEmitter implements BuildPlugin {
           const result = await loadMapMetadata(mapsPath, map);
           if (result.ok && result.metadata.spriteSheet === sprite) {
             await this.#processMap(ctx, map);
-            this.emit("event", { type: "RELOAD_MAP", map });
+            ctx.event({ type: "RELOAD_MAP", map });
           }
         }
       }
@@ -147,7 +141,7 @@ export default class MapPlugin extends EventEmitter implements BuildPlugin {
 
     for (const nom of newOrModified) {
       await this.#processMap(ctx, nom);
-      this.emit("event", { type: "RELOAD_MAP", map: nom });
+      ctx.event({ type: "RELOAD_MAP", map: nom });
     }
   }
 
@@ -249,7 +243,7 @@ export default class MapPlugin extends EventEmitter implements BuildPlugin {
     await fs.writeFile(
       path.join(ctx.srcRoot, "maps", `${map}.ts`),
       `
-    import SpriteSheet from "../sprites/${result.metadata.spriteSheet}";
+    import SpriteSheet from "../sprites/${result.metadata.spriteSheet}.js";
     const Map = {...${JSON.stringify({
       ...result.metadata,
       url: `/maps/${map}.png?v=${mapHash}`,

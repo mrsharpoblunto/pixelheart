@@ -1,23 +1,21 @@
 import autoprefixer from "autoprefixer";
 import chalk from "chalk";
-import { EventEmitter } from "events";
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import postcss from "postcss";
 import tailwindcss from "tailwindcss";
 
-import { ensurePath, getStringHash } from "../file-utils";
-import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin";
+import { ensurePath, getStringHash } from "../file-utils.js";
+import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin.js";
 
 export default class EditorCssPlugin
-  extends EventEmitter
   implements BuildPlugin
 {
   depends = [];
 
   async init(ctx: BuildContext): Promise<boolean> {
-    if (this.#shouldWatch(ctx) && !ctx.production) {
+    if ((await this.#shouldWatch(ctx)) && !ctx.production) {
       await ensurePath(ctx.outputRoot);
       return true;
     }
@@ -44,7 +42,7 @@ export default class EditorCssPlugin
       path.join(ctx.gameRoot, "editor", "client"),
       async (_err, _events) => {
         const cssHash = await this.#processCss(ctx);
-        this.emit("event", {
+        ctx.event({
           type: "RELOAD_STATIC",
           resources: {
             "/editor.css": `/editor.css?v=${cssHash}`,
@@ -57,7 +55,7 @@ export default class EditorCssPlugin
   async #processCss(ctx: BuildContext) {
     ctx.log(`Building ${chalk.green("editor.css")}`);
 
-    const tailwindConfig = this.#getTailwindConfig(ctx);
+    const tailwindConfig = await this.#getTailwindConfig(ctx);
     const result = await postcss([
       autoprefixer,
       tailwindcss({
@@ -71,22 +69,24 @@ export default class EditorCssPlugin
 @tailwind components;
 @tailwind utilities;
 `,
-      { from: undefined, to: "www/editor.css" }
+      { from: undefined, to: "editor.css" }
     );
     await fs.writeFile(path.join(ctx.outputRoot, "editor.css"), result.css);
     return getStringHash(result.css);
   }
 
-  #shouldWatch(ctx: BuildContext): boolean {
-    const config = this.#getTailwindConfig(ctx);
+  async #shouldWatch(ctx: BuildContext): Promise<boolean> {
+    const config = await this.#getTailwindConfig(ctx);
     return config.content;
   }
 
-  #getTailwindConfig(ctx: BuildContext): any {
+  async #getTailwindConfig(ctx: BuildContext): Promise<any> {
     const editorTailwindFile = path.join(
       path.join(ctx.gameRoot, "editor", "client"),
-      "tailwind.config.js"
+      "tailwind.config.cjs"
     );
-    return existsSync(editorTailwindFile) ? require(editorTailwindFile) : null;
+    return existsSync(editorTailwindFile)
+      ? (await import(editorTailwindFile)).default
+      : null;
   }
 }

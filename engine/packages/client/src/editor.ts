@@ -1,18 +1,21 @@
-import { SpriteSheetConfig } from "./sprite";
-import { GameContext } from "./game";
+import { GameContext } from "./game.js";
+import { SpriteSheetConfig } from "./sprite.js";
 
 export interface EditorMutation {
   type: string;
 }
 
-export type BaseActions = {
-  type: "RESTART";
-} | {
-  type: "INIT";
-  outputRoot: string;
-};
+export type BaseActions =
+  | {
+    type: "RESTART";
+  }
+  | {
+    type: "INIT";
+    outputRoot: string;
+  };
 
 export type BaseEvents =
+  | { type: "EDITOR_CONNECTED" }
   | { type: "EDITOR_DISCONNECTED" }
   | { type: "RELOAD_STATIC"; resources: { [key: string]: string } }
   | { type: "RELOAD_MAP"; map: string }
@@ -68,33 +71,61 @@ export class ClientEditorConnection<
 > implements EditorConnection<Actions, Events>
 {
   #eventHandlers: Array<(event: Events) => void>;
+  #requestBuffer: Array<Actions>;
   #socket: WebSocket | null;
 
   constructor() {
     this.#eventHandlers = [];
-    this.#socket = process.env.NODE_ENV === "development"
-          ? new WebSocket(
-              `ws://${window.location.hostname}:${
-                parseInt(window.location.port, 10) + 1
-              }`
-            )
-          : null,
-    this.#socket?.addEventListener("message", (e) => {
-      for (const handler of this.#eventHandlers) {
-        handler(JSON.parse(e.data) as Events);
+    this.#requestBuffer = [];
+    this.#socket = null;
+    this.#createSocket();
+  }
+
+  #createSocket() {
+    (this.#socket =
+      process.env.NODE_ENV === "development"
+        ? new WebSocket(
+          `ws://${window.location.hostname}:${parseInt(window.location.port, 10) + 1
+          }`
+        )
+        : null),
+      this.#socket?.addEventListener("message", (e) => {
+        for (const handler of this.#eventHandlers) {
+          handler(JSON.parse(e.data) as Events);
+        }
+      });
+    this.#socket?.addEventListener("open", () => {
+      console.log(`Connected to editor server, sending ${this.#requestBuffer.length} queued requests...`);
+      for (const request of this.#requestBuffer) {
+        this.send(request);
       }
+      this.#requestBuffer = [];
     });
+
     this.#socket?.addEventListener("close", () => {
+      console.error("Editor server disconnected");
       for (const handler of this.#eventHandlers) {
         handler({
           type: "EDITOR_DISCONNECTED",
         } as Events);
       }
+      setTimeout(() => {
+        console.warn("Attempting to reconnect to editor server...");
+        this.#socket = null;
+        this.#createSocket();
+      }, 1000);
     });
   }
+
   send(action: Actions) {
-    this.#socket?.send(JSON.stringify(action));
+    if (this.#socket?.readyState === WebSocket.OPEN) {
+      this.#socket?.send(JSON.stringify(action));
+    } else {
+      console.warn(`Editor server not connected, queueing request ${action.type}`);
+      this.#requestBuffer.push(action);
+    }
   }
+
   onEvent(cb: (event: Events) => void) {
     this.#eventHandlers.push(cb);
   }

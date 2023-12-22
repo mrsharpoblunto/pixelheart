@@ -2,6 +2,7 @@
   "name": "@pixelheart/effects",
   "version": "1.0.0",
   "types:": "./dist/index.d.ts",
+  "type": "module",
   "exports": {
     ".": "./dist/index.js",
     "./shaders/*": "./dist/shaders/*.js"

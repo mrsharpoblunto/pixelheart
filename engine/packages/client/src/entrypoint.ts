@@ -1,4 +1,4 @@
-import GameRunner from "./game-runner";
+import GameRunner from "./game-runner.js";
 
 export function createGameClient() {
   // @ts-ignore

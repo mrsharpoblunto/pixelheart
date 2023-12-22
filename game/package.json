@@ -2,6 +2,7 @@
   "name": "Adventures",
   "version": "1.0.0",
   "description": "",
+  "type": "module",
   "scripts": {
     "dev": "npx pixelheart run --game . --output ./www",
     "clean": "npx pixelheart clean --game . --output ./www",

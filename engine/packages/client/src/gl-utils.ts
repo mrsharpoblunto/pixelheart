@@ -7,7 +7,7 @@ import {
   ReadonlyVec4,
 } from "gl-matrix";
 
-import { GameContext } from "./game";
+import { GameContext } from "./game.js";
 
 type TypeMap = {
   float: number;

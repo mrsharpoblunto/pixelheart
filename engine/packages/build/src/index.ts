@@ -6,14 +6,17 @@ import compression from "compression";
 import express from "express";
 import fs from "fs/promises";
 import path from "path";
-import yargs from "yargs";
+import url from "url";
+import yargs, { Argv } from "yargs";
 import { hideBin } from "yargs/helpers";
 
 import { EditorServerHost } from "@pixelheart/server";
 
-import { BuildContext, BuildPlugin } from "./plugin";
+import { BuildContext, BuildPlugin } from "./plugin.js";
 
 const PORT = 8000;
+const dirname = path.dirname(url.fileURLToPath(import.meta.url));
+
 
 interface LoadedBuildPlugin {
   name: string;
@@ -47,7 +50,7 @@ interface RunOptions extends CommonBuildOptions {
 const buildCommand = {
   command: "build",
   describe: "Builds a game",
-  builder: (yargs: yargs.Argv<CommonBuildOptions>): yargs.Argv<BuildOptions> =>
+  builder: (yargs: Argv<CommonBuildOptions>): Argv<BuildOptions> =>
     yargs
       .option("watch", {
         type: "boolean",
@@ -121,7 +124,7 @@ const buildCommand = {
 const runCommand = {
   command: "run",
   describe: "Builds a game and starts a dev server",
-  builder: (yargs: yargs.Argv<CommonBuildOptions>): yargs.Argv<RunOptions> =>
+  builder: (yargs: Argv<CommonBuildOptions>): Argv<RunOptions> =>
     yargs
       .option("production", {
         type: "boolean",
@@ -195,7 +198,7 @@ const runCommand = {
 const cleanCommand = {
   command: "clean",
   describe: "Cleans all built game output",
-  builder: (yargs: yargs.Argv<CommonBuildOptions>) => yargs,
+  builder: (yargs: Argv<CommonBuildOptions>) => yargs,
 
   handler: async (args: CommonBuildOptions) => {
     const buildContext = {
@@ -274,8 +277,9 @@ Promise.resolve(
     .usage("$0 <cmd> args")
     .fail((msg, err, yargs) => {
       if (msg) {
-        console.error(msg);
+        console.log(msg);
       }
+      console.log(err);
       process.exit(1);
     }).argv
 );
@@ -285,7 +289,7 @@ async function loadBuildPlugins(
   filter: Array<string> | undefined
 ): Promise<Array<LoadedBuildPlugin>> {
   const plugins: Array<LoadedBuildPlugin> = [];
-  const pluginRoots = [path.join(__dirname, "plugins")];
+  const pluginRoots = [path.join(dirname, "plugins")];
   if (customPluginsRoot) {
     pluginRoots.push(customPluginsRoot);
   }
@@ -299,7 +303,7 @@ async function loadBuildPlugins(
       const pluginName = p.replace(path.extname(p), "");
       if (!filter || filter.includes(pluginName)) {
         const pluginPath = path.join(r, p);
-        const plugin = require(pluginPath);
+        const plugin = await import(pluginPath);
         plugins.push({
           name: pluginName,
           plugin: new plugin.default() as BuildPlugin,
@@ -368,9 +372,6 @@ async function executeBuildPlugins(
         }
       },
     };
-    plugin.plugin.on("event", (e) => {
-      ctx.event(e);
-    });
     if (ctx.clean) {
       await plugin.plugin.clean(pluginCtx);
     }
@@ -402,7 +403,7 @@ function watchTypescript(gameRoot: string) {
   const TS_ERROR_REGEX = /(.*)\(([0-9]*),([0-9]*)\): error (TS[0-9]*): (.*)/m;
 
   // run tsc watcher
-  const tsc = spawn(path.join(__dirname, "../node_modules/.bin/tsc"), ["--watch", "--noEmit"], {
+  const tsc = spawn(path.join(dirname, "../node_modules/.bin/tsc"), ["--watch", "--noEmit"], {
     cwd: path.join(gameRoot),
   });
   tsc.stdout.on("data", async (data) => {

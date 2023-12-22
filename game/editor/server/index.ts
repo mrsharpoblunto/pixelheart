@@ -2,7 +2,7 @@ import chalk from "chalk";
 import fs from "fs/promises";
 import path from "path";
 import sharp from "sharp";
-import { MessagePort, parentPort } from "worker_threads";
+import url from "url";
 
 import { MapTileSource, encodeMapTile } from "@pixelheart/client";
 import {
@@ -12,7 +12,7 @@ import {
   loadMapMetadata,
 } from "@pixelheart/server";
 
-import { EditorActions, EditorEvents } from "../client";
+import { EditorActions, EditorEvents } from "../client/index.js";
 
 interface WorkingMapData {
   lastAccess: number;
@@ -30,38 +30,36 @@ interface WorkingMapData {
   };
 }
 
+const dirname = path.dirname(url.fileURLToPath(import.meta.url));
+
 const log = (message: string) => {
-  console.log(chalk.dim("[Editor]"), message);
+  console.log(chalk.dim("[editor]"), message);
 };
 
 const logError = (message: string) => {
-  console.log(chalk.dim("[Editor]"), chalk.red(message));
+  console.log(chalk.dim("[editor]"), chalk.red(message));
 };
 
 class EditorServer {
   #mapUpdateInterval: NodeJS.Timeout | undefined;
   #mapCache: Map<string, WorkingMapData>;
   #pendingMapActions: Map<string, Array<EditorActions>>;
+  // editor server sends events and receives actions, the opposite to the
+  // client
   #connection: EditorServerConnection<EditorEvents, EditorActions>;
   #outputRoot: string | null;
 
-  constructor(parentPort: MessagePort) {
+  constructor() {
     this.#outputRoot = null;
-    this.#connection = new EditorServerConnection(parentPort);
+    this.#outputRoot = null;
+    this.#connection = new EditorServerConnection();
     this.#mapCache = new Map<string, WorkingMapData>();
     this.#pendingMapActions = new Map<string, Array<EditorActions>>();
     this.#mapUpdateInterval = setInterval(() => this.#flushMapChanges(), 5000);
     this.#connection.onEvent((a) => {
       switch (a.type) {
-        case "TILE_CHANGE":
-          {
-            let actions = this.#pendingMapActions.get(a.map);
-            if (!actions) {
-              actions = [];
-              this.#pendingMapActions.set(a.map, actions);
-            }
-            actions.push(a);
-          }
+        case "INIT":
+          this.#outputRoot = a.outputRoot;
           break;
         case "RESTART":
           {
@@ -71,8 +69,15 @@ class EditorServer {
             });
           }
           break;
-        case "INIT":
-          this.#outputRoot = a.outputRoot;
+        case "TILE_CHANGE":
+          {
+            let actions = this.#pendingMapActions.get(a.map);
+            if (!actions) {
+              actions = [];
+              this.#pendingMapActions.set(a.map, actions);
+            }
+            actions.push(a);
+          }
           break;
       }
     });
@@ -95,7 +100,7 @@ class EditorServer {
 
       const revIndex = await loadJson(
         path.join(
-          __dirname,
+          dirname,
           "..",
           "..",
           "client",
@@ -168,7 +173,7 @@ class EditorServer {
       }
 
       const imagePath = path.join(this.#outputRoot, "maps", `${map}.png`);
-      const mapsPath = path.join(__dirname, "..", "..", "assets", "maps");
+      const mapsPath = path.join(dirname, "..", "..", "assets", "maps");
       const image = sharp(imagePath);
       const metadata = await image.metadata();
       const result = await loadMapMetadata(mapsPath, map);
@@ -206,8 +211,4 @@ class EditorServer {
   }
 }
 
-if (parentPort) {
-  // editor server sends events and receives actions, the opposite to the
-  // client
-  new EditorServer(parentPort);
-}
+new EditorServer();

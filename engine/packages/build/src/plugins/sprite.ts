@@ -1,6 +1,5 @@
 import Aseprite from "ase-parser";
 import chalk from "chalk";
-import { EventEmitter } from "events";
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
@@ -17,8 +16,8 @@ import {
 } from "@pixelheart/client";
 import { vec3, vec4 } from "@pixelheart/client/gl-matrix";
 
-import { ensurePath, getFileHash } from "../file-utils";
-import { BuildContext, BuildWatchEvent, BuildPlugin } from "../plugin";
+import { ensurePath, getFileHash } from "../file-utils.js";
+import { BuildContext, BuildWatchEvent, BuildPlugin } from "../plugin.js";
 
 const PNG_REGEX = /([a-zA-Z_][a-zA-Z0-9_]*)-([0-9]+)x([0-9]+)\.(png|ase)/;
 const DIFFUSE_LAYER = "diffuse";
@@ -53,12 +52,8 @@ interface SpriteCompositeQueue {
   emissive: Array<OverlayOptions>;
 }
 
-export default class SpritePlugin extends EventEmitter implements BuildPlugin {
+export default class SpritePlugin implements BuildPlugin {
   depends = [];
-
-  constructor() {
-    super();
-  }
 
   async init(ctx: BuildContext): Promise<boolean> {
     if (existsSync(path.join(ctx.assetRoot, "sprites"))) {
@@ -166,7 +161,7 @@ export default class SpritePlugin extends EventEmitter implements BuildPlugin {
     for (let nom of newOrModified) {
       const spriteSheet = await this.#processSpriteSheet(ctx, nom);
       if (spriteSheet) {
-        this.emit("event", {
+        ctx.event({
           type: "RELOAD_SPRITESHEET",
           spriteSheet,
         });

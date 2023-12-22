@@ -1,12 +1,11 @@
 import chalk from "chalk";
-import { EventEmitter } from "events";
 import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
-import { GlslMinify } from "webpack-glsl-minify/build/minify";
+import { GlslMinify } from "webpack-glsl-minify/build/minify.js";
 
-import { ensurePath } from "../file-utils";
-import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin";
+import { ensurePath } from "../file-utils.js";
+import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin.js";
 
 export function isShader(file: string) {
   return path.extname(file) === ".vert" || path.extname(file) === ".frag";
@@ -18,12 +17,8 @@ const DEFINE_REGEX = /^#\s*define\s+(\w+)\s+([0-9]+)/;
 const CONST_REGEX = /^const\s+\w+\s+(\w+)\s*=\s*([0-9]+);/;
 const NO_MANGLE = ["texture"];
 
-export default class ShaderPlugin extends EventEmitter implements BuildPlugin {
+export default class ShaderPlugin implements BuildPlugin {
   depends = [];
-
-  constructor() {
-    super();
-  }
 
   async init(ctx: BuildContext): Promise<boolean> {
     if (existsSync(path.join(ctx.assetRoot, "shaders"))) {
@@ -101,7 +96,7 @@ export default class ShaderPlugin extends EventEmitter implements BuildPlugin {
             const shader = path.basename(e.path);
             const src = await this.#processShader(ctx, shader);
             if (src) {
-              this.emit("event", { type: "RELOAD_SHADER", shader, src });
+              ctx.event({ type: "RELOAD_SHADER", shader, src });
             }
           }
           break;

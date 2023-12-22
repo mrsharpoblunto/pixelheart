@@ -1,5 +1,3 @@
-import { EventEmitter } from "events";
-
 export interface BuildContext {
   production: boolean;
   port: number;
@@ -20,7 +18,7 @@ export interface BuildWatchEvent {
   path: string;
 }
 
-export interface BuildPlugin extends EventEmitter {
+export interface BuildPlugin {
   depends: Array<string>;
   init(ctx: BuildContext): Promise<boolean>;
   clean(ctx: BuildContext): Promise<void>;

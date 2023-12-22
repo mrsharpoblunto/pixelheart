@@ -8,8 +8,8 @@ import {
   createTexture,
 } from "@pixelheart/client";
 
-import fragmentShader from "./shaders/gaussian-blur.frag";
-import vertexShader from "./shaders/quad.vert";
+import fragmentShader from "./shaders/gaussian-blur.frag.js";
+import vertexShader from "./shaders/quad.vert.js";
 
 
 export class GaussianBlurEffect {

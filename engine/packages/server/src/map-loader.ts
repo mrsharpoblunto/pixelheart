@@ -1,7 +1,8 @@
 import { ErrorObject } from "ajv";
-import Ajv, { JTDDataType } from "ajv/dist/jtd";
+import Ajv, { JTDDataType } from "ajv/dist/jtd.js";
 import path from "path";
-import { loadJson } from "./file-utils";
+
+import { loadJson } from "./file-utils.js";
 
 const mapSchema = {
   properties: {
@@ -17,16 +18,16 @@ const mapSchema = {
   },
 } as const;
 
-const ajv = new Ajv();
+const ajv = new Ajv.default();
 const validate = ajv.compile<MapMetadata>(mapSchema);
 
 export type MapMetadata = JTDDataType<typeof mapSchema>;
 
 function validateMapMetadata(metadata: Object):
   | {
-      ok: true;
-      metadata: MapMetadata;
-    }
+    ok: true;
+    metadata: MapMetadata;
+  }
   | { ok: false; errors: ErrorObject<string, Record<string, any>, unknown>[] } {
   if (validate(metadata)) {
     return { ok: true, metadata: metadata as MapMetadata };
@@ -34,7 +35,6 @@ function validateMapMetadata(metadata: Object):
     return { ok: false, errors: validate.errors! };
   }
 }
-
 
 export async function loadMapMetadata(
   mapAssetsRoot: string,

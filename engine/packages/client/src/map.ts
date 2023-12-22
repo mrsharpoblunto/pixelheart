@@ -1,10 +1,10 @@
 import { vec2, vec4 } from "gl-matrix";
 
-import { GameContext } from "./game";
-import * as coords from "./coordinates";
-import { CPUReadableTexture } from "./images";
-import { loadCPUReadableTextureFromUrl } from "./images";
-import { SpriteSheet, SpriteSheetConfig, loadSpriteSheet } from "./sprite";
+import { GameContext } from "./game.js";
+import * as coords from "./coordinates.js";
+import { CPUReadableTexture } from "./images.js";
+import { loadCPUReadableTextureFromUrl } from "./images.js";
+import { SpriteSheet, SpriteSheetConfig, loadSpriteSheet } from "./sprite.js";
 
 export interface MapTile {
   index: number; // 0-255

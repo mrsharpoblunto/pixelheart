@@ -6,7 +6,7 @@ import {
   InstanceBuffer,
   ShaderProgram,
   ShaderSource,
-} from "./gl-utils";
+} from "./gl-utils.js";
 
 const VP = mat3.create();
 mat3.scale(VP, VP, [1.0, -1.0]);
