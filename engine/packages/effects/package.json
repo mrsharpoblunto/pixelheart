@@ -1,0 +1,23 @@
+{
+  "name": "@pixelheart/effects",
+  "version": "1.0.0",
+  "types:": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./shaders/*": "./dist/shaders/*.js"
+  },
+  "scripts": {
+    "clean": "rm -rf src/shaders && rm -rf dist && rm tsconfig.tsbuildinfo",
+    "build": "npx pixelheart build --production --plugins shader --no-custom-plugins --src ./src --output . && tsc --build",
+    "watch": "npx pixelheart build --production --plugins shader --no-custom-plugins --src ./src --output --watch"
+  },
+  "keywords": [],
+  "author": "Glenn Conner",
+  "license": "MIT",
+  "dependencies": {
+    "@pixelheart/client": "workspace:*"
+  },
+  "devDependencies": {
+    "@pixelheart/build": "workspace:*"
+  }
+}

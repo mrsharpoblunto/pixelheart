@@ -1,0 +1,17 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/client"
+    },
+    {
+      "path": "./packages/server"
+    },
+    {
+      "path": "./packages/build"
+    },
+    {
+      "path": "./packages/effects"
+    }
+  ]
+}

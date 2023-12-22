@@ -1,4 +1,3 @@
-import { vec2, vec4 } from "gl-matrix";
 import React from "react";
 import { Root, createRoot } from "react-dom/client";
 
@@ -7,13 +6,12 @@ import {
   BaseEvents,
   EditorClient,
   EditorContext,
-} from "@pixelheart/api";
-import * as coords from "@pixelheart/coordinates";
-import { DeferredSpriteTextures } from "@pixelheart/effects/deferred-sprite-effect";
-import { reloadShader } from "@pixelheart/gl-utils";
-import { reloadImage } from "@pixelheart/images";
-import { MapContainer, MapTileSource } from "@pixelheart/map";
-import { reloadSprite } from "@pixelheart/sprite";
+  MapContainer,
+  MapTileSource,
+  coords,
+  glm,
+} from "@pixelheart/client";
+import { DeferredSpriteTextures } from "@pixelheart/effects";
 
 import { GameState } from "../../client";
 import { EditorComponent } from "./editor";
@@ -23,12 +21,12 @@ export type EditorEvents = BaseEvents;
 export type EditorActions =
   | BaseActions
   | {
-      type: "TILE_CHANGE";
-      x: number;
-      y: number;
-      map: string;
-      value: MapTileSource;
-    };
+    type: "TILE_CHANGE";
+    x: number;
+    y: number;
+    map: string;
+    value: MapTileSource;
+  };
 
 export interface PersistentEditorState {
   version: number;
@@ -47,13 +45,13 @@ const CURRENT_SERIALIZATION_VERSION = 2;
 
 export default class Editor
   implements
-    EditorClient<
-      GameState,
-      EditorState,
-      PersistentEditorState,
-      EditorActions,
-      EditorEvents
-    >
+  EditorClient<
+    GameState,
+    EditorState,
+    PersistentEditorState,
+    EditorActions,
+    EditorEvents
+  >
 {
   #edges: Set<string>;
   #root: Root | null = null;
@@ -96,8 +94,6 @@ export default class Editor
       panels: previousState?.panels || {},
     };
 
-
-
     this.#root = createRoot(container);
     this.#root.render(
       <EditorComponent ctx={ctx} game={state} editor={editorState} />
@@ -136,7 +132,7 @@ export default class Editor
     state.resources.ifReady((r) => {
       if (ctx.mouse.down[0]) {
         const ap = coords.pickAbsoluteTileFromRelative(
-          vec4.create(),
+          glm.vec4.create(),
           ctx.mouse.position,
           state.screen
         );
@@ -360,8 +356,8 @@ export default class Editor
         sprite === ""
           ? 0
           : map.spriteConfig.sprites[
-              sprite as keyof typeof map.spriteConfig.sprites
-            ].index;
+            sprite as keyof typeof map.spriteConfig.sprites
+          ].index;
       map.data.write(x, y, { ...action.value, index });
     }
   }
@@ -377,7 +373,7 @@ export default class Editor
     }
     state.resources.ifReady((r) => {
       const ap = coords.pickAbsoluteTileFromRelative(
-        vec4.create(),
+        glm.vec4.create(),
         ctx.mouse.position,
         state.screen
       );
@@ -385,37 +381,37 @@ export default class Editor
       state.solidEffect.use((s) => {
         // editor cursor
         s.draw(
-          coords.toScreenSpaceFromAbsoluteTile(vec4.create(), ap, {
+          coords.toScreenSpaceFromAbsoluteTile(glm.vec4.create(), ap, {
             ...state.screen,
             ...ctx.screen,
           }),
-          vec4.fromValues(1.0, 0, 0, 0.5)
+          glm.vec4.fromValues(1.0, 0, 0, 0.5)
         );
 
         // character bounding box
-        const offset = vec2.fromValues(
+        const offset = glm.vec2.fromValues(
           r.character.animator.getSprite().width / 2,
           r.character.animator.getSprite().height / 2
         );
         s.draw(
           ctx.screen.toScreenSpace(
-            vec4.create(),
-            vec4.fromValues(
+            glm.vec4.create(),
+            glm.vec4.fromValues(
               Math.floor(r.character.relativePosition[1]) -
-                offset[1] +
-                r.character.boundingBox[0],
+              offset[1] +
+              r.character.boundingBox[0],
               Math.floor(r.character.relativePosition[0]) -
-                offset[0] +
-                r.character.boundingBox[1],
+              offset[0] +
+              r.character.boundingBox[1],
               Math.floor(r.character.relativePosition[1]) -
-                offset[1] +
-                r.character.boundingBox[2],
+              offset[1] +
+              r.character.boundingBox[2],
               Math.floor(r.character.relativePosition[0]) -
-                offset[0] +
-                r.character.boundingBox[3]
+              offset[0] +
+              r.character.boundingBox[3]
             )
           ),
-          vec4.fromValues(0.0, 0, 1.0, 0.5)
+          glm.vec4.fromValues(0.0, 0, 1.0, 0.5)
         );
       });
     });

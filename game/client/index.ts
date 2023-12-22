@@ -1,29 +1,30 @@
-import { ReadonlyVec2, vec2, vec3, vec4 } from "gl-matrix";
-
-import { GameClient, GameContext } from "@pixelheart/api";
-import * as coords from "@pixelheart/coordinates";
+import {
+  GameClient,
+  GameContext,
+  MapContainer,
+  ResourceLoader,
+  coords,
+  glm,
+  loadMapContainer,
+  loadSpriteSheet,
+  math,
+} from "@pixelheart/client";
 import {
   DeferredSpriteAnimator,
   DeferredSpriteEffect,
   DeferredSpriteSheet,
   DeferredSpriteTextures,
-  deferredTextureLoader,
-} from "@pixelheart/effects/deferred-sprite-effect";
-import { SolidEffect } from "@pixelheart/effects/solid-effect";
-import {
   SimpleSpriteEffect,
   SimpleSpriteSheet,
+  SolidEffect,
+  deferredTextureLoader,
   simpleTextureLoader,
-} from "@pixelheart/effects/sprite-effect";
-import { MapContainer, loadMapContainer } from "@pixelheart/map";
-import { hash, smoothstep } from "@pixelheart/math";
-import { ResourceLoader } from "@pixelheart/resource-loader";
-import { loadSpriteSheet } from "@pixelheart/sprite";
+} from "@pixelheart/effects";
 
-import overworldMap from "./generated/maps/overworld";
-import characterSprite from "./generated/sprites/character";
-import uiSprite from "./generated/sprites/ui";
+import overworldMap from "./maps/overworld";
 import { NearestBlurEffect } from "./nearest-blur";
+import characterSprite from "./sprites/character";
+import uiSprite from "./sprites/ui";
 import { WaterEffect } from "./water-effect";
 
 const CONTROLLER_DEADZONE = 0.25;
@@ -49,19 +50,19 @@ export interface GameState {
     character: {
       sprite: DeferredSpriteSheet;
       animator: DeferredSpriteAnimator;
-      position: vec2;
-      relativePosition: vec2;
+      position: glm.vec2;
+      relativePosition: glm.vec2;
       speed: number;
-      boundingBox: vec4;
+      boundingBox: glm.vec4;
     };
   }>;
   screen: {
-    absolutePosition: vec2;
+    absolutePosition: glm.vec2;
   };
   animationTimer: number;
   waterEffect: WaterEffect;
   blurEffect: NearestBlurEffect;
-  moveTouch: { id: number; startPosition: ReadonlyVec2 } | null;
+  moveTouch: { id: number; startPosition: glm.ReadonlyVec2 } | null;
 }
 
 export default class Game implements GameClient<GameState, PersistentState> {
@@ -103,16 +104,16 @@ export default class Game implements GameClient<GameState, PersistentState> {
               8 / 1000
             ),
             position: previousState
-              ? vec2.fromValues(
+              ? glm.vec2.fromValues(
                   previousState.character.position[0],
                   previousState.character.position[1]
                 )
-              : vec2.fromValues(
+              : glm.vec2.fromValues(
                   overworldMap.startPosition.x * coords.TILE_SIZE,
                   overworldMap.startPosition.y * coords.TILE_SIZE
                 ),
-            relativePosition: vec2.create(),
-            boundingBox: vec4.fromValues(
+            relativePosition: glm.vec2.create(),
+            boundingBox: glm.vec4.fromValues(
               c.walk_u.height - 14,
               c.walk_u.width - 2,
               c.walk_u.height - 4,
@@ -127,7 +128,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
       blurEffect: new NearestBlurEffect(ctx),
       animationTimer: 0,
       screen: {
-        absolutePosition: vec2.create(),
+        absolutePosition: glm.vec2.create(),
       },
       moveTouch: null,
     };
@@ -206,7 +207,10 @@ export default class Game implements GameClient<GameState, PersistentState> {
       // touch input
       for (let [k, v] of ctx.touches.down) {
         if (state.moveTouch === null && Date.now() - v.started > 250) {
-          state.moveTouch = { id: k, startPosition: vec2.clone(v.position) };
+          state.moveTouch = {
+            id: k,
+            startPosition: glm.vec2.clone(v.position),
+          };
         }
       }
       for (let [k, _] of ctx.touches.ended) {
@@ -269,7 +273,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
       }
 
       // but movement is not
-      const movement = vec2.create();
+      const movement = glm.vec2.create();
       if (direction.left) {
         movement[0]--;
       }
@@ -283,11 +287,11 @@ export default class Game implements GameClient<GameState, PersistentState> {
         movement[1]++;
       }
       // make sure angular movement isn't faster than up/down/left/right
-      vec2.normalize(movement, movement);
-      vec2.scale(movement, movement, r.character.speed);
-      vec2.add(movement, movement, r.character.position);
+      glm.vec2.normalize(movement, movement);
+      glm.vec2.scale(movement, movement, r.character.speed);
+      glm.vec2.add(movement, movement, r.character.position);
 
-      const renderOffset = vec2.fromValues(
+      const renderOffset = glm.vec2.fromValues(
         r.character.animator.getSprite().width / 2,
         r.character.animator.getSprite().height / 2
       );
@@ -340,17 +344,17 @@ export default class Game implements GameClient<GameState, PersistentState> {
         ).walkable;
 
       if (isWalkable) {
-        const renderOffset = vec2.fromValues(
+        const renderOffset = glm.vec2.fromValues(
           r.character.animator.getSprite().width / 2,
           r.character.animator.getSprite().height / 2
         );
-        const mapSize = vec2.fromValues(
+        const mapSize = glm.vec2.fromValues(
           r.map.data.width * coords.TILE_SIZE,
           r.map.data.height * coords.TILE_SIZE
         );
-        vec2.subtract(mapSize, mapSize, renderOffset);
-        vec2.min(r.character.position, movement, mapSize);
-        vec2.max(r.character.position, r.character.position, renderOffset);
+        glm.vec2.subtract(mapSize, mapSize, renderOffset);
+        glm.vec2.min(r.character.position, movement, mapSize);
+        glm.vec2.max(r.character.position, r.character.position, renderOffset);
       }
 
       // character position relative to the top left of the screen
@@ -374,7 +378,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
           : ctx.screen.height / 2;
 
       // Record the scroll offset of the screen
-      vec2.subtract(
+      glm.vec2.subtract(
         state.screen.absolutePosition,
         r.character.position,
         r.character.relativePosition
@@ -389,7 +393,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
     ctx.gl.blendFunc(ctx.gl.SRC_ALPHA, ctx.gl.ONE_MINUS_SRC_ALPHA);
 
     const ssp = coords.toAbsoluteTileFromAbsolute(
-      vec4.create(),
+      glm.vec4.create(),
       state.screen.absolutePosition
     );
 
@@ -398,12 +402,12 @@ export default class Game implements GameClient<GameState, PersistentState> {
 
     const day =
       state.animationTimer < MAX_TIME * 0.25
-        ? smoothstep(0, MAX_TIME * 0.25, state.animationTimer)
+        ? math.smoothstep(0, MAX_TIME * 0.25, state.animationTimer)
         : state.animationTimer < MAX_TIME * 0.5
         ? 1.0
         : state.animationTimer < MAX_TIME * 0.75
         ? 1.0 -
-          smoothstep(MAX_TIME * 0.5, MAX_TIME * 0.75, state.animationTimer)
+          math.smoothstep(MAX_TIME * 0.5, MAX_TIME * 0.75, state.animationTimer)
         : 0.0;
     const sunDirection = Math.cos(
       (Math.min(state.animationTimer, MAX_TIME * 0.75) * Math.PI) /
@@ -412,34 +416,34 @@ export default class Game implements GameClient<GameState, PersistentState> {
 
     state.spriteEffect
       .addDirectionalLight({
-        ambient: vec3.fromValues(
+        ambient: glm.vec3.fromValues(
           0.2 + day * 0.3,
           0.2 + day * 0.3,
           0.4 + day * 0.1
         ),
-        direction: vec3.fromValues(sunDirection, day * 0.3 + 0.2, -1.0),
-        diffuse: vec3.fromValues(
+        direction: glm.vec3.fromValues(sunDirection, day * 0.3 + 0.2, -1.0),
+        diffuse: glm.vec3.fromValues(
           Math.pow(day, 0.25) * (1 - day) + day * 0.5,
           day * 0.5,
           day * 0.45
         ),
       })
       .addDirectionalLight({
-        ambient: vec3.create(),
-        direction: vec3.fromValues(0.0, (1 - day) * 0.5, -1.0),
-        diffuse: vec3.fromValues(
+        ambient: glm.vec3.create(),
+        direction: glm.vec3.fromValues(0.0, (1 - day) * 0.5, -1.0),
+        diffuse: glm.vec3.fromValues(
           (1 - day) * 0.2,
           (1 - day) * 0.2,
           (1 - day) * 0.2
         ),
       })
       .addPointLight({
-        diffuse: vec3.fromValues(
+        diffuse: glm.vec3.fromValues(
           0.6 * (1 - day),
           0.6 * (1 - day),
           0.3 * (1 - day)
         ),
-        position: vec3.fromValues(
+        position: glm.vec3.fromValues(
           ctx.mouse.position[0] / ctx.screen.width,
           ctx.mouse.position[1] / ctx.screen.height,
           0.1
@@ -469,8 +473,8 @@ export default class Game implements GameClient<GameState, PersistentState> {
                   const mapY = y + ssp[1];
 
                   const position = ctx.screen.toScreenSpace(
-                    vec4.create(),
-                    vec4.fromValues(
+                    glm.vec4.create(),
+                    glm.vec4.fromValues(
                       y * coords.TILE_SIZE - ssp[3],
                       x * coords.TILE_SIZE + coords.TILE_SIZE - ssp[2],
                       y * coords.TILE_SIZE + coords.TILE_SIZE - ssp[3],
@@ -484,13 +488,13 @@ export default class Game implements GameClient<GameState, PersistentState> {
                     r.map.sprite[tileName].draw(
                       s,
                       position,
-                      tile.spatialHash ? hash(mapX, mapY) : undefined
+                      tile.spatialHash ? math.hash(mapX, mapY) : undefined
                     );
                   }
                 }
               }
             } else {
-              const offset = vec2.fromValues(
+              const offset = glm.vec2.fromValues(
                 r.character.animator.getSprite().width / 2,
                 r.character.animator.getSprite().height / 2
               );
@@ -498,8 +502,8 @@ export default class Game implements GameClient<GameState, PersistentState> {
               r.character.animator.draw(
                 s,
                 ctx.screen.toScreenSpace(
-                  vec4.create(),
-                  vec4.fromValues(
+                  glm.vec4.create(),
+                  glm.vec4.fromValues(
                     Math.floor(r.character.relativePosition[1]) - offset[1],
                     Math.floor(r.character.relativePosition[0]) + offset[0],
                     Math.floor(r.character.relativePosition[1]) + offset[1],
@@ -511,11 +515,11 @@ export default class Game implements GameClient<GameState, PersistentState> {
           });
         },
         (mask) => {
-          const pos = vec2.clone(state.screen.absolutePosition);
-          vec2.div(
+          const pos = glm.vec2.clone(state.screen.absolutePosition);
+          glm.vec2.div(
             pos,
             pos,
-            vec2.fromValues(ctx.screen.width, ctx.screen.height)
+            glm.vec2.fromValues(ctx.screen.width, ctx.screen.height)
           );
           state.blurEffect.draw(mask, 3.0);
           state.waterEffect.draw(
@@ -533,8 +537,13 @@ export default class Game implements GameClient<GameState, PersistentState> {
       if (lightingTexture) {
         s.setTextures(lightingTexture);
         s.draw(
-          vec4.fromValues(1.0, 1.0, 0, 0),
-          vec4.fromValues(0, lightingTexture.width, lightingTexture.height, 0)
+          glm.vec4.fromValues(1.0, 1.0, 0, 0),
+          glm.vec4.fromValues(
+            0,
+            lightingTexture.width,
+            lightingTexture.height,
+            0
+          )
         );
       }
 
@@ -545,8 +554,8 @@ export default class Game implements GameClient<GameState, PersistentState> {
           r.ui.touch.draw(
             s,
             ctx.screen.toScreenSpace(
-              vec4.create(),
-              vec4.fromValues(
+              glm.vec4.create(),
+              glm.vec4.fromValues(
                 Math.round(moveTouch.startPosition[1]) - 32,
                 Math.round(moveTouch.startPosition[0]) + 32,
                 Math.round(moveTouch.startPosition[1]) + 32,

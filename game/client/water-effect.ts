@@ -1,13 +1,19 @@
 import { vec2 } from "gl-matrix";
 
-import { GameContext } from "@pixelheart/api";
-import { Quad } from "@pixelheart/geometry";
-import { ShaderProgram } from "@pixelheart/gl-utils";
-import { GPUTexture, TEXTURE } from "@pixelheart/images";
-import { Binormal, Normal, Tangent, ToTangentSpace } from "@pixelheart/sprite";
+import {
+  Binormal,
+  GPUTexture,
+  GameContext,
+  Normal,
+  Quad,
+  ShaderProgram,
+  TEXTURE,
+  Tangent,
+  ToTangentSpace,
+} from "@pixelheart/client";
+import vertexShader from "@pixelheart/effects/shaders/quad.vert";
 
-import vertexShader from "@pixelheart/generated/shaders/quad.vert";
-import fragmentShader from "./generated/shaders/water.frag";
+import fragmentShader from "./shaders/water.frag";
 
 export class WaterEffect {
   #gl: WebGL2RenderingContext;

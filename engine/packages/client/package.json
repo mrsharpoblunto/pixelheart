@@ -1,0 +1,22 @@
+{
+  "name": "@pixelheart/client",
+  "version": "1.0.0",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./gl-matrix": "./dist/gl-matrix.js"
+  },
+  "scripts": {
+    "clean": "rm -rf dist && rm tsconfig.tsbuildinfo",
+    "build": "tsc --build"
+  },
+  "keywords": [],
+  "author": "Glenn Conner",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.10.5"
+  },
+  "dependencies": {
+    "gl-matrix": "^3.4.3"
+  }
+}

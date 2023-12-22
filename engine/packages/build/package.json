@@ -1,0 +1,43 @@
+{
+  "name": "@pixelheart/build",
+  "version": "1.0.0",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "clean": "rm -rf dist && rm tsconfig.tsbuildinfo",
+    "build": "tsc --build",
+    "dev": "ts-node ./src/index.ts"
+  },
+  "bin": {
+    "pixelheart": "bin/pixelheart.js"
+  },
+  "keywords": [],
+  "author": "Glenn Conner",
+  "license": "MIT",
+  "dependencies": {
+    "@babel/code-frame": "^7.22.13",
+    "@parcel/watcher": "^2.2.0",
+    "@pixelheart/client": "workspace:*",
+    "@pixelheart/server": "workspace:*",
+    "@types/babel__code-frame": "^7.0.3",
+    "@types/compression": "^1.7.2",
+    "@types/express": "^4.17.17",
+    "@types/yargs": "^17.0.24",
+    "ase-parser": "^0.0.16",
+    "autoprefixer": "^10.4.16",
+    "chalk": "^4.1.2",
+    "compression": "^1.7.4",
+    "esbuild": "^0.19.10",
+    "express": "^4.18.2",
+    "postcss": "^8.4.32",
+    "sharp": "^0.32.4",
+    "tailwindcss": "^3.3.6",
+    "ts-node": "^10.9.1",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^4.9.5",
+    "webpack-glsl-minify": "^1.5.0",
+    "yargs": "^17.7.2"
+  }
+}

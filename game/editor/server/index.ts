@@ -2,11 +2,15 @@ import chalk from "chalk";
 import fs from "fs/promises";
 import path from "path";
 import sharp from "sharp";
+import { MessagePort, parentPort } from "worker_threads";
 
-import { EditorConnection, EditorServerContext } from "@pixelheart/api";
-import { loadJson } from "@pixelheart/file-utils";
-import { MapTileSource, encodeMapTile } from "@pixelheart/map";
-import { MapMetadata, loadMapMetadata } from "@pixelheart/map-loader";
+import { MapTileSource, encodeMapTile } from "@pixelheart/client";
+import {
+  EditorServerConnection,
+  MapMetadata,
+  loadJson,
+  loadMapMetadata,
+} from "@pixelheart/server";
 
 import { EditorActions, EditorEvents } from "../client";
 
@@ -34,25 +38,19 @@ const logError = (message: string) => {
   console.log(chalk.dim("[Editor]"), chalk.red(message));
 };
 
-export default class Server {
+class EditorServer {
   #mapUpdateInterval: NodeJS.Timeout | undefined;
   #mapCache: Map<string, WorkingMapData>;
   #pendingMapActions: Map<string, Array<EditorActions>>;
-  #connection: EditorConnection<EditorEvents, EditorActions>;
-  #context: EditorServerContext;
+  #connection: EditorServerConnection<EditorEvents, EditorActions>;
+  #outputRoot: string | null;
 
-  constructor(
-    context: EditorServerContext,
-    connection: EditorConnection<EditorEvents, EditorActions>
-  ) {
-    this.#context = context;
-    this.#connection = connection;
+  constructor(parentPort: MessagePort) {
+    this.#outputRoot = null;
+    this.#connection = new EditorServerConnection(parentPort);
     this.#mapCache = new Map<string, WorkingMapData>();
     this.#pendingMapActions = new Map<string, Array<EditorActions>>();
-    this.#mapUpdateInterval = setInterval(
-      () => this.#flushMapChanges(),
-      5000
-    );
+    this.#mapUpdateInterval = setInterval(() => this.#flushMapChanges(), 5000);
     this.#connection.onEvent((a) => {
       switch (a.type) {
         case "TILE_CHANGE":
@@ -72,6 +70,9 @@ export default class Server {
               process.exit(0);
             });
           }
+          break;
+        case "INIT":
+          this.#outputRoot = a.outputRoot;
           break;
       }
     });
@@ -94,7 +95,10 @@ export default class Server {
 
       const revIndex = await loadJson(
         path.join(
-          this.#context.generatedSrcRoot,
+          __dirname,
+          "..",
+          "..",
+          "client",
           "sprites",
           `${existing.src.meta.spriteSheet}.json`
         )
@@ -159,12 +163,12 @@ export default class Server {
   async #getMap(map: string): Promise<WorkingMapData | null> {
     let existing = this.#mapCache.get(map);
     if (!existing) {
-      const imagePath = path.join(
-        this.#context.outputRoot,
-        "maps",
-        `${map}.png`
-      );
-      const mapsPath = path.join(this.#context.assetsRoot, "maps");
+      if (!this.#outputRoot) {
+        return null;
+      }
+
+      const imagePath = path.join(this.#outputRoot, "maps", `${map}.png`);
+      const mapsPath = path.join(__dirname, "..", "..", "assets", "maps");
       const image = sharp(imagePath);
       const metadata = await image.metadata();
       const result = await loadMapMetadata(mapsPath, map);
@@ -200,4 +204,10 @@ export default class Server {
     }
     return existing;
   }
+}
+
+if (parentPort) {
+  // editor server sends events and receives actions, the opposite to the
+  // client
+  new EditorServer(parentPort);
 }

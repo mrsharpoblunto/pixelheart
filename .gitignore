@@ -1,6 +1,11 @@
-node_modules/
-src/generated/*
-www
-game/node_modules/*
-game/client/generated/*
+*/node_modules/*
+*/dist/*
+game/www
+game/client/shaders/*
+game/client/maps/*
+game/client/sprites/*
+engine/packages/effects/src/shaders/*
+engine/packages/effects/src/maps/*
+engine/packages/effects/src/sprites/*
 .DS_Store
+tsconfig.tsbuildinfo
