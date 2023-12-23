@@ -10,13 +10,12 @@ import { ensurePath, getStringHash } from "../file-utils.js";
 import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin.js";
 
 export default class EditorCssPlugin
-  implements BuildPlugin
-{
+  implements BuildPlugin {
   depends = [];
 
   async init(ctx: BuildContext): Promise<boolean> {
     if ((await this.#shouldWatch(ctx)) && !ctx.production) {
-      await ensurePath(ctx.outputRoot);
+      await ensurePath(ctx.gameOutputPath);
       return true;
     }
     return false;
@@ -24,10 +23,10 @@ export default class EditorCssPlugin
 
   async clean(ctx: BuildContext): Promise<void> {
     try {
-      await fs.rm(path.join(ctx.outputRoot, "editor.css"));
-    } catch (e) {}
+      await fs.rm(path.join(ctx.gameOutputPath, "editor.css"));
+    } catch (e) { }
   }
-  async build(ctx: BuildContext, incremental: boolean): Promise<void> {
+  async build(ctx: BuildContext): Promise<void> {
     await this.#processCss(ctx);
   }
 
@@ -39,10 +38,10 @@ export default class EditorCssPlugin
     ) => Promise<any>
   ): Promise<void> {
     await subscribe(
-      path.join(ctx.gameRoot, "editor", "client"),
+      ctx.gameEditorClientPath,
       async (_err, _events) => {
         const cssHash = await this.#processCss(ctx);
-        ctx.event({
+        ctx.emit({
           type: "RELOAD_STATIC",
           resources: {
             "/editor.css": `/editor.css?v=${cssHash}`,
@@ -61,7 +60,7 @@ export default class EditorCssPlugin
       tailwindcss({
         ...tailwindConfig,
         content: tailwindConfig?.content.map((c: any) =>
-          path.join(ctx.gameRoot, "editor", "client", c)
+          path.join(ctx.gameEditorClientPath, c)
         ),
       }),
     ]).process(
@@ -71,7 +70,7 @@ export default class EditorCssPlugin
 `,
       { from: undefined, to: "editor.css" }
     );
-    await fs.writeFile(path.join(ctx.outputRoot, "editor.css"), result.css);
+    await fs.writeFile(path.join(ctx.gameOutputPath, "editor.css"), result.css);
     return getStringHash(result.css);
   }
 
@@ -82,7 +81,7 @@ export default class EditorCssPlugin
 
   async #getTailwindConfig(ctx: BuildContext): Promise<any> {
     const editorTailwindFile = path.join(
-      path.join(ctx.gameRoot, "editor", "client"),
+      ctx.gameEditorClientPath,
       "tailwind.config.cjs"
     );
     return existsSync(editorTailwindFile)

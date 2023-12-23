@@ -20,9 +20,17 @@ const NO_MANGLE = ["texture"];
 export default class ShaderPlugin implements BuildPlugin {
   depends = [];
 
+  #getPaths(ctx: BuildContext) {
+    return {
+      shaders: path.join(ctx.gameAssetPath, "shaders"),
+      shaderSrc: path.join(ctx.gameClientPath, "shaders"),
+    };
+  }
+
   async init(ctx: BuildContext): Promise<boolean> {
-    if (existsSync(path.join(ctx.assetRoot, "shaders"))) {
-      await ensurePath(path.join(ctx.srcRoot, "shaders"));
+    const paths = this.#getPaths(ctx);
+    if (existsSync(paths.shaders)) {
+      await ensurePath(paths.shaderSrc);
       return true;
     } else {
       return false;
@@ -31,22 +39,19 @@ export default class ShaderPlugin implements BuildPlugin {
 
   async clean(ctx: BuildContext) {
     try {
-      await fs.rm(path.join(ctx.srcRoot, "shaders"), {
-        recursive: true,
-        force: true,
-      });
+      const paths = this.#getPaths(ctx);
+      await fs.rm(paths.shaderSrc);
     } catch (e) { }
   }
 
-  async build(ctx: BuildContext, incremental: boolean) {
-    const shaderAssetsPath = path.join(ctx.assetRoot, "shaders");
-    const shaderSrcPath = path.join(ctx.srcRoot, "shaders");
+  async build(ctx: BuildContext) {
+    const paths = this.#getPaths(ctx);
 
-    const sourceShaders = await fs.readdir(shaderAssetsPath);
-    const destShaders = incremental ? await fs.readdir(shaderSrcPath) : [];
+    const sourceShaders = await fs.readdir(paths.shaders);
+    const destShaders = !ctx.clean ? await fs.readdir(paths.shaderSrc) : [];
     const shadersToType = [];
     for (const src of sourceShaders) {
-      const srcStat = await fs.stat(path.join(shaderAssetsPath, src));
+      const srcStat = await fs.stat(paths.shaders);
       if (!isShader(src)) {
         continue;
       }
@@ -57,7 +62,7 @@ export default class ShaderPlugin implements BuildPlugin {
         destShaders.indexOf(dest) < 0 ||
         // or is older than the source
         srcStat.mtimeMs >
-        (await fs.stat(path.join(shaderSrcPath, dest))).mtimeMs
+        (await fs.stat(path.join(paths.shaderSrc, dest))).mtimeMs
       ) {
         shadersToType.push(src);
       }
@@ -72,8 +77,9 @@ export default class ShaderPlugin implements BuildPlugin {
       cb: (err: Error | null, events: Array<BuildWatchEvent>) => any
     ) => Promise<void>
   ) {
+    const paths = this.#getPaths(ctx);
     await subscribe(
-      path.join(ctx.assetRoot, "shaders"),
+      paths.shaders,
       async (_err, events) => {
         await this.#processShaderEvents(ctx, events);
       }
@@ -96,7 +102,7 @@ export default class ShaderPlugin implements BuildPlugin {
             const shader = path.basename(e.path);
             const src = await this.#processShader(ctx, shader);
             if (src) {
-              ctx.event({ type: "RELOAD_SHADER", shader, src });
+              ctx.emit({ type: "RELOAD_SHADER", shader, src });
             }
           }
           break;
@@ -112,8 +118,7 @@ export default class ShaderPlugin implements BuildPlugin {
   }
 
   async #processShader(ctx: BuildContext, shader: string): Promise<string> {
-    const shaderAssetsPath = path.join(ctx.assetRoot, "shaders");
-    const shaderSrcPath = path.join(ctx.srcRoot, "shaders");
+    const paths = this.#getPaths(ctx);
 
     ctx.log(
       `Building ${ctx.production ? "minified " : ""}shader ${chalk.green(
@@ -122,7 +127,7 @@ export default class ShaderPlugin implements BuildPlugin {
     );
 
     try {
-      const shaderFile = path.join(shaderAssetsPath, shader);
+      const shaderFile = path.join(paths.shaders, shader);
       let src = await fs.readFile(shaderFile, "utf-8");
       const isVertexShader = path.extname(shader) === ".vert";
       const lines = src.split("\n");
@@ -244,13 +249,13 @@ export default value;
 `;
 
       await fs.writeFile(
-        `${path.join(shaderSrcPath, shader)}.ts`,
+        `${path.join(paths.shaderSrc, shader)}.ts`,
         output,
         "utf-8"
       );
       return src;
     } catch (error: any) {
-      ctx.onError(error.toString());
+      ctx.error(error.toString());
       return "";
     }
   }

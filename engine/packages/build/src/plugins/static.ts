@@ -8,9 +8,17 @@ import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin.js";
 export default class StaticPlugin implements BuildPlugin {
   depends = [];
 
+  #getPaths(ctx: BuildContext) {
+    return {
+      static: path.join(ctx.gameAssetPath, "static"),
+      output: path.join(ctx.gameOutputPath, "static"),
+    };
+  }
+
   async init(ctx: BuildContext): Promise<boolean> {
-    if (existsSync(path.join(ctx.assetRoot, "static"))) {
-      await ensurePath(ctx.outputRoot);
+    const paths = this.#getPaths(ctx);
+    if (existsSync(paths.static)) {
+      await ensurePath(paths.output);
       return true;
     }
     return false;
@@ -18,27 +26,27 @@ export default class StaticPlugin implements BuildPlugin {
 
   async clean(ctx: BuildContext): Promise<void> {
     try {
-      const staticPath = path.join(ctx.outputRoot, "static");
-      const st = await fs.stat(staticPath);
+      const paths = this.#getPaths(ctx);
+      const st = await fs.stat(paths.static);
       await fs.rm(
-        staticPath,
+        paths.static,
         !st.isSymbolicLink()
           ? {
-              recursive: true,
-              force: true,
-            }
+            recursive: true,
+            force: true,
+          }
           : undefined
       );
-    } catch (e) {}
+    } catch (e) { }
   }
 
-  async build(ctx: BuildContext, incremental: boolean): Promise<void> {
-    const staticPath = path.join(ctx.outputRoot, "static");
-    if (existsSync(staticPath)) {
-      const st = await fs.lstat(staticPath);
+  async build(ctx: BuildContext): Promise<void> {
+    const paths = this.#getPaths(ctx);
+    if (existsSync(paths.static)) {
+      const st = await fs.lstat(paths.output);
       if (st.isSymbolicLink() || !ctx.production) {
         await fs.rm(
-          staticPath,
+          paths.output,
           { recursive: true, force: true }
         );
       }
@@ -46,14 +54,14 @@ export default class StaticPlugin implements BuildPlugin {
 
     if (ctx.production) {
       ctx.log(`Copying static resources...`);
-      await fs.cp(path.join(ctx.assetRoot, "static"), staticPath, {
+      await fs.cp(paths.static, paths.output, {
         recursive: true,
       });
     } else {
       // in development builds, just symlink the static folder
       // as it's faster
       ctx.log(`Symlinking static resources...`);
-      await fs.symlink(path.join(ctx.assetRoot, "static"), staticPath);
+      await fs.symlink(paths.static, paths.output);
     }
   }
 
@@ -64,11 +72,11 @@ export default class StaticPlugin implements BuildPlugin {
       callback: (err: Error | null, events: Array<BuildWatchEvent>) => void
     ) => Promise<any>
   ): Promise<void> {
-    const staticPath = path.join(ctx.assetRoot, "static");
-    await subscribe(staticPath, async (_err, events) => {
+    const paths = this.#getPaths(ctx);
+    await subscribe(paths.static, async (_err, events) => {
       const resources: { [key: string]: string } = {};
       for (const e of events) {
-        const basePath = e.path.substring(staticPath.length);
+        const basePath = e.path.substring(paths.static.length);
         switch (e.type) {
           case "create":
           case "update":
@@ -76,7 +84,7 @@ export default class StaticPlugin implements BuildPlugin {
               if (ctx.production) {
                 await fs.cp(
                   e.path,
-                  path.join(ctx.outputRoot, "static", basePath)
+                  path.join(paths.output, basePath)
                 );
               }
               resources[basePath] = `/static${basePath}?v=${await getFileHash(
@@ -88,12 +96,12 @@ export default class StaticPlugin implements BuildPlugin {
           case "delete":
             if (ctx.production) {
               try {
-                await fs.rm(path.join(ctx.outputRoot, "static", basePath));
-              } catch (e) {}
+                await fs.rm(path.join(paths.output, basePath));
+              } catch (e) { }
             }
         }
       }
-      ctx.event({
+      ctx.emit({
         type: "RELOAD_STATIC",
         resources,
       });

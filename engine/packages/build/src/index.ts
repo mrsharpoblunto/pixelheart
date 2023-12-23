@@ -9,10 +9,13 @@ import path from "path";
 import url from "url";
 import yargs, { Argv } from "yargs";
 import { hideBin } from "yargs/helpers";
+import { EventEmitter } from "events";
+import { existsSync } from "fs";
 
 import { EditorServerHost } from "@pixelheart/server";
 
 import { BuildContext, BuildPlugin } from "./plugin.js";
+import { Logger } from "./logger.js";
 
 const PORT = 8000;
 const dirname = path.dirname(url.fileURLToPath(import.meta.url));
@@ -24,27 +27,84 @@ interface LoadedBuildPlugin {
 }
 
 interface CommonBuildOptions {
-  game: string;
-  assets: string | undefined;
-  src: string | undefined;
-  build: string | undefined;
-  customPlugins: boolean;
-  output: string;
-  plugins: Array<string> | undefined;
+  production: boolean;
+  clean: boolean;
+  gamePath: string;
+  gameAssetPath: string | undefined;
+  gameClientPath: string | undefined;
+  gameBuildPath: string | undefined;
+  gameOutputPath: string;
+  enableCustomBuildPlugins: boolean;
+  buildPluginFilter: Array<string> | undefined;
 }
 
 interface BuildOptions extends CommonBuildOptions {
-  watch: boolean;
-  production: boolean;
-  clean: boolean;
   serve: boolean;
   port: number;
 }
 
 interface RunOptions extends CommonBuildOptions {
-  clean: boolean;
-  production: boolean;
   port: number;
+}
+
+class BuildContextImpl extends Logger implements BuildContext {
+  #eventEmitter: EventEmitter | undefined;
+  production: boolean;
+  clean: boolean;
+  build: boolean;
+  watch: false | { port: number };
+  gamePath: string;
+  gameAssetPath: string;
+  gameClientPath: string;
+  gameBuildPath: string;
+  gameEditorClientPath: string;
+  gameEditorServerPath: string;
+  gameOutputPath: string;
+
+  constructor(args: {
+    production: boolean,
+    clean: boolean,
+    build: boolean,
+    watch: false | { port: number },
+    gamePath: string,
+    gameAssetPath?: string,
+    gameBuildPath?: string,
+    gameClientPath?: string,
+    gameOutputPath: string,
+  }, eventEmitter?: EventEmitter) {
+    super(!args.watch);
+    this.#eventEmitter = eventEmitter;
+    this.production = args.production;
+    this.clean = args.clean;
+    this.build = true;
+    this.watch = args.watch;
+    this.gamePath = path.resolve(process.cwd(), args.gamePath);
+    this.gameAssetPath = path.resolve(
+      process.cwd(),
+      args.gameAssetPath || path.join(args.gamePath, "assets")
+    );
+    this.gameClientPath = path.resolve(
+      process.cwd(),
+      args.gameClientPath || path.join(args.gamePath, "client")
+    );
+    this.gameBuildPath = path.resolve(
+      process.cwd(),
+      args.gameBuildPath || path.join(args.gamePath, "build")
+    );
+    this.gameEditorClientPath = path.resolve(
+      process.cwd(),
+      path.join(args.gamePath, "editor", "client")
+    );
+    this.gameEditorServerPath = path.resolve(
+      process.cwd(),
+      path.join(args.gamePath, "editor", "server")
+    );
+    this.gameOutputPath = path.resolve(process.cwd(), args.gameOutputPath);
+  }
+
+  emit(e: any) {
+    this.#eventEmitter?.emit("event", e);
+  }
 }
 
 const buildCommand = {
@@ -52,17 +112,7 @@ const buildCommand = {
   describe: "Builds a game",
   builder: (yargs: Argv<CommonBuildOptions>): Argv<BuildOptions> =>
     yargs
-      .option("watch", {
-        type: "boolean",
-        flag: true,
-        default: false,
-      })
-      .option("production", {
-        type: "boolean",
-        flag: true,
-        default: true,
-      })
-      .option("clean", {
+      .option("serve", {
         type: "boolean",
         flag: true,
         default: false,
@@ -70,52 +120,41 @@ const buildCommand = {
       .option("port", {
         type: "number",
         default: PORT,
-      })
-      .option("serve", {
-        type: "boolean",
-        flag: true,
-        default: false,
       }),
-  handler: async (args: BuildOptions) => {
-    const buildContext = {
-      production: args.production,
-      port: args.port,
-      clean: args.clean,
-      build: true,
-      watch: args.watch,
-      gameRoot: path.resolve(process.cwd(), args.game),
-      assetRoot: path.resolve(
-        process.cwd(),
-        args.assets || path.join(args.game, "assets")
-      ),
-      srcRoot: path.resolve(
-        process.cwd(),
-        args.src || path.join(args.game, "client")
-      ),
-      outputRoot: path.resolve(process.cwd(), args.output),
-      event: () => {},
-    };
 
-    await executeBuildPlugins(
+  handler: async (args: BuildOptions) => {
+    const buildContext = new BuildContextImpl({
+      ...args,
+      watch: false,
+      build: true,
+    });
+
+    const plugins = await loadBuildPlugins(buildContext, {
+      filter: args.buildPluginFilter,
+      customBuildPluginsPath: args.enableCustomBuildPlugins ? buildContext.gameBuildPath : null,
+    });
+
+    const success = await executeBuildPlugins(
       buildContext,
-      await loadBuildPlugins(
-        args.customPlugins ? args.build || path.join(args.game, "build") : null,
-        args.plugins
-      )
+      plugins
     );
 
-    console.log();
-    console.log(chalk.green("Build complete"));
+    buildContext.log();
+    if (success) {
+      buildContext.warn(`Build completed with ${buildContext.errorCount} error(s)`);
+    } else {
+      buildContext.log(chalk.green("Build complete"));
+    }
 
     if (args.serve) {
       const app = express();
       app.use(compression());
-      app.use(express.static(buildContext.outputRoot));
-      app.listen(PORT, () => {
-        console.log();
-        console.log(
-          `${chalk.dim("[server]")} Running at http://localhost:${args.port}`
-        );
+      app.use(express.static(buildContext.gameOutputPath));
+      app.listen(args.port, () => {
+        buildContext.push("server")
+        buildContext.log();
+        buildContext.log(`Running at http://localhost:${args.port}`);
+        buildContext.pop();
       });
     }
   },
@@ -126,72 +165,50 @@ const runCommand = {
   describe: "Builds a game and starts a dev server",
   builder: (yargs: Argv<CommonBuildOptions>): Argv<RunOptions> =>
     yargs
-      .option("production", {
-        type: "boolean",
-        flag: true,
-        default: false,
-      })
       .option("port", {
         type: "number",
         default: PORT,
-      })
-      .option("clean", {
-        type: "boolean",
-        flag: true,
-        default: false,
       }),
 
   handler: async (args: RunOptions) => {
-    const buildContext = {
-      production: args.production,
-      port: args.port,
-      clean: args.clean,
-      build: true,
-      watch: true,
-      gameRoot: path.resolve(process.cwd(), args.game),
-      assetRoot: path.resolve(
-        process.cwd(),
-        args.assets || path.join(args.game, "assets")
-      ),
-      srcRoot: path.resolve(
-        process.cwd(),
-        args.src || path.join(args.game, "client")
-      ),
-      outputRoot: path.resolve(process.cwd(), args.output),
-      event: (e: any) => editor?.emit("event", e),
-    };
-
     const editor = args.production
-      ? null
+      ? undefined
       : new EditorServerHost(
-          args.port + 1,
-          path.join(buildContext.gameRoot, "editor", "server"),
-          buildContext.outputRoot
-        );
+        args.port + 1,
+        path.join(args.gamePath, "editor", "server"),
+        args.gameOutputPath
+      );
+
+    const buildContext = new BuildContextImpl({
+      ...args,
+      build: true,
+      watch: { port: args.port },
+    }, editor);
 
     if (!editor) {
-      console.log(
-        `${chalk.dim("[editor]")} ${chalk.red("Disabled in production builds")}`
-      );
+      buildContext.push("editor");
+      buildContext.warn("Disabled in production builds");
+      buildContext.pop();
     }
 
+    const plugins = await loadBuildPlugins(buildContext, {
+      filter: args.buildPluginFilter,
+      customBuildPluginsPath: args.enableCustomBuildPlugins ? buildContext.gameBuildPath : null,
+    });
 
     const success = await executeBuildPlugins(
       buildContext,
-      await loadBuildPlugins(
-        args.customPlugins ? args.build || path.join(args.game, "build") : null,
-        args.plugins
-      )
+      plugins
     );
 
-    console.log();
-    console.log(
-      success
-        ? chalk.green("Build complete")
-        : chalk.red("Build completed with errors")
-    );
+    buildContext.log();
+    if (success) {
+      buildContext.warn(`Build completed with ${buildContext.errorCount} error(s)`);
+    } else {
+      buildContext.log(chalk.green("Build complete"));
+    }
 
-    watchTypescript(buildContext.gameRoot);
+    watchTypescript(buildContext.gameOutputPath);
   },
 };
 
@@ -201,69 +218,64 @@ const cleanCommand = {
   builder: (yargs: Argv<CommonBuildOptions>) => yargs,
 
   handler: async (args: CommonBuildOptions) => {
-    const buildContext = {
-      production: false,
-      port: PORT,
+    const buildContext = new BuildContextImpl({
+      ...args,
       clean: true,
       build: false,
       watch: false,
-      gameRoot: path.resolve(process.cwd(), args.game),
-      assetRoot: path.resolve(
-        process.cwd(),
-        args.assets || path.join(args.game, "assets")
-      ),
-      srcRoot: path.resolve(
-        process.cwd(),
-        args.src || path.join(args.game, "client")
-      ),
-      outputRoot: path.resolve(process.cwd(), args.output),
-      event: () => {},
-    };
+    });
+
+    const plugins = await loadBuildPlugins(buildContext, {
+      filter: args.buildPluginFilter,
+      customBuildPluginsPath: args.enableCustomBuildPlugins ? buildContext.gameBuildPath : null,
+    });
 
     // build game assets
     await executeBuildPlugins(
       buildContext,
-      await loadBuildPlugins(
-        args.customPlugins ? args.build || path.join(args.game, "build") : null,
-        args.plugins
-      )
+      plugins
     );
   },
 };
 
 Promise.resolve(
   yargs(hideBin(process.argv))
-    .option("game", {
+    .option("gamePath", {
       type: "string",
       default: ".",
     })
-    .option("assets", {
+    .option("gameAssetPath", {
       type: "string",
       hidden: true,
     })
-    .option("src", {
+    .option("gameClientPath", {
       type: "string",
       hidden: true,
     })
-    .option("build", {
+    .option("gameBuildPath", {
       type: "string",
       hidden: true,
     })
-    .option("customPlugins", {
+    .option("gameOutputPath", {
+      type: "string",
+      required: true,
+    })
+    .option("enableCustomBuildPlugins", {
       type: "boolean",
       hidden: true,
       flag: true,
       default: true,
     })
-    .option("output", {
-      type: "string",
-      required: true,
-    })
-    .option("plugins", {
+    .option("buildPluginFilter", {
       type: "string",
       array: true,
     })
     .option("production", {
+      type: "boolean",
+      flag: true,
+      default: false,
+    })
+    .option("clean", {
       type: "boolean",
       flag: true,
       default: false,
@@ -276,22 +288,23 @@ Promise.resolve(
     .scriptName("pixelheart")
     .usage("$0 <cmd> args")
     .fail((msg, err, yargs) => {
-      if (msg) {
-        console.log(msg);
-      }
       console.log(err);
       process.exit(1);
     }).argv
 );
 
-async function loadBuildPlugins(
-  customPluginsRoot: string | null,
+async function loadBuildPlugins(ctx: BuildContext, args: {
+  customBuildPluginsPath: string | null,
   filter: Array<string> | undefined
-): Promise<Array<LoadedBuildPlugin>> {
+}): Promise<Array<LoadedBuildPlugin>> {
   const plugins: Array<LoadedBuildPlugin> = [];
   const pluginRoots = [path.join(dirname, "plugins")];
-  if (customPluginsRoot) {
-    pluginRoots.push(customPluginsRoot);
+  if (args.customBuildPluginsPath) {
+    if (!existsSync(args.customBuildPluginsPath)) {
+      ctx.warn(`Custom build plugins path ${args.customBuildPluginsPath} does not exist`);
+    } else {
+      pluginRoots.push(args.customBuildPluginsPath);
+    }
   }
 
   for (const r of pluginRoots) {
@@ -301,7 +314,7 @@ async function loadBuildPlugins(
         continue;
       }
       const pluginName = p.replace(path.extname(p), "");
-      if (!filter || filter.includes(pluginName)) {
+      if (!args.filter || args.filter.includes(pluginName)) {
         const pluginPath = path.join(r, p);
         const plugin = await import(pluginPath);
         plugins.push({
@@ -311,10 +324,44 @@ async function loadBuildPlugins(
       }
     }
   }
-  return topologicalSort(plugins);
+  return topologicalSort(ctx, plugins);
+}
+
+async function executeBuildPlugins(
+  ctx: BuildContext,
+  plugins: Array<LoadedBuildPlugin>
+): Promise<boolean> {
+  if (ctx.clean) {
+    try {
+      await fs.rm(ctx.gameOutputPath, { recursive: true, force: true });
+    } catch (e) { }
+  }
+
+  for (const plugin of plugins) {
+    ctx.push(plugin.name);
+    try {
+      if (ctx.clean) {
+        await plugin.plugin.clean(ctx);
+      }
+      if (ctx.build && (await plugin.plugin.init(ctx))) {
+        try {
+          await plugin.plugin.build(ctx);
+        } catch (e) {
+          ctx.error((e as Error).message);
+        }
+        if (ctx.watch) {
+          await plugin.plugin.watch(ctx, watcher.subscribe);
+        }
+      }
+    } finally {
+      ctx.pop();
+    }
+  }
+  return ctx.errorCount === 0;
 }
 
 function topologicalSort(
+  ctx: BuildContext,
   plugins: Array<LoadedBuildPlugin>
 ): Array<LoadedBuildPlugin> {
   const edges = new Map<string, LoadedBuildPlugin>();
@@ -324,73 +371,31 @@ function topologicalSort(
   const visited = new Set<string>();
   const temp = new Set<string>();
 
-  const visit = (p: LoadedBuildPlugin, stack: Set<string>) => {
-    if (visited.has(p.name)) return;
-    if (stack.has(p.name)) {
-      throw new Error(`Circular dependency detected: ${p.name}`);
-    }
+  try {
+    const visit = (p: LoadedBuildPlugin, stack: Set<string>) => {
+      if (visited.has(p.name)) return;
+      if (stack.has(p.name)) {
+        throw new Error(`Circular build dependency detected: ${p.name}`);
+      }
 
-    stack.add(p.name);
+      stack.add(p.name);
 
-    p.plugin.depends.forEach((depName: string) => {
-      const dep = edges.get(depName);
-      if (dep) visit(dep, stack);
-    });
+      p.plugin.depends.forEach((depName: string) => {
+        const dep = edges.get(depName);
+        if (dep) visit(dep, stack);
+      });
 
-    visited.add(p.name);
-    stack.delete(p.name);
-    sorted.push(p);
-  };
-
-  plugins.forEach((p) => visit(p, temp));
-  return sorted;
-}
-
-async function executeBuildPlugins(
-  ctx: Omit<BuildContext, "log" | "onError">,
-  plugins: Array<LoadedBuildPlugin>
-): Promise<boolean> {
-  if (ctx.clean) {
-    try {
-      await fs.rm(ctx.outputRoot);
-    } catch (e) {}
-  }
-
-  let errors = 0;
-  for (const plugin of plugins) {
-    const pluginCtx = {
-      ...ctx,
-      log: (message: string) => {
-        console.log(chalk.dim(`[${plugin.name}]`), message);
-      },
-      onError: (error: string) => {
-        if (!ctx.watch) {
-          throw new Error(error);
-        } else {
-          ++errors;
-          console.log(chalk.dim(`[${plugin.name}]`), chalk.red(error));
-        }
-      },
+      visited.add(p.name);
+      stack.delete(p.name);
+      sorted.push(p);
     };
-    if (ctx.clean) {
-      await plugin.plugin.clean(pluginCtx);
-    }
-    if (ctx.build && (await plugin.plugin.init(pluginCtx))) {
-      try {
-        await plugin.plugin.build(pluginCtx, !ctx.clean);
-      } catch (e) {
-        console.log(
-          chalk.dim(`[${plugin.name}]`),
-          chalk.red((e as Error).message)
-        );
-        throw e;
-      }
-      if (ctx.watch) {
-        await plugin.plugin.watch(pluginCtx, watcher.subscribe);
-      }
-    }
+
+    plugins.forEach((p) => visit(p, temp));
+    return sorted;
+  } catch (e: any) {
+    ctx.error(e.message);
+    return plugins;
   }
-  return errors === 0;
 }
 
 function watchTypescript(gameRoot: string) {

@@ -55,10 +55,19 @@ interface SpriteCompositeQueue {
 export default class SpritePlugin implements BuildPlugin {
   depends = [];
 
+  #getPaths(ctx: BuildContext) {
+    return {
+      sprites: path.join(ctx.gameAssetPath, "sprites"),
+      output: path.join(ctx.gameOutputPath, "sprites"),
+      spriteSrc: path.join(ctx.gameClientPath, "sprites"),
+    };
+  }
+
   async init(ctx: BuildContext): Promise<boolean> {
-    if (existsSync(path.join(ctx.assetRoot, "sprites"))) {
-      await ensurePath(path.join(ctx.outputRoot, "sprites"));
-      await ensurePath(path.join(ctx.srcRoot, "sprites"));
+    const paths = this.#getPaths(ctx);
+    if (existsSync(paths.sprites)) {
+      await ensurePath(paths.output);
+      await ensurePath(paths.spriteSrc);
       return true;
     } else {
       return false;
@@ -66,30 +75,30 @@ export default class SpritePlugin implements BuildPlugin {
   }
 
   async clean(ctx: BuildContext) {
+    const paths = this.#getPaths(ctx);
     try {
       await Promise.all([
-        fs.rm(path.join(ctx.outputRoot, "sprites"), {
+        fs.rm(paths.output, {
           recursive: true,
           force: true,
         }),
-        fs.rm(path.join(ctx.srcRoot, "sprites"), {
+        fs.rm(paths.spriteSrc, {
           recursive: true,
           force: true,
         }),
       ]);
-    } catch (e) {}
+    } catch (e) { }
   }
 
-  async build(ctx: BuildContext, incremental: boolean) {
-    const spritePath = path.join(ctx.assetRoot, "sprites");
-    const outputPath = path.join(ctx.outputRoot, "sprites");
+  async build(ctx: BuildContext) {
+    const paths = this.#getPaths(ctx);
 
     // on first run, check if any sprites are missing or older
     // than the source and build them
-    const sourceSpriteSheets = await fs.readdir(spritePath);
-    const destSpriteSheets = incremental ? await fs.readdir(outputPath) : [];
+    const sourceSpriteSheets = await fs.readdir(paths.sprites);
+    const destSpriteSheets = !ctx.clean ? await fs.readdir(paths.output) : [];
     for (const src of sourceSpriteSheets) {
-      const srcStat = await fs.stat(path.join(spritePath, src));
+      const srcStat = await fs.stat(path.join(paths.sprites, src));
       if (srcStat.isFile()) {
         continue;
       }
@@ -103,7 +112,7 @@ export default class SpritePlugin implements BuildPlugin {
         // doesn't exist
         !dest ||
         // or is older than the source
-        srcStat.mtimeMs > (await fs.stat(path.join(outputPath, dest))).mtimeMs
+        srcStat.mtimeMs > (await fs.stat(path.join(paths.output, dest))).mtimeMs
       ) {
         await this.#processSpriteSheet(ctx, src);
       }
@@ -111,19 +120,19 @@ export default class SpritePlugin implements BuildPlugin {
   }
 
   async watch(ctx: BuildContext, subscribe: (path: string, callback: (err: Error | null, events: Array<BuildWatchEvent>) => void) => Promise<any>) {
-    const spritePath = path.join(ctx.assetRoot, "sprites");
+    const paths = this.#getPaths(ctx);
     // await other sprite changes as they come
-    await subscribe(spritePath, async (_err, events) => {
+    await subscribe(paths.sprites, async (_err, events) => {
       await this.#processSpriteSheetEvents(ctx, events);
     });
   }
 
   async #processSpriteSheetEvents(ctx: BuildContext, events: Array<BuildWatchEvent>) {
-    const spritePath = path.join(ctx.assetRoot, "sprites");
+    const paths = this.#getPaths(ctx);
     const newOrModified = new Set<string>();
     const deleted = [];
     for (let e of events) {
-      const components = e.path.substring(spritePath.length + 1).split("/");
+      const components = e.path.substring(paths.sprites.length + 1).split("/");
       switch (e.type) {
         case "create":
         case "update":
@@ -153,15 +162,15 @@ export default class SpritePlugin implements BuildPlugin {
 
     for (let d of deleted) {
       try {
-        await fs.rm(path.join(ctx.srcRoot, "sprites", `${d}.ts`));
-        await fs.rm(path.join(ctx.outputRoot, "sprites", `${d}.png`));
-      } catch (ex) {}
+        await fs.rm(path.join(paths.spriteSrc, `${d}.ts`));
+        await fs.rm(path.join(paths.output, `${d}.png`));
+      } catch (ex) { }
     }
 
     for (let nom of newOrModified) {
       const spriteSheet = await this.#processSpriteSheet(ctx, nom);
       if (spriteSheet) {
-        ctx.event({
+        ctx.emit({
           type: "RELOAD_SPRITESHEET",
           spriteSheet,
         });
@@ -173,8 +182,7 @@ export default class SpritePlugin implements BuildPlugin {
     ctx: BuildContext,
     spriteSheetName: string
   ): Promise<SpriteSheetConfig | null> {
-    const spritePath = path.join(ctx.assetRoot, "sprites");
-    const spriteSrcPath = path.join(ctx.srcRoot, "sprites");
+    const paths = this.#getPaths(ctx);
     let config: SpriteSheetConfig | null = null;
     const sheet: PendingSpriteSheet = {
       name: spriteSheetName,
@@ -185,7 +193,7 @@ export default class SpritePlugin implements BuildPlugin {
 
     ctx.log(`Building sprite sheet ${chalk.green(sheet.name)}...`);
 
-    const sprites = await fs.readdir(path.join(spritePath, sheet.name));
+    const sprites = await fs.readdir(path.join(paths.sprites, sheet.name));
     const compositeQueue = {
       diffuse: [],
       normal: [],
@@ -209,10 +217,10 @@ export default class SpritePlugin implements BuildPlugin {
             await this.#processAseSprite(ctx, sprite, sheet, compositeQueue);
             break;
           default:
-            ctx.onError(`Invalid sprite format: ${sprite}`);
+            ctx.error(`Invalid sprite format: ${sprite}`);
         }
       } catch (ex: any) {
-        ctx.onError(`Unexpected sprite error: ${ex.toString()}`);
+        ctx.error(`Unexpected sprite error: ${ex.toString()}`);
         return null;
       }
     }
@@ -291,23 +299,23 @@ export default class SpritePlugin implements BuildPlugin {
 
         // write the typescript generated mapping
         await fs.writeFile(
-          path.join(spriteSrcPath, `${sheet.name}.ts`),
+          path.join(paths.spriteSrc, `${sheet.name}.ts`),
           `const Sheet = ${JSON.stringify(config, null, 2)};
 export default Sheet;`
         );
 
         // write the json reverse index
         await fs.writeFile(
-          path.join(spriteSrcPath, `${sheet.name}.json`),
+          path.join(paths.spriteSrc, `${sheet.name}.json`),
           `{
   ` +
-            [...sheet.sprites]
-              .map(([name, _], i) => `"${name}":${i + 1} `)
-              .join(",") +
-            `} `
+          [...sheet.sprites]
+            .map(([name, _], i) => `"${name}":${i + 1} `)
+            .join(",") +
+          `} `
         );
       } catch (err: any) {
-        ctx.onError(`Failed to write spritesheet: ${err.toString()} `);
+        ctx.error(`Failed to write spritesheet: ${err.toString()} `);
       }
     }
 
@@ -323,8 +331,9 @@ export default Sheet;`
     background: { r: number; g: number; b: number; alpha: number },
     additionalProcessing?: (s: sharp.Sharp) => sharp.Sharp
   ): Promise<[string, string]> {
+    const paths = this.#getPaths(ctx);
     const urlPath = `${sheet.name}-${sheetType}.${SHEET_FORMAT}`;
-    const filePath = path.join(ctx.outputRoot, "sprites", urlPath);
+    const filePath = path.join(paths.output, urlPath);
     await (additionalProcessing || ((s) => s))(
       sharp({
         create: {
@@ -336,9 +345,9 @@ export default Sheet;`
       }).composite(compositeQueue)
     )
       .ensureAlpha()
-      [SHEET_FORMAT]({
-        compressionLevel: ctx.production ? 9 : 6,
-      })
+    [SHEET_FORMAT]({
+      compressionLevel: ctx.production ? 9 : 6,
+    })
       .toFile(filePath);
 
     const hash = await getFileHash(filePath);
@@ -352,31 +361,32 @@ export default Sheet;`
     sheet: PendingSpriteSheet,
     compositeQueue: SpriteCompositeQueue
   ): Promise<void> {
+    const paths = this.#getPaths(ctx);
     const result = PNG_REGEX.exec(sprite);
     if (!result) {
-      return ctx.onError("Invalid sprite metadata");
+      return ctx.error("Invalid sprite metadata");
     }
 
     const name = result[1];
     const width = parseInt(result[2], 10);
     const height = parseInt(result[3], 10);
     const image = sharp(
-      path.join(ctx.assetRoot, "sprites", sheet.name, sprite)
+      path.join(paths.sprites, sheet.name, sprite)
     );
 
     let metadata: { width?: number; height?: number } = {};
     try {
       metadata = await image.metadata();
-    } catch (err: any) {}
+    } catch (err: any) { }
 
     if (metadata.width && metadata.height) {
       if (metadata.width !== width && metadata.width % width !== 0) {
-        return ctx.onError(
+        return ctx.error(
           `Invalid sprite width ${metadata.width}, must be a multiple of ${width} `
         );
       }
       if (metadata.height !== height) {
-        return ctx.onError(
+        return ctx.error(
           `Invalid sprite width ${metadata.height}, must be equal to ${height} `
         );
       }
@@ -418,7 +428,7 @@ export default Sheet;`
       sheet.height += metadata.height;
       sheet.sprites.set(name, outputSprite);
     } else {
-      return ctx.onError("Invalid sprite metadata");
+      return ctx.error("Invalid sprite metadata");
     }
   }
 
@@ -428,8 +438,9 @@ export default Sheet;`
     sheet: PendingSpriteSheet,
     compositeQueue: SpriteCompositeQueue
   ): Promise<void> {
+    const paths = this.#getPaths(ctx);
     const buffer = await fs.readFile(
-      path.join(ctx.assetRoot, "sprites", sheet.name, sprite)
+      path.join(paths.sprites, sheet.name, sprite)
     );
     const aseFile = new Aseprite(buffer, sprite);
     aseFile.parse();
@@ -528,7 +539,7 @@ export default Sheet;`
         }
 
         if (!hasDiffuse) {
-          return ctx.onError('No "diffuse" layer found');
+          return ctx.error('No "diffuse" layer found');
         }
 
         specularLayer =

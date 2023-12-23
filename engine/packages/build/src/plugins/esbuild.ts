@@ -8,7 +8,7 @@ import { BuildContext, BuildPlugin, BuildWatchEvent } from "../plugin.js";
 export default class ESBuildPlugin implements BuildPlugin {
   depends = ["sprite", "map", "shader"];
 
-  #ctx: esbuild.BuildContext<esbuild.BuildOptions> | null = null;
+  #esbuild: esbuild.BuildContext<esbuild.BuildOptions> | null = null;
 
   async init(ctx: BuildContext): Promise<boolean> {
     return true;
@@ -16,21 +16,21 @@ export default class ESBuildPlugin implements BuildPlugin {
 
   async clean(ctx: BuildContext): Promise<void> {
     try {
-      await fs.rm(path.join(ctx.outputRoot, "js"), {
+      await fs.rm(path.join(ctx.gameOutputPath, "js"), {
         recursive: true,
         force: true,
       });
-    } catch (e) {}
+    } catch (e) { }
   }
 
-  async build(ctx: BuildContext, incremental: boolean): Promise<void> {
+  async build(ctx: BuildContext): Promise<void> {
     if (ctx.watch) {
-      this.#ctx = await esbuild.context(this.#getConfig(ctx));
+      this.#esbuild = await esbuild.context(this.#getConfig(ctx));
     } else {
       try {
         await esbuild.build(this.#getConfig(ctx));
       } catch (e: any) {
-        ctx.onError("Build failed");
+        ctx.error("Build failed");
       }
     }
   }
@@ -42,12 +42,12 @@ export default class ESBuildPlugin implements BuildPlugin {
       callback: (err: Error | null, events: Array<BuildWatchEvent>) => void
     ) => Promise<any>
   ): Promise<void> {
-    if (!this.#ctx) {
+    if (!this.#esbuild || !ctx.watch) {
       return;
     }
-    const { port } = await this.#ctx.serve({
-      port: ctx.port,
-      servedir: ctx.outputRoot,
+    const { port } = await this.#esbuild.serve({
+      port: ctx.watch.port,
+      servedir: ctx.gameOutputPath,
       onRequest: (args: any) => {
         ctx.log(
           `[${args.method}] ${args.path} ${(args.status >= 200 &&
@@ -57,7 +57,7 @@ export default class ESBuildPlugin implements BuildPlugin {
         );
       },
     });
-    await this.#ctx.watch({});
+    await this.#esbuild.watch({});
     ctx.log(`Listening on ${port}`);
   }
 
@@ -68,21 +68,17 @@ export default class ESBuildPlugin implements BuildPlugin {
       minifyWhitespace: ctx.production,
       bundle: true,
       target: "esnext",
-      outdir: path.join(ctx.outputRoot, "js"),
+      outdir: path.join(ctx.gameOutputPath, "js"),
       logLevel: ctx.watch ? "silent" : "info",
       define: {
-        ["process.env.NODE_ENV"]: `"${
-          ctx.production ? "production" : "development"
-        }"`,
+        ["process.env.NODE_ENV"]: `"${ctx.production ? "production" : "development"
+          }"`,
         ["process.env.GAME_CLIENT"]: `"${path.join(
-          ctx.gameRoot,
-          "client",
+          ctx.gameClientPath,
           "index.ts"
         )}"`,
         ["process.env.GAME_EDITOR"]: `"${path.join(
-          ctx.gameRoot,
-          "editor",
-          "client",
+          ctx.gameEditorClientPath,
           "index.ts"
         )}"`,
       },

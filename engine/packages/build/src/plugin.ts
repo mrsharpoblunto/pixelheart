@@ -1,16 +1,26 @@
-export interface BuildContext {
+export interface BuildLogger {
+  push(scope: string): void;
+  pop(): void;
+  log(message?: string): void;
+  warn(message: string): void;
+  error(message: string): void;
+  errorCount: number;
+}
+
+export interface BuildContext extends BuildLogger {
   production: boolean;
-  port: number;
   clean: boolean;
   build: boolean;
-  watch: boolean;
-  gameRoot: string;
-  assetRoot: string;
-  srcRoot: string;
-  outputRoot: string;
-  log: (message: string) => void;
-  onError: (error: string) => void;
-  event: (event: any) => void;
+  watch: false | { port: number };
+
+  gamePath: string;
+  gameAssetPath: string;
+  gameClientPath: string;
+  gameBuildPath: string;
+  gameEditorClientPath: string;
+  gameEditorServerPath: string;
+  gameOutputPath: string;
+  emit(event: any): void;
 }
 
 export interface BuildWatchEvent {
@@ -22,7 +32,7 @@ export interface BuildPlugin {
   depends: Array<string>;
   init(ctx: BuildContext): Promise<boolean>;
   clean(ctx: BuildContext): Promise<void>;
-  build(ctx: BuildContext, incremental: boolean): Promise<void>;
+  build(ctx: BuildContext): Promise<void>;
   watch(
     ctx: BuildContext,
     subscribe: (

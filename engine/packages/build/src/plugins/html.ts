@@ -13,17 +13,17 @@ export default class HtmlPlugin implements BuildPlugin {
   #deps: Set<string> = new Set();
 
   async init(ctx: BuildContext): Promise<boolean> {
-    await ensurePath(ctx.outputRoot);
+    await ensurePath(ctx.gameOutputPath);
     return true;
   }
 
   async clean(ctx: BuildContext): Promise<void> {
     try {
-      await fs.rm(path.join(ctx.outputRoot, "index.html"));
-    } catch (e) {}
+      await fs.rm(path.join(ctx.gameOutputPath, "index.html"));
+    } catch (e) { }
   }
 
-  async build(ctx: BuildContext, incremental: boolean): Promise<void> {
+  async build(ctx: BuildContext): Promise<void> {
     await this.#processHtml(ctx);
   }
 
@@ -34,7 +34,7 @@ export default class HtmlPlugin implements BuildPlugin {
       callback: (err: Error | null, events: Array<BuildWatchEvent>) => void
     ) => Promise<any>
   ): Promise<void> {
-    await subscribe(ctx.outputRoot, async (_err, events) => {
+    await subscribe(ctx.gameOutputPath, async (_err, events) => {
       let reprocess = false;
       for (const e of events) {
         reprocess = reprocess || this.#deps.has(e.path);
@@ -87,7 +87,7 @@ export default class HtmlPlugin implements BuildPlugin {
 </html>`;
 
     ctx.log(`Building ${chalk.green("index.html")}...`);
-    await fs.writeFile(path.join(ctx.outputRoot, "index.html"), html);
+    await fs.writeFile(path.join(ctx.gameOutputPath, "index.html"), html);
   }
 
   async #includeFile(
@@ -96,8 +96,8 @@ export default class HtmlPlugin implements BuildPlugin {
     force: boolean,
     callback: (url: string) => string
   ): Promise<string> {
-    const file = path.join(ctx.outputRoot, filePath);
-    const exists = existsSync(path.join(ctx.outputRoot, filePath));
+    const file = path.join(ctx.gameOutputPath, filePath);
+    const exists = existsSync(path.join(ctx.gameOutputPath, filePath));
     if (exists || force) {
       this.#deps.add(file);
       if (exists) {
