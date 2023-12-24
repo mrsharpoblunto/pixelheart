@@ -37,7 +37,7 @@ export default class MapPlugin implements BuildPlugin {
     const paths = this.#getPaths(ctx);
     try {
       await Promise.all([
-        fs.rm(paths.maps, {
+        fs.rm(paths.output, {
           recursive: true,
           force: true,
         }),
@@ -167,7 +167,7 @@ export default class MapPlugin implements BuildPlugin {
             .join(", ")}`
         );
       } else {
-        ctx.error("map",`Invalid map metadata: invalid JSON`);
+        ctx.error("map", `Invalid map metadata: invalid JSON`);
       }
       return;
     }
@@ -240,10 +240,10 @@ export default class MapPlugin implements BuildPlugin {
       .png()
       .toFile(mapPath)
       .then(() => {
-        ctx.log("map",`Completed ${chalk.green(map)}.`);
+        ctx.log("map", `Completed ${chalk.green(map)}.`);
       })
       .catch((err) => {
-        ctx.error("map",`Failed to build ${map}: ${err.toString()}`);
+        ctx.error("map", `Failed to build ${map}: ${err.toString()}`);
       });
 
     const mapHash = await getFileHash(mapPath);

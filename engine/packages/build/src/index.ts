@@ -51,17 +51,17 @@ interface RunOptions extends CommonBuildOptions {
 
 class BuildContextImpl extends Logger implements BuildContext {
   #eventEmitter: EventEmitter | undefined;
-  production: boolean;
-  clean: boolean;
-  build: boolean;
-  watch: boolean | { port: number };
-  gamePath: string;
-  gameAssetPath: string;
-  gameClientPath: string;
-  gameBuildPath: string;
-  gameEditorClientPath: string;
-  gameEditorServerPath: string;
-  gameOutputPath: string;
+  readonly production: boolean;
+  readonly clean: boolean;
+  readonly build: boolean;
+  readonly watch: boolean | { port: number };
+  readonly gamePath: string;
+  readonly gameAssetPath: string;
+  readonly gameClientPath: string;
+  readonly gameBuildPath: string;
+  readonly gameEditorClientPath: string;
+  readonly gameEditorServerPath: string;
+  readonly gameOutputPath: string;
 
   constructor(args: {
     production: boolean,
@@ -78,7 +78,7 @@ class BuildContextImpl extends Logger implements BuildContext {
     this.#eventEmitter = eventEmitter;
     this.production = args.production;
     this.clean = args.clean;
-    this.build = true;
+    this.build = args.build;
     this.watch = args.watch;
     this.gamePath = path.resolve(process.cwd(), args["game-path"]);
     this.gameAssetPath = path.resolve(
@@ -149,7 +149,7 @@ const buildCommand = {
     if (success) {
       buildContext.warn("build", `Build completed with ${buildContext.errorCount} error(s)`);
     } else {
-      buildContext.log("build",chalk.green("Build complete"));
+      buildContext.log("build", chalk.green("Build complete"));
     }
 
     if (args.serve) {
@@ -187,7 +187,7 @@ const runCommand = {
     }, editor);
 
     if (!editor) {
-      buildContext.warn("editor","Disabled in production builds");
+      buildContext.warn("editor", "Disabled in production builds");
     } else {
       editor.start(
         buildContext.gameEditorServerPath,

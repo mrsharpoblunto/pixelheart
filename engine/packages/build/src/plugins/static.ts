@@ -27,9 +27,9 @@ export default class StaticPlugin implements BuildPlugin {
   async clean(ctx: BuildContext): Promise<void> {
     try {
       const paths = this.#getPaths(ctx);
-      const st = await fs.stat(paths.static);
+      const st = await fs.stat(paths.output);
       await fs.rm(
-        paths.static,
+        paths.output,
         !st.isSymbolicLink()
           ? {
             recursive: true,

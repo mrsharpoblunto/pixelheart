@@ -6,18 +6,18 @@ export interface BuildLogger {
 }
 
 export interface BuildContext extends BuildLogger {
-  production: boolean;
-  clean: boolean;
-  build: boolean;
-  watch: boolean | { port: number };
+  readonly production: boolean;
+  readonly clean: boolean;
+  readonly build: boolean;
+  readonly watch: boolean | { port: number };
 
-  gamePath: string;
-  gameAssetPath: string;
-  gameClientPath: string;
-  gameBuildPath: string;
-  gameEditorClientPath: string;
-  gameEditorServerPath: string;
-  gameOutputPath: string;
+  readonly gamePath: string;
+  readonly gameAssetPath: string;
+  readonly gameClientPath: string;
+  readonly gameBuildPath: string;
+  readonly gameEditorClientPath: string;
+  readonly gameEditorServerPath: string;
+  readonly gameOutputPath: string;
   emit(event: any): void;
 }
 

@@ -11,7 +11,7 @@ export default class ESBuildPlugin implements BuildPlugin {
   #esbuild: esbuild.BuildContext<esbuild.BuildOptions> | null = null;
 
   async init(ctx: BuildContext): Promise<boolean> {
-    return true;
+    return ctx.build;
   }
 
   async clean(ctx: BuildContext): Promise<void> {
@@ -30,7 +30,7 @@ export default class ESBuildPlugin implements BuildPlugin {
       try {
         await esbuild.build(this.#getConfig(ctx));
       } catch (e: any) {
-        ctx.error("esbuild","Build failed");
+        ctx.error("esbuild", "Build failed");
       }
     }
   }
@@ -58,7 +58,7 @@ export default class ESBuildPlugin implements BuildPlugin {
           );
         },
       });
-      ctx.log("esbuild",`Listening on ${port}`);
+      ctx.log("esbuild", `Listening on ${port}`);
     }
     await this.#esbuild.watch({});
   }
