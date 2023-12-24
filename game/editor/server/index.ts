@@ -32,14 +32,6 @@ interface WorkingMapData {
 
 const dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
-const log = (message: string) => {
-  console.log(chalk.dim("[editor]"), message);
-};
-
-const logError = (message: string) => {
-  console.log(chalk.dim("[editor]"), chalk.red(message));
-};
-
 class EditorServer {
   #mapUpdateInterval: NodeJS.Timeout | undefined;
   #mapCache: Map<string, WorkingMapData>;
@@ -81,7 +73,7 @@ class EditorServer {
           break;
       }
     });
-    log("Running");
+    console.log("Running");
   }
 
   async #flushMapChanges() {
@@ -94,7 +86,7 @@ class EditorServer {
     for (const [map, actions] of actionsToApply) {
       const existing = await this.#getMap(map);
       if (!existing) {
-        logError(`Failed to load map ${map}`);
+        console.error(`Failed to load map ${map}`);
         continue;
       }
 
@@ -109,7 +101,7 @@ class EditorServer {
         )
       );
       if (!revIndex.ok) {
-        logError(
+        console.error(
           `Failed to load sprite sheet ${existing.src.meta.spriteSheet} for map ${map}`
         );
         continue;
@@ -152,9 +144,9 @@ class EditorServer {
           .png()
           .toFile(u.image.path);
         await fs.writeFile(u.src.path, JSON.stringify(u.src.data, null, 2));
-        log(`Saved map ${chalk.green(map)}`);
+        console.log(`Saved map ${chalk.green(map)}`);
       } catch (err) {
-        logError(`Failed to update map ${map} - ${err}`);
+        console.error(`Failed to update map ${map} - ${err}`);
       }
     }
 
@@ -202,7 +194,7 @@ class EditorServer {
       };
 
       this.#mapCache.set(map, existing);
-      log(`Loaded map ${chalk.green(map)}`);
+      console.log(`Loaded map ${chalk.green(map)}`);
     }
     if (existing) {
       existing.lastAccess = Date.now();

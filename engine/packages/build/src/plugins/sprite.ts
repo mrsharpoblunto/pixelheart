@@ -150,7 +150,7 @@ export default class SpritePlugin implements BuildPlugin {
             // if its a toplevel spritesheet directory, remove the spritesheet
             // if its a sprite in a sheet, modify the spritesheet
             if (components.length === 1) {
-              ctx.log(`Removing sprite sheet ${components[0]}...`);
+              ctx.log("sprite",`Removing sprite sheet ${components[0]}...`);
               deleted.push(components[0]);
             } else if (isSpriteSource(e.path)) {
               newOrModified.add(components[0]);
@@ -191,7 +191,7 @@ export default class SpritePlugin implements BuildPlugin {
       sprites: new Map(),
     };
 
-    ctx.log(`Building sprite sheet ${chalk.green(sheet.name)}...`);
+    ctx.log("sprite",`Building sprite sheet ${chalk.green(sheet.name)}...`);
 
     const sprites = await fs.readdir(path.join(paths.sprites, sheet.name));
     const compositeQueue = {
@@ -203,7 +203,7 @@ export default class SpritePlugin implements BuildPlugin {
     for (let sprite of sprites) {
       try {
         if (isSpriteSource(sprite)) {
-          ctx.log(`Processing file ${sprite}...`);
+          ctx.log("sprite",`Processing file ${sprite}...`);
         } else {
           continue;
         }
@@ -217,10 +217,10 @@ export default class SpritePlugin implements BuildPlugin {
             await this.#processAseSprite(ctx, sprite, sheet, compositeQueue);
             break;
           default:
-            ctx.error(`Invalid sprite format: ${sprite}`);
+            ctx.error("sprite",`Invalid sprite format: ${sprite}`);
         }
       } catch (ex: any) {
-        ctx.error(`Unexpected sprite error: ${ex.toString()}`);
+        ctx.error("sprite",`Unexpected sprite error: ${ex.toString()}`);
         return null;
       }
     }
@@ -315,11 +315,11 @@ export default Sheet;`
           `} `
         );
       } catch (err: any) {
-        ctx.error(`Failed to write spritesheet: ${err.toString()} `);
+        ctx.error("sprite",`Failed to write spritesheet: ${err.toString()} `);
       }
     }
 
-    ctx.log(`Completed ${chalk.green(sheet.name)}.`);
+    ctx.log("sprite",`Completed ${chalk.green(sheet.name)}.`);
     return config;
   }
 
@@ -364,7 +364,7 @@ export default Sheet;`
     const paths = this.#getPaths(ctx);
     const result = PNG_REGEX.exec(sprite);
     if (!result) {
-      return ctx.error("Invalid sprite metadata");
+      return ctx.error("sprite","Invalid sprite metadata");
     }
 
     const name = result[1];
@@ -381,17 +381,17 @@ export default Sheet;`
 
     if (metadata.width && metadata.height) {
       if (metadata.width !== width && metadata.width % width !== 0) {
-        return ctx.error(
+        return ctx.error("sprite",
           `Invalid sprite width ${metadata.width}, must be a multiple of ${width} `
         );
       }
       if (metadata.height !== height) {
-        return ctx.error(
+        return ctx.error("sprite",
           `Invalid sprite width ${metadata.height}, must be equal to ${height} `
         );
       }
 
-      ctx.log(
+      ctx.log("sprite",
         `Adding sprite ${chalk.green(sheet.name)}:${chalk.blue(
           name
         )} ${width}x${height} ${metadata.width / width} frame(s)...`
@@ -428,7 +428,7 @@ export default Sheet;`
       sheet.height += metadata.height;
       sheet.sprites.set(name, outputSprite);
     } else {
-      return ctx.error("Invalid sprite metadata");
+      return ctx.error("sprite","Invalid sprite metadata");
     }
   }
 
@@ -449,7 +449,7 @@ export default Sheet;`
     const height = aseFile.height;
     for (let t of aseFile.tags) {
       const frameSlice = aseFile.frames.slice(t.from, t.to + 1);
-      ctx.log(
+      ctx.log("sprite",
         `Adding sprite ${chalk.green(sheet.name)}:${chalk.blue(
           t.name
         )} ${width}x${height} ${t.to - t.from + 1} frame(s)...`
@@ -539,7 +539,7 @@ export default Sheet;`
         }
 
         if (!hasDiffuse) {
-          return ctx.error('No "diffuse" layer found');
+          return ctx.error("sprite",'No "diffuse" layer found');
         }
 
         specularLayer =

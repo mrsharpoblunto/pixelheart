@@ -86,7 +86,7 @@ export default class HtmlPlugin implements BuildPlugin {
   </body>
 </html>`;
 
-    ctx.log(`Building ${chalk.green("index.html")}...`);
+    ctx.log("html", `Building ${chalk.green("index.html")}...`);
     await fs.writeFile(path.join(ctx.gameOutputPath, "index.html"), html);
   }
 

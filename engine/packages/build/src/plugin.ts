@@ -1,9 +1,7 @@
 export interface BuildLogger {
-  push(scope: string): void;
-  pop(): void;
-  log(message?: string): void;
-  warn(message: string): void;
-  error(message: string): void;
+  log(scope: string, message?: string): void;
+  warn(scope: string, message: string): void;
+  error(scope: string, message: string): void;
   errorCount: number;
 }
 
@@ -11,7 +9,7 @@ export interface BuildContext extends BuildLogger {
   production: boolean;
   clean: boolean;
   build: boolean;
-  watch: false | { port: number };
+  watch: boolean | { port: number };
 
   gamePath: string;
   gameAssetPath: string;

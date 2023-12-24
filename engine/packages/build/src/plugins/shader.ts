@@ -120,7 +120,7 @@ export default class ShaderPlugin implements BuildPlugin {
   async #processShader(ctx: BuildContext, shader: string): Promise<string> {
     const paths = this.#getPaths(ctx);
 
-    ctx.log(
+    ctx.log("shader",
       `Building ${ctx.production ? "minified " : ""}shader ${chalk.green(
         shader
       )}...`
@@ -255,7 +255,7 @@ export default value;
       );
       return src;
     } catch (error: any) {
-      ctx.error(error.toString());
+      ctx.error("shader",error.toString());
       return "";
     }
   }

@@ -52,7 +52,7 @@ export default class EditorCssPlugin
   }
 
   async #processCss(ctx: BuildContext) {
-    ctx.log(`Building ${chalk.green("editor.css")}`);
+    ctx.log("tailwind-css", `Building ${chalk.green("editor.css")}`);
 
     const tailwindConfig = await this.#getTailwindConfig(ctx);
     const result = await postcss([

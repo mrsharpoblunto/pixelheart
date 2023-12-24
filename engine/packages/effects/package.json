@@ -9,8 +9,8 @@
   },
   "scripts": {
     "clean": "rm -rf src/shaders && rm -rf dist && rm tsconfig.tsbuildinfo",
-    "build": "npx pixelheart build --production --plugins shader --no-custom-plugins --src ./src --output . && tsc --build",
-    "watch": "npx pixelheart build --production --plugins shader --no-custom-plugins --src ./src --output --watch"
+    "build": "npx pixelheart build -o . --plugins shader --no-custom-build-plugins --game-client-path ./src --production && tsc --build",
+    "watch": "npx pixelheart build -o . --plugins shader --no-custom-build-plugins --game-client-path ./src --production --watch"
   },
   "keywords": [],
   "author": "Glenn Conner",

@@ -155,24 +155,24 @@ export default class MapPlugin implements BuildPlugin {
   }
 
   async #processMap(ctx: BuildContext, map: string): Promise<void> {
-    ctx.log(`Building map ${chalk.green(map)}...`);
+    ctx.log("map", `Building map ${chalk.green(map)}...`);
 
     const paths = this.#getPaths(ctx);
     const result = await loadMapMetadata(paths.maps, map);
     if (!result.ok) {
       if (result.errors.length > 0) {
-        ctx.error(
+        ctx.error("map",
           `Invalid map metadata: ${result.errors
             .map((e) => e.message)
             .join(", ")}`
         );
       } else {
-        ctx.error(`Invalid map metadata: invalid JSON`);
+        ctx.error("map",`Invalid map metadata: invalid JSON`);
       }
       return;
     }
 
-    ctx.log(
+    ctx.log("map",
       `Generating ${result.metadata.width}x${result.metadata.height
       } map using sprite sheet ${chalk.green(result.metadata.spriteSheet)}...`
     );
@@ -194,7 +194,7 @@ export default class MapPlugin implements BuildPlugin {
     );
 
     if (!spriteRevIndex.ok) {
-      return ctx.error(
+      return ctx.error("map",
         `Invalid sprite sheet: ${result.metadata.spriteSheet}`
       );
     }
@@ -210,7 +210,7 @@ export default class MapPlugin implements BuildPlugin {
           if (tile) {
             const index = spriteRevIndex.data[tile.sprite];
             if (!index) {
-              return ctx.error(
+              return ctx.error("map",
                 `Invalid sprite at (${x},${y}): ${chalk.green(
                   result.metadata.spriteSheet
                 )}:${chalk.blue(tile.sprite)}`
@@ -240,10 +240,10 @@ export default class MapPlugin implements BuildPlugin {
       .png()
       .toFile(mapPath)
       .then(() => {
-        ctx.log(`Completed ${chalk.green(map)}.`);
+        ctx.log("map",`Completed ${chalk.green(map)}.`);
       })
       .catch((err) => {
-        ctx.error(`Failed to build ${map}: ${err.toString()}`);
+        ctx.error("map",`Failed to build ${map}: ${err.toString()}`);
       });
 
     const mapHash = await getFileHash(mapPath);

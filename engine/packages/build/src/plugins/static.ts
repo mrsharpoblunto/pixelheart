@@ -53,14 +53,14 @@ export default class StaticPlugin implements BuildPlugin {
     }
 
     if (ctx.production) {
-      ctx.log(`Copying static resources...`);
+      ctx.log("static", `Copying static resources...`);
       await fs.cp(paths.static, paths.output, {
         recursive: true,
       });
     } else {
       // in development builds, just symlink the static folder
       // as it's faster
-      ctx.log(`Symlinking static resources...`);
+      ctx.log("static", `Symlinking static resources...`);
       await fs.symlink(paths.static, paths.output);
     }
   }

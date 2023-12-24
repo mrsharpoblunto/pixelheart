@@ -4,11 +4,10 @@
   "description": "",
   "type": "module",
   "scripts": {
-    "dev": "npx pixelheart run --game . --output ./www",
-    "clean": "npx pixelheart clean --game . --output ./www",
-    "build": "pnpm run clean && npx pixelheart build --game . --output ./www",
-    "serve": "pnpm run build --serve",
-    "link": "pnpm link --global @pixelheart/client && pnpm link --global @pixelheart/server && pnpm link --global @pixelheart/build && pnpm link --global @pixelheart/effects"
+    "dev": "npx pixelheart run -o ./www",
+    "clean": "npx pixelheart clean -o ./www",
+    "build": "pnpm run clean && npx pixelheart build -o ./www",
+    "serve": "pnpm run build --serve"
   },
   "author": "Glenn Conner",
   "license": "MIT",

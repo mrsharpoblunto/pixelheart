@@ -1,4 +1,5 @@
 import { SourceLocation, codeFrameColumns } from "@babel/code-frame";
+
 import watcher from "@parcel/watcher";
 import chalk from "chalk";
 import { spawn } from "child_process";
@@ -11,11 +12,11 @@ import yargs, { Argv } from "yargs";
 import { hideBin } from "yargs/helpers";
 import { EventEmitter } from "events";
 import { existsSync } from "fs";
-
 import { EditorServerHost } from "@pixelheart/server";
-
-import { BuildContext, BuildPlugin } from "./plugin.js";
 import { Logger } from "./logger.js";
+import { BuildContext, BuildPlugin } from "./plugin.js";
+
+export type { BuildContext, BuildPlugin } from "./plugin.js";
 
 const PORT = 8000;
 const dirname = path.dirname(url.fileURLToPath(import.meta.url));
@@ -29,17 +30,18 @@ interface LoadedBuildPlugin {
 interface CommonBuildOptions {
   production: boolean;
   clean: boolean;
-  gamePath: string;
-  gameAssetPath: string | undefined;
-  gameClientPath: string | undefined;
-  gameBuildPath: string | undefined;
-  gameOutputPath: string;
-  enableCustomBuildPlugins: boolean;
-  buildPluginFilter: Array<string> | undefined;
+  "game-path": string;
+  "game-asset-path": string | undefined;
+  "game-client-path": string | undefined;
+  "game-build-path": string | undefined;
+  "game-output-path": string;
+  "custom-build-plugins": boolean;
+  "build-plugin-filter": Array<string> | undefined;
 }
 
 interface BuildOptions extends CommonBuildOptions {
   serve: boolean;
+  watch: boolean;
   port: number;
 }
 
@@ -52,7 +54,7 @@ class BuildContextImpl extends Logger implements BuildContext {
   production: boolean;
   clean: boolean;
   build: boolean;
-  watch: false | { port: number };
+  watch: boolean | { port: number };
   gamePath: string;
   gameAssetPath: string;
   gameClientPath: string;
@@ -65,12 +67,12 @@ class BuildContextImpl extends Logger implements BuildContext {
     production: boolean,
     clean: boolean,
     build: boolean,
-    watch: false | { port: number },
-    gamePath: string,
-    gameAssetPath?: string,
-    gameBuildPath?: string,
-    gameClientPath?: string,
-    gameOutputPath: string,
+    watch: boolean | { port: number },
+    "game-path": string,
+    "game-asset-path": string | undefined,
+    "game-client-path": string | undefined,
+    "game-build-path": string | undefined,
+    "game-output-path": string,
   }, eventEmitter?: EventEmitter) {
     super(!args.watch);
     this.#eventEmitter = eventEmitter;
@@ -78,28 +80,28 @@ class BuildContextImpl extends Logger implements BuildContext {
     this.clean = args.clean;
     this.build = true;
     this.watch = args.watch;
-    this.gamePath = path.resolve(process.cwd(), args.gamePath);
+    this.gamePath = path.resolve(process.cwd(), args["game-path"]);
     this.gameAssetPath = path.resolve(
       process.cwd(),
-      args.gameAssetPath || path.join(args.gamePath, "assets")
+      args["game-asset-path"] || path.join(args["game-path"], "assets")
     );
     this.gameClientPath = path.resolve(
       process.cwd(),
-      args.gameClientPath || path.join(args.gamePath, "client")
+      args["game-client-path"] || path.join(args["game-path"], "client")
     );
     this.gameBuildPath = path.resolve(
       process.cwd(),
-      args.gameBuildPath || path.join(args.gamePath, "build")
+      args["game-build-path"] || path.join(args["game-path"], "build")
     );
     this.gameEditorClientPath = path.resolve(
       process.cwd(),
-      path.join(args.gamePath, "editor", "client")
+      path.join(args["game-path"], "editor", "client")
     );
     this.gameEditorServerPath = path.resolve(
       process.cwd(),
-      path.join(args.gamePath, "editor", "server")
+      path.join(args["game-path"], "editor", "server")
     );
-    this.gameOutputPath = path.resolve(process.cwd(), args.gameOutputPath);
+    this.gameOutputPath = path.resolve(process.cwd(), args["game-output-path"]);
   }
 
   emit(e: any) {
@@ -117,6 +119,11 @@ const buildCommand = {
         flag: true,
         default: false,
       })
+      .option("watch", {
+        type: "boolean",
+        flag: true,
+        default: false,
+      })
       .option("port", {
         type: "number",
         default: PORT,
@@ -125,13 +132,12 @@ const buildCommand = {
   handler: async (args: BuildOptions) => {
     const buildContext = new BuildContextImpl({
       ...args,
-      watch: false,
       build: true,
     });
 
     const plugins = await loadBuildPlugins(buildContext, {
-      filter: args.buildPluginFilter,
-      customBuildPluginsPath: args.enableCustomBuildPlugins ? buildContext.gameBuildPath : null,
+      filter: args["build-plugin-filter"],
+      customBuildPluginsPath: args["custom-build-plugins"] ? buildContext.gameBuildPath : null,
     });
 
     const success = await executeBuildPlugins(
@@ -139,11 +145,11 @@ const buildCommand = {
       plugins
     );
 
-    buildContext.log();
+    buildContext.log("build");
     if (success) {
-      buildContext.warn(`Build completed with ${buildContext.errorCount} error(s)`);
+      buildContext.warn("build", `Build completed with ${buildContext.errorCount} error(s)`);
     } else {
-      buildContext.log(chalk.green("Build complete"));
+      buildContext.log("build",chalk.green("Build complete"));
     }
 
     if (args.serve) {
@@ -151,10 +157,8 @@ const buildCommand = {
       app.use(compression());
       app.use(express.static(buildContext.gameOutputPath));
       app.listen(args.port, () => {
-        buildContext.push("server")
-        buildContext.log();
-        buildContext.log(`Running at http://localhost:${args.port}`);
-        buildContext.pop();
+        buildContext.log("server");
+        buildContext.log("server", `Running at http://localhost:${args.port}`);
       });
     }
   },
@@ -174,10 +178,7 @@ const runCommand = {
     const editor = args.production
       ? undefined
       : new EditorServerHost(
-        args.port + 1,
-        path.join(args.gamePath, "editor", "server"),
-        args.gameOutputPath
-      );
+        args.port + 1);
 
     const buildContext = new BuildContextImpl({
       ...args,
@@ -186,14 +187,17 @@ const runCommand = {
     }, editor);
 
     if (!editor) {
-      buildContext.push("editor");
-      buildContext.warn("Disabled in production builds");
-      buildContext.pop();
+      buildContext.warn("editor","Disabled in production builds");
+    } else {
+      editor.start(
+        buildContext.gameEditorServerPath,
+        buildContext.gameOutputPath,
+      );
     }
 
     const plugins = await loadBuildPlugins(buildContext, {
-      filter: args.buildPluginFilter,
-      customBuildPluginsPath: args.enableCustomBuildPlugins ? buildContext.gameBuildPath : null,
+      filter: args["build-plugin-filter"],
+      customBuildPluginsPath: args["custom-build-plugins"] ? buildContext.gameBuildPath : null,
     });
 
     const success = await executeBuildPlugins(
@@ -201,12 +205,13 @@ const runCommand = {
       plugins
     );
 
-    buildContext.log();
-    if (success) {
-      buildContext.warn(`Build completed with ${buildContext.errorCount} error(s)`);
+    buildContext.log("build");
+    if (!success) {
+      buildContext.warn("build", `Build completed with ${buildContext.errorCount} error(s)`);
     } else {
-      buildContext.log(chalk.green("Build complete"));
+      buildContext.log("build", chalk.green("Build complete"));
     }
+    buildContext.log("build");
 
     watchTypescript(buildContext.gameOutputPath);
   },
@@ -226,8 +231,8 @@ const cleanCommand = {
     });
 
     const plugins = await loadBuildPlugins(buildContext, {
-      filter: args.buildPluginFilter,
-      customBuildPluginsPath: args.enableCustomBuildPlugins ? buildContext.gameBuildPath : null,
+      filter: args["build-plugin-filter"],
+      customBuildPluginsPath: args["custom-build-plugins"] ? buildContext.gameBuildPath : null,
     });
 
     // build game assets
@@ -240,35 +245,15 @@ const cleanCommand = {
 
 Promise.resolve(
   yargs(hideBin(process.argv))
-    .option("gamePath", {
+    .option("game-path", {
       type: "string",
       default: ".",
+      alias: "g",
     })
-    .option("gameAssetPath", {
-      type: "string",
-      hidden: true,
-    })
-    .option("gameClientPath", {
-      type: "string",
-      hidden: true,
-    })
-    .option("gameBuildPath", {
-      type: "string",
-      hidden: true,
-    })
-    .option("gameOutputPath", {
-      type: "string",
-      required: true,
-    })
-    .option("enableCustomBuildPlugins", {
-      type: "boolean",
-      hidden: true,
-      flag: true,
-      default: true,
-    })
-    .option("buildPluginFilter", {
+    .option("build-plugin-filter", {
       type: "string",
       array: true,
+      alias: "plugins",
     })
     .option("production", {
       type: "boolean",
@@ -280,6 +265,29 @@ Promise.resolve(
       flag: true,
       default: false,
     })
+    .option("game-output-path", {
+      type: "string",
+      required: true,
+      alias: "o",
+    })
+    .option("game-asset-path", {
+      type: "string",
+      hidden: true,
+    })
+    .option("game-client-path", {
+      type: "string",
+      hidden: true,
+    })
+    .option("game-build-path", {
+      type: "string",
+      hidden: true,
+    })
+    .option("custom-build-plugins", {
+      type: "boolean",
+      hidden: true,
+      flag: true,
+      default: true,
+    })
     .command(buildCommand)
     .command(runCommand)
     .command(cleanCommand)
@@ -287,8 +295,14 @@ Promise.resolve(
     .strict()
     .scriptName("pixelheart")
     .usage("$0 <cmd> args")
-    .fail((msg, err, yargs) => {
-      console.log(err);
+    .fail((msg, err, _yargs) => {
+      if (err && !(err as any).scope) {
+        console.log();
+        console.log('Unhandled Exception:');
+        console.log(chalk.red(err));
+      } else if (msg) {
+        console.log(chalk.red(msg));
+      }
       process.exit(1);
     }).argv
 );
@@ -301,7 +315,7 @@ async function loadBuildPlugins(ctx: BuildContext, args: {
   const pluginRoots = [path.join(dirname, "plugins")];
   if (args.customBuildPluginsPath) {
     if (!existsSync(args.customBuildPluginsPath)) {
-      ctx.warn(`Custom build plugins path ${args.customBuildPluginsPath} does not exist`);
+      ctx.warn("build", `Custom build plugins path ${args.customBuildPluginsPath} does not exist`);
     } else {
       pluginRoots.push(args.customBuildPluginsPath);
     }
@@ -331,30 +345,19 @@ async function executeBuildPlugins(
   ctx: BuildContext,
   plugins: Array<LoadedBuildPlugin>
 ): Promise<boolean> {
-  if (ctx.clean) {
-    try {
-      await fs.rm(ctx.gameOutputPath, { recursive: true, force: true });
-    } catch (e) { }
-  }
-
   for (const plugin of plugins) {
-    ctx.push(plugin.name);
-    try {
-      if (ctx.clean) {
-        await plugin.plugin.clean(ctx);
+    if (ctx.clean) {
+      await plugin.plugin.clean(ctx);
+    }
+    if (ctx.build && (await plugin.plugin.init(ctx))) {
+      try {
+        await plugin.plugin.build(ctx);
+      } catch (e) {
+        ctx.error(plugin.name, (e as Error).message);
       }
-      if (ctx.build && (await plugin.plugin.init(ctx))) {
-        try {
-          await plugin.plugin.build(ctx);
-        } catch (e) {
-          ctx.error((e as Error).message);
-        }
-        if (ctx.watch) {
-          await plugin.plugin.watch(ctx, watcher.subscribe);
-        }
+      if (ctx.watch) {
+        await plugin.plugin.watch(ctx, watcher.subscribe);
       }
-    } finally {
-      ctx.pop();
     }
   }
   return ctx.errorCount === 0;
@@ -393,7 +396,7 @@ function topologicalSort(
     plugins.forEach((p) => visit(p, temp));
     return sorted;
   } catch (e: any) {
-    ctx.error(e.message);
+    ctx.error("build", e.message);
     return plugins;
   }
 }

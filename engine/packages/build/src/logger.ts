@@ -1,41 +1,41 @@
 import chalk from 'chalk';
 import { BuildLogger } from './plugin.js';
 
+class BuildError extends Error {
+  scope: string;
+
+  constructor(scope: string, message: string) {
+    super(message);
+    this.scope = scope;
+    this.name = 'BuildError';
+  }
+};
+
 export class Logger implements BuildLogger {
-  #scopes: Array<string>;
   #throwOnError: boolean;
   errorCount: number = 0;
 
   constructor(throwOnError: boolean) {
-    this.#scopes = [];
     this.#throwOnError = throwOnError;
   }
 
-  push(scope: string) { this.#scopes.push(scope); }
-
-  pop() {
-    if (this.#scopes.length > 0) {
-      this.#scopes.pop();
-    }
-  }
-
-  log(message?: string) {
+  log(scope: string, message?: string) {
     console.log.apply(console, [
-      ...(this.#scopes.length ? [`[${this.#scopes[this.#scopes.length - 1]}]`] : []),
+      chalk.dim(`[${scope}]`),
       ...(message ? [message] : [])
     ]);
   }
 
-  warn(message: string) {
-    this.log(chalk.yellow(message));
+  warn(scope: string, message: string) {
+    this.log(scope, chalk.yellow(message));
   }
 
-  error(message: string) {
+  error(scope: string, message: string) {
     if (!this.#throwOnError) {
-      throw new Error(message);
+      throw new BuildError(scope,message);
     } else {
       this.errorCount++;
-      this.log(chalk.red(message));
+      this.log(scope, chalk.red(message));
     }
   }
 }

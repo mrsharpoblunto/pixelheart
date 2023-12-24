@@ -9,7 +9,7 @@
   "scripts": {
     "clean": "rm -rf dist && rm tsconfig.tsbuildinfo",
     "build": "tsc --build",
-    "dev": "ts-node ./src/index.ts"
+    "run": "node dist/index.js"
   },
   "bin": {
     "pixelheart": "bin/pixelheart.js"

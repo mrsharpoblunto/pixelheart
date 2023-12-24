@@ -30,7 +30,7 @@ export default class ESBuildPlugin implements BuildPlugin {
       try {
         await esbuild.build(this.#getConfig(ctx));
       } catch (e: any) {
-        ctx.error("Build failed");
+        ctx.error("esbuild","Build failed");
       }
     }
   }
@@ -42,23 +42,25 @@ export default class ESBuildPlugin implements BuildPlugin {
       callback: (err: Error | null, events: Array<BuildWatchEvent>) => void
     ) => Promise<any>
   ): Promise<void> {
-    if (!this.#esbuild || !ctx.watch) {
+    if (!this.#esbuild) {
       return;
     }
-    const { port } = await this.#esbuild.serve({
-      port: ctx.watch.port,
-      servedir: ctx.gameOutputPath,
-      onRequest: (args: any) => {
-        ctx.log(
-          `[${args.method}] ${args.path} ${(args.status >= 200 &&
-            args.status < 400
-            ? chalk.green
-            : chalk.red)(args.status)}`
-        );
-      },
-    });
+    if (typeof ctx.watch !== "boolean") {
+      const { port } = await this.#esbuild.serve({
+        port: ctx.watch.port,
+        servedir: ctx.gameOutputPath,
+        onRequest: (args: any) => {
+          ctx.log("esbuild",
+            `[${args.method}] ${args.path} ${(args.status >= 200 &&
+              args.status < 400
+              ? chalk.green
+              : chalk.red)(args.status)}`
+          );
+        },
+      });
+      ctx.log("esbuild",`Listening on ${port}`);
+    }
     await this.#esbuild.watch({});
-    ctx.log(`Listening on ${port}`);
   }
 
   #getConfig(ctx: BuildContext): esbuild.BuildOptions {

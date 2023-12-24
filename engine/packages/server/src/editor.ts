@@ -44,21 +44,22 @@ export class EditorServerHost extends EventEmitter {
   #wss: WebSocketServer;
   #requestBuffer: Array<EditorMutation>;
   #editorSocket: WebSocket | null;
-  #srcPath: string;
-  #outputPath: string;
+  #gameOutputPath: string | null;
   #port: number;
+  #changed: boolean;
 
-  constructor(port: number, srcPath: string, outputPath: string) {
+  constructor(port: number) {
     super();
     this.#port = port;
     this.#editorSocket = null;
-    this.#srcPath = srcPath;
-    this.#outputPath = outputPath;
+    this.#requestBuffer = new Array<EditorMutation>();
+    this.#gameOutputPath = null;
+    this.#changed = true;
+
     this.#wss = new WebSocketServer({ port });
     this.#wss.on("listening", () => {
-      console.log(chalk.dim("[editor]"), `Listening on port ${port} `);
+      this.#log(`Listening on port ${port} `);
     });
-    this.#requestBuffer = new Array<EditorMutation>();
     this.#wss.on("connection", (ws) => {
       ws.on("message", (message) => {
         const editorMessage = JSON.parse(message.toString()) as EditorMutation;
@@ -69,7 +70,7 @@ export class EditorServerHost extends EventEmitter {
             this.#sendToEditor([
               {
                 type: "INIT",
-                outputRoot: this.#outputPath,
+                outputRoot: this.#gameOutputPath,
               },
               ...this.#requestBuffer,
             ])
@@ -96,12 +97,21 @@ export class EditorServerHost extends EventEmitter {
       });
     });
 
+    this.on("event", (event: EditorMutation) => {
+      this.#broadcast(event);
+    });
+  }
+
+  start(gameEditorServerPath: string, gameOutputPath: string) {
+    this.#gameOutputPath = gameOutputPath
+
     // restart when the editor src changes
     watcher.subscribe(
-      this.#srcPath,
+      gameEditorServerPath,
       async (_err, _events) => {
+        this.#changed = true;
         if (this.#sendToEditor([{ type: "RESTART" }])) {
-          console.log(chalk.dim("[editor]"), "Reloading...");
+          this.#log("Reloading...");
           this.#editorSocket = null;
         }
       },
@@ -110,11 +120,11 @@ export class EditorServerHost extends EventEmitter {
       }
     );
 
-    this.createEditor();
+    this.#createEditor(gameEditorServerPath);
+  }
 
-    this.on("event", (event: EditorMutation) => {
-      this.#broadcast(event);
-    });
+  #log(message: string) {
+    console.log(chalk.dim("[editor]"), message);
   }
 
   #sendToEditor<T extends EditorMutation>(events: Array<T>) {
@@ -136,8 +146,7 @@ export class EditorServerHost extends EventEmitter {
         client != this.#editorSocket &&
         client.readyState === WebSocket.OPEN
       ) {
-        console.log(
-          chalk.dim("[editor]"),
+        this.#log(
           `Sending ${chalk.green(event.type)} event.`
         );
         client.send(JSON.stringify(event));
@@ -145,23 +154,42 @@ export class EditorServerHost extends EventEmitter {
     });
   }
 
-  createEditor() {
+  #createEditor(p: string) {
+    if (!this.#changed) {
+      setTimeout(() => this.#createEditor(p), 1000);
+      return;
+    }
+    this.#changed = false;
+
     const editor = spawn(
       path.join(dirname, "../node_modules/.bin/ts-node-esm"),
-      [path.join(this.#srcPath, "index.ts")],
+      [path.join(p, "index.ts")],
       {
         env: {
           ...process.env,
           PIXELHEART_SERVER_PORT: this.#port.toString(),
         },
-        cwd: this.#srcPath,
-        stdio: ["inherit", "inherit", "inherit", "ipc"],
+        cwd: p,
       }
     );
 
+    editor.stdout.on("data", (data) => {
+      process.stdout.write(chalk.dim("[editor] "));
+      process.stdout.write(data.toString());
+    });
+
+    editor.stderr.on("data", (data) => {
+      process.stdout.write(chalk.dim("[editor] "));
+      process.stdout.write(chalk.red(data.toString()));
+    });
+
+    editor.on("error", (err) => {
+      this.#log(chalk.red(err.toString()));
+    });
+
     editor.on("exit", (code: number) => {
-      console.log(chalk.dim("[editor]"), `Closed(${code}).`);
-      this.createEditor();
+      this.#log(`Closed (${code}).`);
+      this.#createEditor(p);
     });
   }
 }
