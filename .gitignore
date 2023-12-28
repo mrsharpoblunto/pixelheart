@@ -8,4 +8,5 @@ engine/packages/effects/src/shaders/*
 engine/packages/effects/src/maps/*
 engine/packages/effects/src/sprites/*
 .DS_Store
+.pixelbuildinfo
 tsconfig.tsbuildinfo

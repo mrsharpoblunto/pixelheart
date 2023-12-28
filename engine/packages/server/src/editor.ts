@@ -1,5 +1,6 @@
 import watcher from "@parcel/watcher";
 import chalk from "chalk";
+import { existsSync } from "fs";
 import { spawn } from "child_process";
 import { EventEmitter } from "events";
 import path from "path";
@@ -105,6 +106,11 @@ export class EditorServerHost extends EventEmitter {
   start(gameEditorServerPath: string, gameOutputPath: string) {
     this.#gameOutputPath = gameOutputPath
 
+    if (!existsSync(gameEditorServerPath)) {
+      this.#log(chalk.yellow(`Server path ${gameEditorServerPath} not found`));
+      return;
+    }
+
     // restart when the editor src changes
     watcher.subscribe(
       gameEditorServerPath,
@@ -161,9 +167,16 @@ export class EditorServerHost extends EventEmitter {
     }
     this.#changed = false;
 
+    const serverEntrypoint = path.join(p, "index.ts");
+
+    if (!existsSync(serverEntrypoint)) {
+      this.#log(chalk.yellow(`Server entrypoint ${serverEntrypoint} not found`));
+      return;
+    }
+
     const editor = spawn(
       path.join(dirname, "../node_modules/.bin/ts-node-esm"),
-      [path.join(p, "index.ts")],
+      [serverEntrypoint],
       {
         env: {
           ...process.env,

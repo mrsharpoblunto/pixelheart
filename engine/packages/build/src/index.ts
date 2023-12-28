@@ -12,6 +12,7 @@ import yargs, { Argv } from "yargs";
 import { hideBin } from "yargs/helpers";
 import { EventEmitter } from "events";
 import { existsSync } from "fs";
+import { ensurePath } from "./file-utils.js";
 import { EditorServerHost } from "@pixelheart/server";
 import { Logger } from "./logger.js";
 import { BuildContext, BuildPlugin } from "./plugin.js";
@@ -49,8 +50,26 @@ interface RunOptions extends CommonBuildOptions {
   port: number;
 }
 
+interface SerializedBuildOptions {
+  production: boolean;
+}
+
+interface BuildContextArgs {
+  production: boolean,
+  clean: boolean,
+  build: boolean,
+  watch: boolean | { port: number },
+  "game-path": string,
+  "game-asset-path": string | undefined,
+  "game-client-path": string | undefined,
+  "game-build-path": string | undefined,
+  "game-output-path": string,
+  eventEmitter?: EventEmitter,
+}
+
 class BuildContextImpl extends Logger implements BuildContext {
   #eventEmitter: EventEmitter | undefined;
+  #buildInfoPath: string;
   readonly production: boolean;
   readonly clean: boolean;
   readonly build: boolean;
@@ -63,19 +82,9 @@ class BuildContextImpl extends Logger implements BuildContext {
   readonly gameEditorServerPath: string;
   readonly gameOutputPath: string;
 
-  constructor(args: {
-    production: boolean,
-    clean: boolean,
-    build: boolean,
-    watch: boolean | { port: number },
-    "game-path": string,
-    "game-asset-path": string | undefined,
-    "game-client-path": string | undefined,
-    "game-build-path": string | undefined,
-    "game-output-path": string,
-  }, eventEmitter?: EventEmitter) {
+  constructor(args: BuildContextArgs) {
     super(!args.watch);
-    this.#eventEmitter = eventEmitter;
+    this.#eventEmitter = args.eventEmitter;
     this.production = args.production;
     this.clean = args.clean;
     this.build = args.build;
@@ -102,11 +111,135 @@ class BuildContextImpl extends Logger implements BuildContext {
       path.join(args["game-path"], "editor", "server")
     );
     this.gameOutputPath = path.resolve(process.cwd(), args["game-output-path"]);
+
+    // if the previous build had different settings, invalidate
+    // any previously built assets by forcing a clean build
+    this.#buildInfoPath = path.join(this.gamePath, ".pixelbuildinfo");
+    if (existsSync(this.#buildInfoPath)) {
+      try {
+        const previousBuildInfo = require(this.#buildInfoPath) as SerializedBuildOptions;
+        if (previousBuildInfo.production !== this.production) {
+          this.clean = true;
+        }
+      } catch (ex) {
+      }
+    }
   }
 
   emit(e: any) {
     this.#eventEmitter?.emit("event", e);
   }
+
+  async execute(
+    useCustomBuildPlugins: boolean,
+    pluginFilter: Array<string> | undefined,
+  ): Promise<boolean> {
+    if (!existsSync(this.gamePath)) {
+      this.warn("build", `Game path ${this.gamePath} does not exist`);
+      return false;
+    }
+
+    const plugins = await this.#loadPlugins(
+      useCustomBuildPlugins ? this.gameBuildPath : null,
+      pluginFilter,
+    );
+
+    for (const plugin of plugins) {
+      if (this.clean) {
+        await plugin.plugin.clean(this);
+      }
+      if (this.build && (await plugin.plugin.init(this))) {
+        try {
+          await plugin.plugin.build(this);
+        } catch (e) {
+          this.error(plugin.name, (e as Error).message);
+        }
+        if (this.watch) {
+          await plugin.plugin.watch(this, watcher.subscribe);
+        }
+      }
+    }
+
+    await ensurePath(this.gameOutputPath);
+    await fs.writeFile(this.#buildInfoPath, JSON.stringify({
+      production: this.production,
+    }));
+
+    return this.errorCount === 0;
+  }
+
+  async #loadPlugins(
+    customBuildPluginsPath: string | null,
+    filter: Array<string> | undefined
+  ): Promise<Array<LoadedBuildPlugin>> {
+    const plugins: Array<LoadedBuildPlugin> = [];
+    const pluginRoots = [path.join(dirname, "plugins")];
+    if (customBuildPluginsPath) {
+      if (!existsSync(customBuildPluginsPath)) {
+        this.warn("build", `Custom build plugins path ${customBuildPluginsPath} does not exist`);
+      } else {
+        pluginRoots.push(customBuildPluginsPath);
+      }
+    }
+
+    for (const r of pluginRoots) {
+      const pluginFiles = await fs.readdir(r);
+      for (const p of pluginFiles) {
+        if (p.indexOf(".d.ts") > -1) {
+          continue;
+        }
+        const pluginName = p.replace(path.extname(p), "");
+        if (!filter || filter.includes(pluginName)) {
+          const pluginPath = path.join(r, p);
+          const plugin = await import(pluginPath);
+          plugins.push({
+            name: pluginName,
+            plugin: new plugin.default() as BuildPlugin,
+          });
+        }
+      }
+    }
+    return this.#topologicalSort(plugins);
+  }
+
+
+  #topologicalSort(
+    plugins: Array<LoadedBuildPlugin>
+  ): Array<LoadedBuildPlugin> {
+    const edges = new Map<string, LoadedBuildPlugin>();
+    plugins.forEach((p) => edges.set(p.name, p));
+
+    const sorted: LoadedBuildPlugin[] = [];
+    const visited = new Set<string>();
+    const temp = new Set<string>();
+
+    try {
+      const visit = (p: LoadedBuildPlugin, stack: Set<string>) => {
+        if (visited.has(p.name)) return;
+        if (stack.has(p.name)) {
+          throw new Error(`Circular build dependency detected: ${p.name}`);
+        }
+
+        stack.add(p.name);
+
+        p.plugin.depends.forEach((depName: string) => {
+          const dep = edges.get(depName);
+          if (dep) visit(dep, stack);
+        });
+
+        visited.add(p.name);
+        stack.delete(p.name);
+        sorted.push(p);
+      };
+
+      plugins.forEach((p) => visit(p, temp));
+      return sorted;
+    } catch (e: any) {
+      this.error("build", e.message);
+      return plugins;
+    }
+  }
+
 }
 
 const buildCommand = {
@@ -135,14 +268,9 @@ const buildCommand = {
       build: true,
     });
 
-    const plugins = await loadBuildPlugins(buildContext, {
-      filter: args["build-plugin-filter"],
-      customBuildPluginsPath: args["custom-build-plugins"] ? buildContext.gameBuildPath : null,
-    });
-
-    const success = await executeBuildPlugins(
-      buildContext,
-      plugins
+    const success = await buildContext.execute(
+      args["custom-build-plugins"],
+      args["build-plugin-filter"],
     );
 
     buildContext.log("build");
@@ -184,7 +312,13 @@ const runCommand = {
       ...args,
       build: true,
       watch: { port: args.port },
-    }, editor);
+      eventEmitter: editor
+    });
+
+    const success = await buildContext.execute(
+      args["custom-build-plugins"],
+      args["build-plugin-filter"],
+    );
 
     if (!editor) {
       buildContext.warn("editor", "Disabled in production builds");
@@ -194,16 +328,6 @@ const runCommand = {
         buildContext.gameOutputPath,
       );
     }
-
-    const plugins = await loadBuildPlugins(buildContext, {
-      filter: args["build-plugin-filter"],
-      customBuildPluginsPath: args["custom-build-plugins"] ? buildContext.gameBuildPath : null,
-    });
-
-    const success = await executeBuildPlugins(
-      buildContext,
-      plugins
-    );
 
     buildContext.log("build");
     if (!success) {
@@ -230,15 +354,9 @@ const cleanCommand = {
       watch: false,
     });
 
-    const plugins = await loadBuildPlugins(buildContext, {
-      filter: args["build-plugin-filter"],
-      customBuildPluginsPath: args["custom-build-plugins"] ? buildContext.gameBuildPath : null,
-    });
-
-    // build game assets
-    await executeBuildPlugins(
-      buildContext,
-      plugins
+    await buildContext.execute(
+      args["custom-build-plugins"],
+      args["build-plugin-filter"],
     );
   },
 };
@@ -306,100 +424,6 @@ Promise.resolve(
       process.exit(1);
     }).argv
 );
-
-async function loadBuildPlugins(ctx: BuildContext, args: {
-  customBuildPluginsPath: string | null,
-  filter: Array<string> | undefined
-}): Promise<Array<LoadedBuildPlugin>> {
-  const plugins: Array<LoadedBuildPlugin> = [];
-  const pluginRoots = [path.join(dirname, "plugins")];
-  if (args.customBuildPluginsPath) {
-    if (!existsSync(args.customBuildPluginsPath)) {
-      ctx.warn("build", `Custom build plugins path ${args.customBuildPluginsPath} does not exist`);
-    } else {
-      pluginRoots.push(args.customBuildPluginsPath);
-    }
-  }
-
-  for (const r of pluginRoots) {
-    const pluginFiles = await fs.readdir(r);
-    for (const p of pluginFiles) {
-      if (p.indexOf(".d.ts") > -1) {
-        continue;
-      }
-      const pluginName = p.replace(path.extname(p), "");
-      if (!args.filter || args.filter.includes(pluginName)) {
-        const pluginPath = path.join(r, p);
-        const plugin = await import(pluginPath);
-        plugins.push({
-          name: pluginName,
-          plugin: new plugin.default() as BuildPlugin,
-        });
-      }
-    }
-  }
-  return topologicalSort(ctx, plugins);
-}
-
-async function executeBuildPlugins(
-  ctx: BuildContext,
-  plugins: Array<LoadedBuildPlugin>
-): Promise<boolean> {
-  for (const plugin of plugins) {
-    if (ctx.clean) {
-      await plugin.plugin.clean(ctx);
-    }
-    if (ctx.build && (await plugin.plugin.init(ctx))) {
-      try {
-        await plugin.plugin.build(ctx);
-      } catch (e) {
-        ctx.error(plugin.name, (e as Error).message);
-      }
-      if (ctx.watch) {
-        await plugin.plugin.watch(ctx, watcher.subscribe);
-      }
-    }
-  }
-  return ctx.errorCount === 0;
-}
-
-function topologicalSort(
-  ctx: BuildContext,
-  plugins: Array<LoadedBuildPlugin>
-): Array<LoadedBuildPlugin> {
-  const edges = new Map<string, LoadedBuildPlugin>();
-  plugins.forEach((p) => edges.set(p.name, p));
-
-  const sorted: LoadedBuildPlugin[] = [];
-  const visited = new Set<string>();
-  const temp = new Set<string>();
-
-  try {
-    const visit = (p: LoadedBuildPlugin, stack: Set<string>) => {
-      if (visited.has(p.name)) return;
-      if (stack.has(p.name)) {
-        throw new Error(`Circular build dependency detected: ${p.name}`);
-      }
-
-      stack.add(p.name);
-
-      p.plugin.depends.forEach((depName: string) => {
-        const dep = edges.get(depName);
-        if (dep) visit(dep, stack);
-      });
-
-      visited.add(p.name);
-      stack.delete(p.name);
-      sorted.push(p);
-    };
-
-    plugins.forEach((p) => visit(p, temp));
-    return sorted;
-  } catch (e: any) {
-    ctx.error("build", e.message);
-    return plugins;
-  }
-}
 
 function watchTypescript(gameRoot: string) {
   // avoid having to constantly reload files to display TSC errors

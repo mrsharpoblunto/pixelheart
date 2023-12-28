@@ -24,6 +24,7 @@ export default class HtmlPlugin implements BuildPlugin {
   }
 
   async build(ctx: BuildContext): Promise<void> {
+    ctx.log("html", `Building ${chalk.green("index.html")}...`);
     await this.#processHtml(ctx);
   }
 
@@ -40,6 +41,7 @@ export default class HtmlPlugin implements BuildPlugin {
         reprocess = reprocess || this.#deps.has(e.path);
       }
       if (reprocess) {
+        ctx.log("html", `Dependencies changed, rebuilding ${chalk.green("index.html")}...`);
         await this.#processHtml(ctx);
       }
     });
@@ -86,7 +88,6 @@ export default class HtmlPlugin implements BuildPlugin {
   </body>
 </html>`;
 
-    ctx.log("html", `Building ${chalk.green("index.html")}...`);
     await fs.writeFile(path.join(ctx.gameOutputPath, "index.html"), html);
   }
 
