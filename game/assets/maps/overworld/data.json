@@ -509,7 +509,7 @@
     },
     "9": {
       "0": {
-        "sprite": "grass_i_br",
+        "sprite": "grass",
         "animated": false,
         "walkable": true,
         "triggerId": 0,
@@ -518,7 +518,7 @@
     },
     "10": {
       "0": {
-        "sprite": "grass_r",
+        "sprite": "grass",
         "animated": false,
         "walkable": true,
         "triggerId": 0,
@@ -527,7 +527,7 @@
     },
     "11": {
       "0": {
-        "sprite": "grass_br",
+        "sprite": "grass_b",
         "animated": false,
         "walkable": true,
         "triggerId": 0,
@@ -610,7 +610,7 @@
     },
     "8": {
       "0": {
-        "sprite": "grass_i_br",
+        "sprite": "grass",
         "animated": false,
         "walkable": true,
         "triggerId": 0,
@@ -619,15 +619,31 @@
     },
     "9": {
       "0": {
-        "sprite": "grass_br",
+        "sprite": "grass",
         "animated": false,
         "walkable": true,
         "triggerId": 0,
         "spatialHash": true
       }
     },
-    "10": {},
-    "11": {}
+    "10": {
+      "0": {
+        "sprite": "grass",
+        "animated": false,
+        "walkable": true,
+        "triggerId": 0,
+        "spatialHash": true
+      }
+    },
+    "11": {
+      "0": {
+        "sprite": "grass_b",
+        "animated": false,
+        "walkable": true,
+        "triggerId": 0,
+        "spatialHash": true
+      }
+    }
   },
   "10": {
     "0": {
@@ -704,19 +720,43 @@
     },
     "8": {
       "0": {
-        "sprite": "grass_br",
+        "sprite": "grass_r",
         "animated": false,
         "walkable": true,
         "triggerId": 0,
         "spatialHash": true
       }
     },
-    "9": {},
-    "10": {},
-    "11": {},
+    "9": {
+      "0": {
+        "sprite": "grass_r",
+        "animated": false,
+        "walkable": true,
+        "triggerId": 0,
+        "spatialHash": true
+      }
+    },
+    "10": {
+      "0": {
+        "sprite": "grass_i_tr",
+        "animated": false,
+        "walkable": true,
+        "triggerId": 0,
+        "spatialHash": true
+      }
+    },
+    "11": {
+      "0": {
+        "sprite": "grass_i_bl",
+        "animated": false,
+        "walkable": true,
+        "triggerId": 0,
+        "spatialHash": true
+      }
+    },
     "12": {
       "0": {
-        "sprite": "grass_tl",
+        "sprite": "grass_l",
         "animated": false,
         "walkable": true,
         "triggerId": 0,
@@ -786,17 +826,25 @@
     "9": {},
     "10": {
       "0": {
-        "sprite": "grass_tl",
+        "sprite": "grass_t",
         "animated": false,
         "walkable": true,
         "triggerId": 0,
         "spatialHash": true
       }
     },
-    "11": {},
+    "11": {
+      "0": {
+        "sprite": "grass",
+        "animated": false,
+        "walkable": true,
+        "triggerId": 0,
+        "spatialHash": true
+      }
+    },
     "12": {
       "0": {
-        "sprite": "grass_t",
+        "sprite": "grass",
         "animated": false,
         "walkable": true,
         "triggerId": 0,
@@ -888,10 +936,18 @@
         "spatialHash": true
       }
     },
-    "11": {},
+    "11": {
+      "0": {
+        "sprite": "grass",
+        "animated": false,
+        "walkable": true,
+        "triggerId": 0,
+        "spatialHash": true
+      }
+    },
     "12": {
       "0": {
-        "sprite": "grass_t",
+        "sprite": "grass",
         "animated": false,
         "walkable": true,
         "triggerId": 0,
@@ -992,7 +1048,16 @@
     },
     "10": {
       "0": {
-        "sprite": "grass_b",
+        "sprite": "grass_i_br",
+        "animated": false,
+        "walkable": true,
+        "triggerId": 0,
+        "spatialHash": true
+      }
+    },
+    "11": {
+      "0": {
+        "sprite": "grass_r",
         "animated": false,
         "walkable": true,
         "triggerId": 0,
@@ -1001,7 +1066,7 @@
     },
     "12": {
       "0": {
-        "sprite": "grass_t",
+        "sprite": "grass_i_tr",
         "animated": false,
         "walkable": true,
         "triggerId": 0,

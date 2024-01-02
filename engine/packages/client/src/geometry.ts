@@ -72,9 +72,9 @@ export class Quad implements Geometry {
     this.#gl.bindVertexArray(null);
   }
 
-      draw() {
-        this.#gl.drawArrays(this.#gl.TRIANGLE_STRIP, 0, 4);
-      }
+  draw() {
+    this.#gl.drawArrays(this.#gl.TRIANGLE_STRIP, 0, 4);
+  }
 
   bindInstances<TVertParams extends ShaderSource, TInstance>(
     program: ShaderProgram<TVertParams, any>,

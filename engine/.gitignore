@@ -1,0 +1,8 @@
+node_modules
+dist
+packages/effects/src/shaders/*
+packages/effects/src/maps/*
+packages/effects/src/sprites/*
+.DS_Store
+.pixelbuildinfo
+tsconfig.tsbuildinfo

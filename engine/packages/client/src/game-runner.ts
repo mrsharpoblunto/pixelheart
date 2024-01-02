@@ -7,10 +7,54 @@ import {
   EditorClient,
   EditorContext,
 } from "./editor.js";
+import { Quad } from "./geometry.js";
 import { GameClient } from "./game.js";
-import { reloadShader } from "./gl-utils.js";
+import { FrameBuffer, GBuffer, reloadShader } from "./gl-utils.js";
 import { reloadImage } from "./images.js";
 import { reloadSprite } from "./sprite.js";
+import { ShaderProgram } from "./gl-utils.js";
+
+
+const QuadVert: {
+  src: string;
+  name: string;
+  inAttributes: { a_position: { type: "vec2" } };
+  outAttributes: { v_texCoord: { type: "vec2" } };
+  uniforms: {};
+} = {
+  src: `#version 300 es
+in vec2 a_position;
+out vec2 v_texCoord;
+void main() {
+  v_texCoord = a_position;
+  gl_Position = vec4(a_position * 2.0 - 1.0, 0.0, 1.0);
+}`,
+  name: "quad.vert",
+  inAttributes: { a_position: { type: "vec2" } },
+  outAttributes: { v_texCoord: { type: "vec2" } },
+  uniforms: {},
+}
+
+const BackBufferFrag: {
+  src: string;
+  name: string;
+  inAttributes: { v_texCoord: { type: "vec2" } };
+  outAttributes: { outColor: { type: "vec4" } };
+  uniforms: { u_texture: "sampler2D" };
+} = {
+  src: `#version 300 es
+precision mediump float;
+in vec2 v_texCoord;
+uniform sampler2D u_texture;
+out vec4 outColor;
+void main() {
+  outColor = texture(u_texture, v_texCoord);
+}`,
+  name: "backbuffer.frag",
+  inAttributes: { v_texCoord: { type: "vec2" } },
+  outAttributes: { outColor: { type: "vec4" } },
+  uniforms: { u_texture: "sampler2D" },
+}
 
 interface GameProps<
   State,
@@ -60,7 +104,6 @@ export default function GameRunner<
   editorState: EditorState | null;
 } | null {
   const canvas = document.createElement("canvas");
-  canvas.style.imageRendering = "pixelated";
   canvas.style.position = "relative";
 
   const gl = canvas.getContext("webgl2", {
@@ -74,6 +117,7 @@ export default function GameRunner<
     );
     return null;
   }
+
 
   let selectedGamepadIndex: number | null = null;
 
@@ -424,6 +468,23 @@ export default function GameRunner<
     false
   );
 
+  const gBuffer = new GBuffer(gl, {
+    color: {
+      internalFormat: gl.RGBA,
+      format: gl.RGBA,
+      type: gl.UNSIGNED_BYTE,
+      opts: {
+        filter: gl.NEAREST
+      }
+    },
+  });
+  const quad = new Quad(gl);
+  const backBufferProgram = new ShaderProgram(context, QuadVert, BackBufferFrag);
+  let backBuffer: FrameBuffer<{
+    outAttributes: { o_color: { type: "vec4", location: 0 } },
+  }> | null = null;
+
+
   let currentParent: HTMLElement | null = canvas.parentElement;
 
   let accumulatedTime = 0;
@@ -453,15 +514,36 @@ export default function GameRunner<
       }
 
       if (!contextLost) {
-        game.onDraw(context, result.gameState, frameTime);
-        if (result.editorState) {
-          editor?.onDraw(
-            context,
-            result.gameState,
-            result.editorState,
-            frameTime
+        const g = gBuffer.use(context.screen, (textures) => {
+          backBuffer = new FrameBuffer(gl, {
+            outAttributes: { o_color: { type: "vec4", location: 0 } },
+          }, {
+            o_color: textures.color,
+          });
+        });
+        backBuffer!.bind(() => {
+          gl.viewport(0, 0, context.screen.width, context.screen.height);
+          game.onDraw(context, result.gameState, frameTime);
+          if (result.editorState) {
+            editor?.onDraw(
+              context,
+              result.gameState,
+              result.editorState,
+              frameTime
+            );
+          }
+        });
+        backBufferProgram.use((s) => {
+          gl.viewport(0, 0, context.screen.width * pixelMultiplier, context.screen.height * pixelMultiplier);
+          s.setUniforms({ u_texture: g.color });
+          quad.bind(
+            s,
+            { position: "a_position" },
+            (q) => {
+              q.draw();
+            }
           );
-        }
+        });
       }
     }
     nextFrame = requestAnimationFrame(render);
@@ -498,7 +580,6 @@ export default function GameRunner<
 
   const handleResize = () => {
     const parent = canvas.parentElement || props.container;
-    // TODO should be using parent container size - not window...
     pixelMultiplier = 1;
     if (parent.clientWidth >= parent.clientHeight) {
       contextScreen.width =
@@ -538,9 +619,9 @@ export default function GameRunner<
     }
 
     const xOffset =
-      (contextScreen.width * pixelMultiplier - parent.clientWidth) / 2;
+      (contextScreen.width * pixelMultiplier - parent.clientWidth) / (2 * pixelMultiplier);
     const yOffset =
-      (contextScreen.height * pixelMultiplier - parent.clientHeight) / 2;
+      (contextScreen.height * pixelMultiplier - parent.clientHeight) / (2 * pixelMultiplier);
 
     contextSafeScreen.offsetLeft = xOffset;
     contextSafeScreen.offsetTop = yOffset;
@@ -548,11 +629,11 @@ export default function GameRunner<
     contextSafeScreen.height = contextScreen.height - yOffset * 2;
 
     if (canvas) {
-      canvas.setAttribute("width", contextScreen.width.toString());
-      canvas.setAttribute("height", contextScreen.height.toString());
+      canvas.setAttribute("width", (pixelMultiplier * contextScreen.width).toString());
+      canvas.setAttribute("height", (pixelMultiplier * contextScreen.height).toString());
 
-      canvas.style.top = -yOffset + "px";
-      canvas.style.left = -xOffset + "px";
+      canvas.style.top = -(pixelMultiplier * yOffset) + "px";
+      canvas.style.left = -(pixelMultiplier * xOffset) + "px";
       canvas.style.width = pixelMultiplier * contextScreen.width + "px";
       canvas.style.height = pixelMultiplier * contextScreen.height + "px";
     }

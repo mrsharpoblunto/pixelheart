@@ -1,0 +1,9 @@
+node_modules
+dist
+www
+client/shaders/*
+client/maps/*
+client/sprites/*
+.DS_Store
+.pixelbuildinfo
+tsconfig.tsbuildinfo

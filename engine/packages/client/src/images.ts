@@ -17,9 +17,9 @@ function getImageState(): Map<string, Array<(newUrl: string) => void>> | null {
   return process.env.NODE_ENV === "development"
     ? // @ts-ignore
     window.__PIXELHEART_IMAGE_STATE__ ||
-     // @ts-ignore
-      (window.__PIXELHEART_IMAGE_STATE__ = new Map())
-      : null;
+    // @ts-ignore
+    (window.__PIXELHEART_IMAGE_STATE__ = new Map())
+    : null;
 }
 
 function registerImage(url: string, reload: (newUrl: string) => void) {
@@ -120,6 +120,7 @@ function loadTextureFromImage(
   opts?: {
     filter?: number;
     wrap?: number;
+    mipmap?: boolean;
   }
 ): WebGLTexture {
   const texture = ctx.gl.createTexture();
@@ -139,12 +140,12 @@ function loadTextureFromImage(
   ctx.gl.texParameteri(
     ctx.gl.TEXTURE_2D,
     ctx.gl.TEXTURE_MIN_FILTER,
-    opts?.wrap || ctx.gl.LINEAR
+    opts?.filter || (opts?.mipmap ? ctx.gl.LINEAR_MIPMAP_LINEAR : ctx.gl.LINEAR)
   );
   ctx.gl.texParameteri(
     ctx.gl.TEXTURE_2D,
     ctx.gl.TEXTURE_MAG_FILTER,
-    opts?.wrap || ctx.gl.LINEAR
+    opts?.filter || (opts?.mipmap ? ctx.gl.LINEAR_MIPMAP_LINEAR : ctx.gl.LINEAR)
   );
   ctx.gl.texImage2D(
     ctx.gl.TEXTURE_2D,
@@ -154,6 +155,9 @@ function loadTextureFromImage(
     ctx.gl.UNSIGNED_BYTE,
     img
   );
+  if (opts?.mipmap) {
+    ctx.gl.generateMipmap(ctx.gl.TEXTURE_2D);
+  }
   ctx.gl.bindTexture(ctx.gl.TEXTURE_2D, null);
   return texture!;
 }

@@ -74,7 +74,7 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
 
     this.#texture = param;
     this.#program.setUniforms({
-      u_texture: param[TEXTURE],
+      u_texture: param,
     });
     return this;
   }

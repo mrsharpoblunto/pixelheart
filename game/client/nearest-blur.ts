@@ -52,10 +52,10 @@ export class NearestBlurEffect {
         textures,
         frameBuffers: [
           new FrameBuffer(this.#gl, this.#program, {
-            o_color: textures[0][TEXTURE],
+            o_color: textures[0],
           }),
           new FrameBuffer(this.#gl, this.#program, {
-            o_color: textures[1][TEXTURE],
+            o_color: textures[1],
           }),
         ],
       };

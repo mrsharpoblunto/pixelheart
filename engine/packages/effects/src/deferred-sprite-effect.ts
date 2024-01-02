@@ -1,13 +1,13 @@
-import { 
+import {
   GameContext,
-  Quad, 
+  Quad,
   SpriteViewProjection,
   FrameBuffer,
+  GBuffer,
   InstanceBuffer,
   ShaderProgram,
-  createTexture,
-  GPUTexture, 
-  TEXTURE, 
+  GPUTexture,
+  TEXTURE,
   loadTextureFromUrl,
   SpriteAnimator,
   SpriteEffect,
@@ -31,7 +31,7 @@ export type DeferredSpriteTextures = {
   emissiveTexture: GPUTexture;
 };
 export type DeferredSpriteSheet = SpriteSheet<DeferredSpriteTextures>;
-export class DeferredSpriteAnimator extends SpriteAnimator<DeferredSpriteTextures> {}
+export class DeferredSpriteAnimator extends SpriteAnimator<DeferredSpriteTextures> { }
 
 const BLACK: vec3 = vec3.fromValues(0, 0, 0);
 const FULL_MVP = mat3.create();
@@ -105,18 +105,12 @@ export class DeferredSpriteEffect
   #texture: DeferredSpriteTextures | null;
   #quad: Quad;
 
-  #gBuffer: {
-    normal: WebGLTexture;
-    albedo: WebGLTexture;
-    specular: WebGLTexture;
-    lighting: GPUTexture;
-    mask: GPUTexture;
+  #gBuffer: GBuffer<"normal" | "albedo" | "specular" | "lighting" | "mask">;
+  #frameBuffers: {
     maskFrameBuffer: FrameBuffer<typeof fragmentShader>;
     noMaskFrameBuffer: FrameBuffer<typeof fragmentShader>;
     lightingFrameBuffer: FrameBuffer<typeof lightingFragmentShader>;
   } | null;
-  #gBufferWidth: number;
-  #gBufferHeight: number;
 
   constructor(ctx: GameContext) {
     this.#gl = ctx.gl;
@@ -144,8 +138,34 @@ export class DeferredSpriteEffect
 
     this.#quad = new Quad(this.#gl);
     this.#texture = null;
-    this.#gBuffer = null;
-    this.#gBufferWidth = this.#gBufferHeight = 0;
+    this.#frameBuffers = null;
+    this.#gBuffer = new GBuffer(this.#gl, {
+      normal: {
+        internalFormat: this.#gl.RGBA,
+        format: this.#gl.RGBA,
+        type: this.#gl.UNSIGNED_BYTE,
+      },
+      albedo: {
+        internalFormat: this.#gl.RGBA,
+        format: this.#gl.RGBA,
+        type: this.#gl.UNSIGNED_BYTE,
+      },
+      specular: {
+        internalFormat: this.#gl.RGBA,
+        format: this.#gl.RGBA,
+        type: this.#gl.UNSIGNED_BYTE,
+      },
+      lighting: {
+        internalFormat: this.#gl.RGBA,
+        format: this.#gl.RGBA,
+        type: this.#gl.UNSIGNED_BYTE,
+      },
+      mask: {
+        internalFormat: this.#gl.RGBA,
+        format: this.#gl.RGBA,
+        type: this.#gl.UNSIGNED_BYTE,
+      },
+    });
   }
 
   use(
@@ -156,91 +176,33 @@ export class DeferredSpriteEffect
     fillScope: (s: DeferredSpriteEffect, pass: number) => void,
     maskScope: (mask: GPUTexture) => void
   ) {
-    if (
-      !this.#gBuffer ||
-      opts.width !== this.#gBufferWidth ||
-      opts.height !== this.#gBufferHeight
-    ) {
-      this.#gBufferHeight = opts.height;
-      this.#gBufferWidth = opts.width;
-      const gBuffer = {
-        normal: createTexture(
-          this.#gl,
-          this.#gl.RGBA,
-          this.#gl.RGBA,
-          this.#gl.UNSIGNED_BYTE,
-          opts.width,
-          opts.height
-        ),
-        albedo: createTexture(
-          this.#gl,
-          this.#gl.RGBA,
-          this.#gl.RGBA,
-          this.#gl.UNSIGNED_BYTE,
-          opts.width,
-          opts.height
-        ),
-        specular: createTexture(
-          this.#gl,
-          this.#gl.RGBA,
-          this.#gl.RGBA,
-          this.#gl.UNSIGNED_BYTE,
-          opts.width,
-          opts.height
-        ),
-        lighting: {
-          [TEXTURE]: createTexture(
-            this.#gl,
-            this.#gl.RGBA,
-            this.#gl.RGBA,
-            this.#gl.UNSIGNED_BYTE,
-            opts.width,
-            opts.height
-          ),
-          width: opts.width,
-          height: opts.height,
-        },
-        mask: {
-          [TEXTURE]: createTexture(
-            this.#gl,
-            this.#gl.RGBA,
-            this.#gl.RGBA,
-            this.#gl.UNSIGNED_BYTE,
-            opts.width,
-            opts.height
-          ),
-          width: opts.width,
-          height: opts.height,
-        },
-      };
-
-      this.#gBuffer = {
-        ...gBuffer,
+    const g = this.#gBuffer.use(opts, (gBuffer) => {
+      this.#frameBuffers = {
         maskFrameBuffer: new FrameBuffer(this.#gl, this.#gBufferProgram, {
           o_normal: gBuffer.normal,
           o_albedo: gBuffer.albedo,
           o_specular: gBuffer.specular,
-          o_lighting: gBuffer.lighting[TEXTURE],
-          o_mask: gBuffer.mask[TEXTURE],
+          o_lighting: gBuffer.lighting,
+          o_mask: gBuffer.mask,
         }),
         noMaskFrameBuffer: new FrameBuffer(this.#gl, this.#gBufferProgram, {
           o_normal: gBuffer.normal,
           o_albedo: gBuffer.albedo,
           o_specular: gBuffer.specular,
-          o_lighting: gBuffer.lighting[TEXTURE],
+          o_lighting: gBuffer.lighting,
           o_mask: null,
         }),
         lightingFrameBuffer: new FrameBuffer(this.#gl, this.#lightingProgram, {
-          o_lighting: gBuffer.lighting[TEXTURE],
+          o_lighting: gBuffer.lighting,
         }),
-      };
-    }
+      }
+    });
 
-    const g = this.#gBuffer!;
+    const f = this.#frameBuffers!;
 
     // render the base sprite layer
-    g.maskFrameBuffer.bind(() => {
-      this.#gl.viewport(0, 0, this.#gBufferWidth, this.#gBufferHeight);
+    f.maskFrameBuffer.bind(() => {
+      this.#gl.viewport(0, 0, this.#gBuffer.width, this.#gBuffer.height);
       this.#gl.clear(this.#gl.COLOR_BUFFER_BIT | this.#gl.DEPTH_BUFFER_BIT);
       this.#gBufferProgram.use(() => {
         // only the base layer textures contribute to the mask
@@ -250,7 +212,7 @@ export class DeferredSpriteEffect
     });
 
     // finally, render the mask overlay & top layer of sprites
-    g.noMaskFrameBuffer.bind(() => {
+    f.noMaskFrameBuffer.bind(() => {
       maskScope(g.mask);
       this.#gBufferProgram.use(() => {
         fillScope(this, 1);
@@ -258,7 +220,7 @@ export class DeferredSpriteEffect
       });
     });
 
-    g.lightingFrameBuffer.bind(() => {
+    f.lightingFrameBuffer.bind(() => {
       const previousBlend = this.#gl.getParameter(this.#gl.BLEND);
       const previousBlendSrcFunc = this.#gl.getParameter(
         this.#gl.BLEND_SRC_ALPHA
@@ -368,7 +330,7 @@ export class DeferredSpriteEffect
   }
 
   getLightingTexture(): GPUTexture | undefined {
-    return this.#gBuffer?.lighting;
+    return this.#gBuffer.textures?.lighting;
   }
 
   setTextures(param: DeferredSpriteTextures): DeferredSpriteEffect {
@@ -409,9 +371,9 @@ export class DeferredSpriteEffect
       ]);
       mat3.scale(uv, uv, [
         (textureCoords[1] - textureCoords[3]) /
-          this.#texture.diffuseTexture.width,
+        this.#texture.diffuseTexture.width,
         (textureCoords[2] - textureCoords[0]) /
-          this.#texture.diffuseTexture.height,
+        this.#texture.diffuseTexture.height,
       ]);
 
       this.#pending.push({ mvp, uv });

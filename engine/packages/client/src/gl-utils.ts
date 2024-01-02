@@ -7,6 +7,11 @@ import {
   ReadonlyVec4,
 } from "gl-matrix";
 
+import {
+  TEXTURE,
+  GPUTexture,
+} from "./images.js";
+
 import { GameContext } from "./game.js";
 
 type TypeMap = {
@@ -21,13 +26,13 @@ type TypeMap = {
 
 type UniformTypeMap = TypeMap & {
   int: number;
-  sampler2D: WebGLTexture;
+  sampler2D: WebGLTexture | GPUTexture;
 };
 
 export type AttributeType<T extends ShaderSource, K> = {
   [P in keyof T["inAttributes"]]: T["inAttributes"][P]["type"] extends K
-    ? P
-    : never;
+  ? P
+  : never;
 }[keyof T["inAttributes"]];
 
 export interface Geometry {
@@ -48,12 +53,12 @@ function getShaderState(): {
 } | null {
   return process.env.NODE_ENV === "development"
     ? // @ts-ignore
-      window.__PIXELHEART_SHADER_STATE__ ||
-        // @ts-ignore
-        (window.__PIXELHEART_SHADER_STATE__ = {
-          cache: new Map(),
-          programs: new Map(),
-        })
+    window.__PIXELHEART_SHADER_STATE__ ||
+    // @ts-ignore
+    (window.__PIXELHEART_SHADER_STATE__ = {
+      cache: new Map(),
+      programs: new Map(),
+    })
     : null;
 }
 
@@ -193,8 +198,8 @@ export class ShaderProgram<
         ) {
           this.uniforms[
             info.name as unknown as
-              | keyof TVert["uniforms"]
-              | keyof TFrag["uniforms"]
+            | keyof TVert["uniforms"]
+            | keyof TFrag["uniforms"]
           ] = {
             location: this.#gl.getUniformLocation(this.#program, info.name)!,
             type: (vertexShaderSource.uniforms[key] ||
@@ -301,7 +306,7 @@ export class ShaderProgram<
     uniforms: Partial<{
       [K in keyof (TVert["uniforms"] &
         TFrag["uniforms"])]: UniformTypeMap[(TVert["uniforms"] &
-        TFrag["uniforms"])[K]];
+          TFrag["uniforms"])[K]];
     }>
   ): ShaderProgram<TVert, TFrag> {
     let index = 0;
@@ -316,7 +321,10 @@ export class ShaderProgram<
       } else if (metadata.type === "sampler2D") {
         // @ts-ignore
         this.#gl.activeTexture(this.#gl[`TEXTURE${index}`]);
-        this.#gl.bindTexture(this.#gl.TEXTURE_2D, value as WebGLTexture);
+        this.#gl.bindTexture(
+          this.#gl.TEXTURE_2D,
+          ((value && TEXTURE in value) ? value[TEXTURE] : value) as WebGLTexture
+        );
         this.#gl.uniform1i(metadata.location, index++);
       } else if (metadata.type === "float") {
         this.#gl.uniform1f(metadata.location, value);
@@ -499,15 +507,84 @@ export class InstanceBuffer<TVertParams extends ShaderSource, T> {
   }
 }
 
-export class FrameBuffer<TFrag extends ShaderSource> {
+type TextureFormat = {
+  internalFormat: number,
+  format: number,
+  type: number,
+  opts?: {
+    filter?: number;
+    wrap?: number;
+    mipmap?: boolean;
+  }
+};
+
+export class GBuffer<TTextures extends string> {
+  #formats: Record<TTextures, TextureFormat>;
+  textures: Record<TTextures, GPUTexture> | null;
+  width: number;
+  height: number;
+  #gl: WebGL2RenderingContext;
+
+  constructor(gl: WebGL2RenderingContext, textures: Record<TTextures, TextureFormat>) {
+    this.#gl = gl;
+    this.#formats = textures;
+    this.textures = null;
+    this.width = 0;
+    this.height = 0;
+  }
+
+  use(opts: {
+    width: number,
+    height: number,
+  },
+    resizeScope: (textures: Record<TTextures, GPUTexture>) => void,
+  ): Record<TTextures, GPUTexture> {
+    if (!this.textures ||
+      opts.width !== this.width ||
+      opts.height !== this.height
+    ) {
+      this.textures = Object.keys(this.#formats).reduce((t, key) => {
+        const format = this.#formats[key as TTextures];
+        t[key as TTextures] = {
+          [TEXTURE]: createTexture(
+            this.#gl,
+            format.internalFormat,
+            format.format,
+            format.type,
+            opts.width,
+            opts.height,
+            format.opts
+          ),
+          width: opts.width,
+          height: opts.height,
+        };
+        return t;
+      }, {} as Record<TTextures, GPUTexture>);
+      this.height = opts.height;
+      this.width = opts.width;
+      resizeScope(this.textures);
+    }
+    return this.textures;
+  }
+}
+
+
+export class FrameBuffer<TFrag extends {
+  outAttributes: Record<string, { location?: number; type: keyof TypeMap }>
+}> {
   #gl: WebGL2RenderingContext;
   #frameBuffer: WebGLFramebuffer;
   static #activeStack: Array<WebGLFramebuffer> = [];
 
   constructor(
     gl: WebGL2RenderingContext,
-    program: ShaderProgram<any, TFrag>,
-    attachments: { [K in keyof TFrag["outAttributes"]]: WebGLTexture | null }
+    program: {
+      outAttributes: Record<
+        keyof TFrag["outAttributes"],
+        { location: number; type: keyof TypeMap }
+      >;
+    },
+    attachments: { [K in keyof TFrag["outAttributes"]]: WebGLTexture | GPUTexture | null }
   ) {
     this.#gl = gl;
     this.#frameBuffer = this.#gl.createFramebuffer()!;
@@ -522,7 +599,7 @@ export class FrameBuffer<TFrag extends ShaderSource> {
         // @ts-ignore
         this.#gl[`COLOR_ATTACHMENT${location}`] as any,
         this.#gl.TEXTURE_2D,
-        value,
+        (value && TEXTURE in value) ? value[TEXTURE] : value,
         0
       );
       // @ts-ignore
