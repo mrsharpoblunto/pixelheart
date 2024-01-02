@@ -413,4 +413,22 @@ export default class Editor
       });
     });
   }
+
+  onDrawExtra(
+    ctx: EditorContext<EditorActions, EditorEvents>,
+    state: GameState,
+    editor: EditorState,
+    renderScope: (width: number, height: number, cb: (delta: number) => void) => ImageBitmap
+  ) {
+    if (!editor.active) {
+      return;
+    }
+
+    state.resources.ifReady((r) => {
+      const minimap = renderScope(r.map.data.width, r.map.data.height, (delta) => {
+        // render the minimap...
+      });
+      // TODO copy the minimap over to the minimap canvas
+    });
+  }
 }

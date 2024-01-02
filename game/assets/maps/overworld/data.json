@@ -33,15 +33,6 @@
     },
     "4": {
       "0": {
-        "sprite": "grass_l",
-        "animated": false,
-        "walkable": true,
-        "triggerId": 0,
-        "spatialHash": true
-      }
-    },
-    "5": {
-      "0": {
         "sprite": "grass_bl",
         "animated": false,
         "walkable": true,
@@ -49,6 +40,7 @@
         "spatialHash": true
       }
     },
+    "5": {},
     "6": {},
     "10": {},
     "11": {}
@@ -91,15 +83,7 @@
       }
     },
     "5": {},
-    "6": {
-      "0": {
-        "sprite": "grass_tl",
-        "animated": false,
-        "walkable": true,
-        "triggerId": 0,
-        "spatialHash": true
-      }
-    },
+    "6": {},
     "8": {
       "0": {
         "sprite": "grass_tl",
@@ -159,7 +143,7 @@
     },
     "6": {
       "0": {
-        "sprite": "grass_i_tl",
+        "sprite": "grass_l",
         "animated": false,
         "walkable": true,
         "triggerId": 0,
@@ -882,18 +866,10 @@
     },
     "2": {},
     "3": {},
-    "5": {
-      "0": {
-        "sprite": "grass_tl",
-        "animated": false,
-        "walkable": true,
-        "triggerId": 0,
-        "spatialHash": true
-      }
-    },
+    "5": {},
     "6": {
       "0": {
-        "sprite": "grass_i_tr",
+        "sprite": "grass_tl",
         "animated": false,
         "walkable": true,
         "triggerId": 0,

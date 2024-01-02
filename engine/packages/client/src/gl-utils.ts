@@ -121,11 +121,11 @@ export class ShaderProgram<
   >;
 
   constructor(
-    ctx: GameContext,
+    ctx: WebGL2RenderingContext,
     vertexShaderSource: TVert,
     fragmentShaderSource: TFrag
   ) {
-    this.#gl = ctx.gl;
+    this.#gl = ctx;
     this.#vSource = vertexShaderSource;
     this.#fSource = fragmentShaderSource;
 

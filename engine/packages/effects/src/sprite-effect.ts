@@ -45,7 +45,7 @@ export class SimpleSpriteEffect implements SpriteEffect<SimpleSpriteTextures> {
 
   constructor(ctx: GameContext) {
     this.#gl = ctx.gl;
-    this.#program = new ShaderProgram(ctx, vertexShader, fragmentShader)!;
+    this.#program = new ShaderProgram(ctx.gl, vertexShader, fragmentShader)!;
     this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#program, {
       a_mvp: (instance) => instance.mvp,
       a_uv: (instance) => instance.uv,

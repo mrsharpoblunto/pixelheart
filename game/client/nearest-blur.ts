@@ -22,7 +22,7 @@ export class NearestBlurEffect {
 
   constructor(ctx: GameContext) {
     this.#gl = ctx.gl;
-    this.#program = new ShaderProgram(ctx, vertexShader, fragmentShader)!;
+    this.#program = new ShaderProgram(ctx.gl, vertexShader, fragmentShader)!;
     this.#quad = new Quad(this.#gl);
     this.#blurBuffer = null;
   }

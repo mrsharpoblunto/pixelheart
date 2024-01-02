@@ -1,5 +1,4 @@
 import { ReadonlyVec4, vec2, vec4 } from "gl-matrix";
-
 import {
   BaseActions,
   BaseEvents,
@@ -103,26 +102,13 @@ export default function GameRunner<
   gameState: State;
   editorState: EditorState | null;
 } | null {
+  let game = props.game;
+  const editor = props.editor;
   const canvas = document.createElement("canvas");
   canvas.style.position = "relative";
 
-  const gl = canvas.getContext("webgl2", {
-    alpha: false,
-    premultipliedAlpha: false,
-  });
-
-  if (!gl) {
-    console.error(
-      "Unable to initialize WebGL. Your browser or machine may not support it."
-    );
-    return null;
-  }
-
-
-  let selectedGamepadIndex: number | null = null;
-
-  let game = props.game;
-  const editor = props.editor;
+  const target = canvas.getContext("bitmaprenderer") as ImageBitmapRenderingContext;
+  const renderer = new Renderer();
 
   const contextScreen = {
     width: 1,
@@ -135,25 +121,11 @@ export default function GameRunner<
     height: 1,
   };
 
+  let selectedGamepadIndex: number | null = null;
+
   const context: EditorContext<Actions, Events> = {
-    gl,
+    gl: renderer.gl,
     editorServer: new ClientEditorConnection(),
-    createOffscreenCanvas: (
-      width: number,
-      height: number,
-      settings?: CanvasRenderingContext2DSettings
-    ) => {
-      const offscreenCanvas = document.createElement("canvas");
-      offscreenCanvas.width = width;
-      offscreenCanvas.height = height;
-      const offscreen = offscreenCanvas.getContext("2d", settings);
-      if (!offscreen) {
-        console.error(
-          "Unable to initialize OffscreenCanvas. Your browser or machine may not support it."
-        );
-      }
-      return offscreen!;
-    },
     canvas,
     getGamepad: () => {
       if (selectedGamepadIndex !== null) {
@@ -468,23 +440,6 @@ export default function GameRunner<
     false
   );
 
-  const gBuffer = new GBuffer(gl, {
-    color: {
-      internalFormat: gl.RGBA,
-      format: gl.RGBA,
-      type: gl.UNSIGNED_BYTE,
-      opts: {
-        filter: gl.NEAREST
-      }
-    },
-  });
-  const quad = new Quad(gl);
-  const backBufferProgram = new ShaderProgram(context, QuadVert, BackBufferFrag);
-  let backBuffer: FrameBuffer<{
-    outAttributes: { o_color: { type: "vec4", location: 0 } },
-  }> | null = null;
-
-
   let currentParent: HTMLElement | null = canvas.parentElement;
 
   let accumulatedTime = 0;
@@ -513,16 +468,9 @@ export default function GameRunner<
         accumulatedTime -= props.fixedUpdate;
       }
 
+
       if (!contextLost) {
-        const g = gBuffer.use(context.screen, (textures) => {
-          backBuffer = new FrameBuffer(gl, {
-            outAttributes: { o_color: { type: "vec4", location: 0 } },
-          }, {
-            o_color: textures.color,
-          });
-        });
-        backBuffer!.bind(() => {
-          gl.viewport(0, 0, context.screen.width, context.screen.height);
+        const scene = renderer.useScaled(context.screen, pixelMultiplier, () => {
           game.onDraw(context, result.gameState, frameTime);
           if (result.editorState) {
             editor?.onDraw(
@@ -533,17 +481,15 @@ export default function GameRunner<
             );
           }
         });
-        backBufferProgram.use((s) => {
-          gl.viewport(0, 0, context.screen.width * pixelMultiplier, context.screen.height * pixelMultiplier);
-          s.setUniforms({ u_texture: g.color });
-          quad.bind(
-            s,
-            { position: "a_position" },
-            (q) => {
-              q.draw();
-            }
+        target.transferFromImageBitmap(scene);
+        if (result.editorState) {
+          editor?.onDrawExtra(context, result.gameState, result.editorState,
+            (width: number, height: number, callback: (frameTime: number) => void) =>
+              renderer.use({ width, height }, () => {
+                callback(frameTime);
+              })
           );
-        });
+        }
       }
     }
     nextFrame = requestAnimationFrame(render);
@@ -628,15 +574,10 @@ export default function GameRunner<
     contextSafeScreen.width = contextScreen.width - xOffset * 2;
     contextSafeScreen.height = contextScreen.height - yOffset * 2;
 
-    if (canvas) {
-      canvas.setAttribute("width", (pixelMultiplier * contextScreen.width).toString());
-      canvas.setAttribute("height", (pixelMultiplier * contextScreen.height).toString());
-
-      canvas.style.top = -(pixelMultiplier * yOffset) + "px";
-      canvas.style.left = -(pixelMultiplier * xOffset) + "px";
-      canvas.style.width = pixelMultiplier * contextScreen.width + "px";
-      canvas.style.height = pixelMultiplier * contextScreen.height + "px";
-    }
+    canvas.style.top = -(pixelMultiplier * yOffset) + "px";
+    canvas.style.left = -(pixelMultiplier * xOffset) + "px";
+    canvas.style.width = pixelMultiplier * contextScreen.width + "px";
+    canvas.style.height = pixelMultiplier * contextScreen.height + "px";
   };
 
   const resizeObserver = new ResizeObserver((entries) => {
@@ -668,4 +609,82 @@ export default function GameRunner<
   }
 
   return result;
+}
+
+class Renderer {
+  gl: WebGL2RenderingContext;
+  #gBuffer: GBuffer<"color">;
+  #quad: Quad;
+  #backBufferProgram: ShaderProgram<typeof QuadVert, typeof BackBufferFrag>;
+  #frameBuffer: FrameBuffer<{
+    outAttributes: { o_color: { type: "vec4", location: 0 } },
+  }> | null;
+  #offscreenCanvas: OffscreenCanvas;
+
+  constructor() {
+    this.#frameBuffer = null;
+    this.#offscreenCanvas = new OffscreenCanvas(1, 1);
+
+    this.gl = this.#offscreenCanvas.getContext("webgl2", {
+      alpha: false,
+      premultipliedAlpha: false,
+    }) as WebGL2RenderingContext;
+
+    if (!this.gl) {
+      console.error(
+        "Unable to initialize WebGL. Your browser or machine may not support it."
+      );
+    }
+
+    this.#gBuffer = new GBuffer(this.gl, {
+      color: {
+        internalFormat: this.gl.RGBA,
+        format: this.gl.RGBA,
+        type: this.gl.UNSIGNED_BYTE,
+        opts: {
+          filter: this.gl.NEAREST
+        }
+      },
+    });
+    this.#quad = new Quad(this.gl);
+    this.#backBufferProgram = new ShaderProgram(this.gl, QuadVert, BackBufferFrag);
+  }
+
+  useScaled(
+    { width, height }: { width: number, height: number },
+    pixelMultiplier: number,
+    cb: () => void
+  ): ImageBitmap {
+    this.#offscreenCanvas.width = width * pixelMultiplier;
+    this.#offscreenCanvas.height = height * pixelMultiplier;
+    const { color } = this.#gBuffer.use({ width, height }, (textures) => {
+      this.#frameBuffer = new FrameBuffer(this.gl, {
+        outAttributes: { o_color: { type: "vec4", location: 0 } },
+      }, {
+        o_color: textures.color,
+      });
+    });
+    this.gl.viewport(0, 0, width, height);
+    this.#frameBuffer!.bind(cb);
+    this.gl.viewport(0, 0, width * pixelMultiplier, height * pixelMultiplier);
+    this.#backBufferProgram.setUniforms({ u_texture: color });
+    this.#backBufferProgram.use((s) => {
+      this.#quad.bind(
+        s,
+        { position: "a_position" },
+        (q) => q.draw()
+      );
+    });
+    return this.#offscreenCanvas.transferToImageBitmap();
+  }
+
+  use({ width, height }: { width: number, height: number }, cb: () => void): ImageBitmap {
+    this.#offscreenCanvas.width = width;
+    this.#offscreenCanvas.height = height;
+    this.gl.viewport(0, 0, width, height);
+    cb();
+    return this.#offscreenCanvas.transferToImageBitmap();
+  }
+
+
 }

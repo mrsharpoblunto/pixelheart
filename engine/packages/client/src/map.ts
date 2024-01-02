@@ -82,9 +82,9 @@ export class MapData {
   offscreen: CanvasRenderingContext2D;
 
   constructor(ctx: GameContext, tileSize: number, map: CPUReadableTexture) {
-    this.offscreen = ctx.createOffscreenCanvas(map.width, map.height, {
+    this.offscreen = new OffscreenCanvas(map.width, map.height).getContext("2d", {
       willReadFrequently: true,
-    });
+    }) as unknown as CanvasRenderingContext2D;
     this.offscreen.drawImage(map.image, 0, 0, map.width, map.height);
     this.width = map.width;
     this.height = map.height;

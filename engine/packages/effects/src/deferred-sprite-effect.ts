@@ -114,14 +114,14 @@ export class DeferredSpriteEffect
 
   constructor(ctx: GameContext) {
     this.#gl = ctx.gl;
-    this.#gBufferProgram = new ShaderProgram(ctx, vertexShader, fragmentShader);
+    this.#gBufferProgram = new ShaderProgram(ctx.gl, vertexShader, fragmentShader);
     this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#gBufferProgram, {
       a_mvp: (instance) => instance.mvp,
       a_uv: (instance) => instance.uv,
     });
     this.#pending = [];
     this.#lightingProgram = new ShaderProgram(
-      ctx,
+      ctx.gl,
       lightingVertexShader,
       lightingFragmentShader
     );

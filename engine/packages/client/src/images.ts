@@ -165,13 +165,12 @@ function loadTextureFromImage(
 let offscreenPixel: CanvasRenderingContext2D | null = null;
 
 export function getPixelData(
-  ctx: GameContext,
   image: HTMLImageElement
 ): (x: number, y: number) => Uint8ClampedArray | null {
   if (!offscreenPixel) {
-    offscreenPixel = ctx.createOffscreenCanvas(image.width, image.height, {
+    offscreenPixel = new OffscreenCanvas(image.width, image.height).getContext("2d", {
       willReadFrequently: true,
-    });
+    }) as unknown as CanvasRenderingContext2D;
   }
   offscreenPixel.canvas.width = Math.max(
     image.width,

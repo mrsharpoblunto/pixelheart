@@ -2,11 +2,6 @@ import { vec2, vec4, ReadonlyVec4 } from "gl-matrix";
 
 export interface GameContext {
   gl: WebGL2RenderingContext;
-  createOffscreenCanvas: (
-    width: number,
-    height: number,
-    settings?: CanvasRenderingContext2DSettings
-  ) => CanvasRenderingContext2D;
   canvas: HTMLCanvasElement;
   getGamepad: () => Gamepad | null;
   keys: {
