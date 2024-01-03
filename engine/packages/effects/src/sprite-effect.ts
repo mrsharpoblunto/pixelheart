@@ -9,7 +9,6 @@ import {
   SpriteSheet,
   SpriteSheetConfig,
   SpriteViewProjection,
-  TEXTURE,
   loadTextureFromUrl,
 } from "@pixelheart/client";
 import { mat3, ReadonlyVec4 } from "@pixelheart/client/gl-matrix";

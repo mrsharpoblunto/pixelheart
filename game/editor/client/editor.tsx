@@ -22,8 +22,8 @@ interface EditorClientState {
 type EditorUIActions =
   | EditorEvents
   | {
-      type: "TOGGLE_EDITOR";
-    };
+    type: "TOGGLE_EDITOR";
+  };
 
 export function renderEditor(
   root: Root,
@@ -70,9 +70,33 @@ function EditorButton(props: {
   );
 }
 
-function EditorComponent(props: EditorClientState) {
+function useExternalCanvas(canvas: HTMLCanvasElement) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (
+      canvasContainerRef.current &&
+      canvas.parentElement !== canvasContainerRef.current
+    ) {
+      if (canvas.parentElement) {
+        canvas.parentElement.removeChild(canvas);
+      }
+      canvasContainerRef.current.appendChild(canvas);
+    }
+    return () => {
+      if (
+        canvasContainerRef.current &&
+        canvas.parentElement === canvasContainerRef.current
+      ) {
+        canvasContainerRef.current.removeChild(canvas);
+      }
+    };
+  }, [canvas]);
+
+  return canvasContainerRef;
+}
+
+function EditorComponent(props: EditorClientState) {
   const [state, dispatch] = useReducer(reducer, props);
 
   useEffect(() => {
@@ -82,25 +106,8 @@ function EditorComponent(props: EditorClientState) {
     });
   }, [dispatch, props.ctx.editorServer]);
 
-  useEffect(() => {
-    if (
-      canvasContainerRef.current &&
-      props.ctx.canvas.parentElement !== canvasContainerRef.current
-    ) {
-      if (props.ctx.canvas.parentElement) {
-        props.ctx.canvas.parentElement.removeChild(props.ctx.canvas);
-      }
-      canvasContainerRef.current.appendChild(props.ctx.canvas);
-    }
-    return () => {
-      if (
-        canvasContainerRef.current &&
-        props.ctx.canvas.parentElement === canvasContainerRef.current
-      ) {
-        canvasContainerRef.current.removeChild(props.ctx.canvas);
-      }
-    };
-  }, [props.ctx.canvas, state.editor.active]);
+  const gameCanvasContainerRef = useExternalCanvas(props.ctx.canvas);
+  const minimapContainerRef = useExternalCanvas(props.editor.minimap.canvas as HTMLCanvasElement);
 
   const editorStateStorage: PanelGroupStorage = useMemo(
     () => ({
@@ -115,7 +122,7 @@ function EditorComponent(props: EditorClientState) {
   );
 
   const gameContainer = (
-    <div className="flex grow overflow-hidden" ref={canvasContainerRef}></div>
+    <div className="flex grow overflow-hidden" ref={gameCanvasContainerRef}></div>
   );
 
   return state.editor.active ? (
@@ -141,6 +148,7 @@ function EditorComponent(props: EditorClientState) {
         <Panel className="flex">{gameContainer}</Panel>
         <PanelResizeHandle className="w-2 bg-gray-800" />
         <Panel defaultSize={20} minSize={20}>
+          <div className="flex grow" ref={minimapContainerRef}></div>
           right
         </Panel>
       </PanelGroup>

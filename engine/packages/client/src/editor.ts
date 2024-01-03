@@ -36,9 +36,7 @@ export interface EditorContext<
   editorServer: EditorConnection<Actions, Events>;
 }
 
-type EditorDrawExtraScope = (width: number, height: number, callback: (
-    delta: number,
-) => void) => ImageBitmap;
+type EditorRenderTargetScope = (renderTarget: ImageBitmapRenderingContext, callback: () => void) => void;
 
 export interface EditorClient<
   State,
@@ -71,7 +69,8 @@ export interface EditorClient<
     ctx: EditorContext<Actions, Events>,
     state: State,
     editor: EditorState,
-    renderScope: EditorDrawExtraScope
+    delta: number,
+    renderScope: EditorRenderTargetScope
   ): void;
 }
 

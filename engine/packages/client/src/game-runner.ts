@@ -126,6 +126,12 @@ export default function GameRunner<
   const context: EditorContext<Actions, Events> = {
     gl: renderer.gl,
     editorServer: new ClientEditorConnection(),
+    createRenderTarget: (width: number, height: number) => {
+      const c = document.createElement("canvas");
+      c.width = width;
+      c.height = height;
+      return c.getContext("bitmaprenderer") as ImageBitmapRenderingContext;
+    },
     canvas,
     getGamepad: () => {
       if (selectedGamepadIndex !== null) {
@@ -444,6 +450,13 @@ export default function GameRunner<
 
   let accumulatedTime = 0;
   let nextFrame: number | null = null;
+
+  const renderToTarget = (renderTarget: ImageBitmapRenderingContext, callback: () => void) => {
+    const width = renderTarget.canvas.width;
+    const height = renderTarget.canvas.height;
+    renderTarget.transferFromImageBitmap(renderer.use({ width, height }, callback));
+  };
+
   const render = () => {
     if (currentParent) {
       const currentTime = performance.now();
@@ -483,12 +496,7 @@ export default function GameRunner<
         });
         target.transferFromImageBitmap(scene);
         if (result.editorState) {
-          editor?.onDrawExtra(context, result.gameState, result.editorState,
-            (width: number, height: number, callback: (frameTime: number) => void) =>
-              renderer.use({ width, height }, () => {
-                callback(frameTime);
-              })
-          );
+          editor?.onDrawExtra(context, result.gameState, result.editorState, frameTime, renderToTarget);
         }
       }
     }
@@ -667,8 +675,8 @@ class Renderer {
     this.gl.viewport(0, 0, width, height);
     this.#frameBuffer!.bind(cb);
     this.gl.viewport(0, 0, width * pixelMultiplier, height * pixelMultiplier);
-    this.#backBufferProgram.setUniforms({ u_texture: color });
     this.#backBufferProgram.use((s) => {
+    s.setUniforms({ u_texture: color });
       this.#quad.bind(
         s,
         { position: "a_position" },

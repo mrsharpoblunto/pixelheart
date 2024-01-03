@@ -3,6 +3,7 @@ import { vec2, vec4, ReadonlyVec4 } from "gl-matrix";
 export interface GameContext {
   gl: WebGL2RenderingContext;
   canvas: HTMLCanvasElement;
+  createRenderTarget: (width: number, height: number) => ImageBitmapRenderingContext;
   getGamepad: () => Gamepad | null;
   keys: {
     down: Set<string>;

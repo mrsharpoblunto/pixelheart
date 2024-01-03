@@ -1,5 +1,6 @@
 import { ReadonlyVec4, mat3, vec3, vec4 } from "gl-matrix";
 
+import { TEXTURE } from "./images.js";
 import { GameContext } from "./game.js";
 
 export interface SpriteConfig {
@@ -57,7 +58,9 @@ export interface Sprite<T> {
   ): Sprite<T>;
 }
 
-export interface SpriteSheet<T> extends Record<string, Sprite<T>> { }
+export interface SpriteSheet<T> extends Record<string, Sprite<T>> {
+  [TEXTURE]: T;
+}
 
 export interface SpriteEffect<T> {
   setTextures(texture: T): SpriteEffect<T>;
@@ -74,9 +77,9 @@ function getSpriteState(): Map<
   return process.env.NODE_ENV === "development"
     ? // @ts-ignore
     window.__PIXELHEART_SPRITE_STATE__ ||
-     // @ts-ignore
-      (window.__PIXELHEART_SPRITE_STATE__ = new Map())
-      : null;
+    // @ts-ignore
+    (window.__PIXELHEART_SPRITE_STATE__ = new Map())
+    : null;
 }
 
 function registerSprite(
@@ -121,12 +124,23 @@ export async function loadSpriteSheet<T>(
   loader: (ctx: GameContext, sheet: SpriteSheetConfig) => Promise<T>
 ): Promise<SpriteSheet<T>> {
   const textures = await loader(ctx, sheet);
+  return loadSpriteSheetSync(ctx, sheet, textures);
+}
+
+export function loadSpriteSheetSync<T>(
+  ctx: GameContext,
+  sheet: SpriteSheetConfig,
+  textures: T,
+): SpriteSheet<T> {
   const value = createSpriteFrames(sheet, textures);
   registerSprite(sheet, (newSheet) => {
     Object.keys(value).forEach((k) => delete value[k]);
     Object.assign(value, createSpriteFrames(newSheet, textures));
   });
-  return value;
+  return {
+    ...value,
+    [TEXTURE]: textures,
+  };
 }
 
 function createSpriteFrames<T>(sheet: SpriteSheetConfig, textures: T) {

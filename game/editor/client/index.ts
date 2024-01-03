@@ -8,9 +8,12 @@ import {
   MapContainer,
   MapTileSource,
   coords,
+  TEXTURE,
+  SpriteSheet,
+  loadSpriteSheetSync,
 } from "@pixelheart/client";
 import { vec2, vec4 } from "@pixelheart/client/gl-matrix";
-import { DeferredSpriteTextures } from "@pixelheart/effects";
+import { SolidEffect, SimpleSpriteEffect, SimpleSpriteTextures, DeferredSpriteTextures } from "@pixelheart/effects";
 
 import { GameState } from "../../client/index.js";
 import { renderEditor } from "./editor.js";
@@ -38,6 +41,10 @@ export interface EditorState {
   newValue: string | null;
   pendingChanges: Map<string, EditorActions>;
   panels: { [key: string]: string };
+  minimap: ImageBitmapRenderingContext;
+  minimapSprite: SpriteSheet<SimpleSpriteTextures> | null;
+  spriteEffect: SimpleSpriteEffect;
+  solidEffect: SolidEffect;
 }
 
 const CURRENT_SERIALIZATION_VERSION = 2;
@@ -91,6 +98,10 @@ export default class Editor
       newValue: null,
       pendingChanges: new Map(),
       panels: previousState?.panels || {},
+      minimap: ctx.createRenderTarget(100, 100),
+      minimapSprite: null,
+      solidEffect: new SolidEffect(ctx),
+      spriteEffect: new SimpleSpriteEffect(ctx),
     };
 
     this.#root = createRoot(container);
@@ -418,17 +429,46 @@ export default class Editor
     ctx: EditorContext<EditorActions, EditorEvents>,
     state: GameState,
     editor: EditorState,
-    renderScope: (width: number, height: number, cb: (delta: number) => void) => ImageBitmap
+    delta: number,
+    renderScope: (renderTarget: ImageBitmapRenderingContext, cb: () => void) => void
   ) {
     if (!editor.active) {
       return;
     }
 
     state.resources.ifReady((r) => {
-      const minimap = renderScope(r.map.data.width, r.map.data.height, (delta) => {
-        // render the minimap...
+      // render the minimap...
+      editor.minimap.canvas.width = r.map.data.width;
+      editor.minimap.canvas.height = r.map.data.height;
+      renderScope(editor.minimap, () => {
+        if (!editor.minimapSprite) {
+          editor.minimapSprite = loadSpriteSheetSync(
+            ctx,
+            r.map.spriteConfig,
+            r.map.sprite[TEXTURE].diffuseTexture
+          );
+        }
+
+        editor.solidEffect.use((s) => {
+          s.draw(
+            vec4.fromValues(0, 0, 1.0, 1.0),
+            vec4.fromValues(50.0 / 255.0, 124.0 / 255.0, 224.0 / 255.0, 1.0)
+          );
+        });
+        editor.spriteEffect.use((s) => {
+          for (let x = 0; x < r.map.data.width; ++x) {
+            for (let y = 0; y < r.map.data.height; ++y) {
+              const tile = r.map.data.read(x, y);
+              if (tile.index > 0) {
+                const sprite = r.map.spriteConfig.indexes[tile.index];
+                const position = vec4.fromValues(x, y, x + 1, y + 1);
+                vec4.scale(position, position, 1.0 / r.map.data.width);
+                editor.minimapSprite![sprite].draw(s, position);
+              }
+            }
+          }
+        });
       });
-      // TODO copy the minimap over to the minimap canvas
     });
   }
 }
