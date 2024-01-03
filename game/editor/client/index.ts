@@ -441,13 +441,12 @@ export default class Editor
       editor.minimap.canvas.width = r.map.data.width;
       editor.minimap.canvas.height = r.map.data.height;
       renderScope(editor.minimap, () => {
-        if (!editor.minimapSprite) {
-          editor.minimapSprite = loadSpriteSheetSync(
-            ctx,
-            r.map.spriteConfig,
-            r.map.sprite[TEXTURE].diffuseTexture
-          );
-        }
+
+        const minimapSprite = editor.minimapSprite = editor.minimapSprite || loadSpriteSheetSync(
+          ctx,
+          r.map.spriteConfig,
+          r.map.sprite[TEXTURE].diffuseTexture
+        );
 
         editor.solidEffect.use((s) => {
           s.draw(
@@ -456,14 +455,15 @@ export default class Editor
           );
         });
         editor.spriteEffect.use((s) => {
+          const xScale = 1.0 / r.map.data.width;
+          const yScale = 1.0 / r.map.data.height;
           for (let x = 0; x < r.map.data.width; ++x) {
             for (let y = 0; y < r.map.data.height; ++y) {
               const tile = r.map.data.read(x, y);
               if (tile.index > 0) {
                 const sprite = r.map.spriteConfig.indexes[tile.index];
-                const position = vec4.fromValues(x, y, x + 1, y + 1);
-                vec4.scale(position, position, 1.0 / r.map.data.width);
-                editor.minimapSprite![sprite].draw(s, position);
+                const position = vec4.fromValues(y * yScale, (x + 1) * xScale, (y + 1) * yScale, x * xScale);
+                minimapSprite[sprite].draw(s, position);
               }
             }
           }
