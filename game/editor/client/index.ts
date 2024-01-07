@@ -7,9 +7,9 @@ import {
   EditorContext,
   MapContainer,
   MapTileSource,
-  coords,
   TEXTURE,
   SpriteSheet,
+  coords,
   loadSpriteSheetSync,
 } from "@pixelheart/client";
 import { vec2, vec4 } from "@pixelheart/client/gl-matrix";
@@ -33,15 +33,13 @@ export type EditorActions =
 export interface PersistentEditorState {
   version: number;
   active: boolean;
-  panels: { [key: string]: string };
 }
 
 export interface EditorState {
   active: boolean;
   newValue: string | null;
   pendingChanges: Map<string, EditorActions>;
-  panels: { [key: string]: string };
-  minimap: ImageBitmapRenderingContext;
+  minimap: HTMLCanvasElement | null;
   minimapSprite: SpriteSheet<SimpleSpriteTextures> | null;
   spriteEffect: SimpleSpriteEffect;
   solidEffect: SolidEffect;
@@ -97,8 +95,7 @@ export default class Editor
       active: previousState ? previousState.active : false,
       newValue: null,
       pendingChanges: new Map(),
-      panels: previousState?.panels || {},
-      minimap: ctx.createRenderTarget(100, 100),
+      minimap: null,
       minimapSprite: null,
       solidEffect: new SolidEffect(ctx),
       spriteEffect: new SimpleSpriteEffect(ctx),
@@ -119,7 +116,6 @@ export default class Editor
     return {
       version: CURRENT_SERIALIZATION_VERSION,
       active: editor.active,
-      panels: editor.panels,
     };
   }
 
@@ -388,12 +384,14 @@ export default class Editor
 
       state.solidEffect.use((s) => {
         // editor cursor
+        s.setBorder(ctx.screen, 1);
         s.draw(
           coords.toScreenSpaceFromAbsoluteTile(vec4.create(), ap, {
             ...state.screen,
             ...ctx.screen,
           }),
-          vec4.fromValues(1.0, 0, 0, 0.5)
+          vec4.fromValues(1.0, 0, 0, 0.5),
+          vec4.fromValues(1.0, 1.0, 1.0, 1.0),
         );
 
         // character bounding box
@@ -437,23 +435,39 @@ export default class Editor
     }
 
     state.resources.ifReady((r) => {
-      // render the minimap...
-      editor.minimap.canvas.width = r.map.data.width;
-      editor.minimap.canvas.height = r.map.data.height;
-      renderScope(editor.minimap, () => {
+      if (!editor.minimap) {
+        return;
+      }
 
+      const minimap = editor.minimap;
+      const target = minimap.getContext("bitmaprenderer");
+      const parent = minimap.parentElement;
+      if (!parent || !target) {
+        return;
+      }
+
+      const xScale = parent.clientWidth / r.map.data.width;
+      const yScale = parent.clientHeight / r.map.data.height;
+      const scale = Math.max(1.0, Math.floor(Math.min(xScale, yScale)));
+
+      minimap.width = r.map.data.width * scale;
+      minimap.height = r.map.data.height * scale;
+
+      renderScope(target, () => {
         const minimapSprite = editor.minimapSprite = editor.minimapSprite || loadSpriteSheetSync(
           ctx,
           r.map.spriteConfig,
           r.map.sprite[TEXTURE].diffuseTexture
         );
 
+        // draw the ocean
         editor.solidEffect.use((s) => {
           s.draw(
             vec4.fromValues(0, 0, 1.0, 1.0),
             vec4.fromValues(50.0 / 255.0, 124.0 / 255.0, 224.0 / 255.0, 1.0)
           );
         });
+        // draw the tiles
         editor.spriteEffect.use((s) => {
           const xScale = 1.0 / r.map.data.width;
           const yScale = 1.0 / r.map.data.height;
@@ -467,6 +481,28 @@ export default class Editor
               }
             }
           }
+        });
+        // draw the screen position
+        editor.solidEffect.use((s) => {
+          const position = vec4.fromValues(
+            state.screen.absolutePosition[1],
+            state.screen.absolutePosition[0] + ctx.screen.width,
+            state.screen.absolutePosition[1] + ctx.screen.height,
+            state.screen.absolutePosition[0]
+          );
+          vec4.scale(position, position, 1.0 / coords.TILE_SIZE);
+          vec4.multiply(position, position, vec4.fromValues(
+            1.0 / r.map.data.height,
+            1.0 / r.map.data.width,
+            1.0 / r.map.data.height,
+            1.0 / r.map.data.width
+          ));
+          s.setBorder(minimap, 2);
+          s.draw(
+            position,
+            vec4.fromValues(1.0, 1.0, 1.0, 0.2),
+            vec4.fromValues(1.0, 1.0, 1.0, 1.0),
+          );
         });
       });
     });

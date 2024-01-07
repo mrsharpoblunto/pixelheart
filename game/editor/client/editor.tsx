@@ -1,11 +1,5 @@
 import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Root } from "react-dom/client";
-import {
-  Panel,
-  PanelGroup,
-  PanelGroupStorage,
-  PanelResizeHandle,
-} from "react-resizable-panels";
 
 import { EditorContext } from "@pixelheart/client";
 
@@ -70,7 +64,7 @@ function EditorButton(props: {
   );
 }
 
-function useExternalCanvas(canvas: HTMLCanvasElement) {
+function useExternalCanvas(canvas: HTMLCanvasElement, active: boolean) {
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -91,7 +85,7 @@ function useExternalCanvas(canvas: HTMLCanvasElement) {
         canvasContainerRef.current.removeChild(canvas);
       }
     };
-  }, [canvas]);
+  }, [canvas, active]);
 
   return canvasContainerRef;
 }
@@ -101,32 +95,22 @@ function EditorComponent(props: EditorClientState) {
 
   useEffect(() => {
     // make sure editor server events are dispatched to the reducer
-    props.ctx.editorServer.onEvent((a) => {
-      dispatch(a);
-    });
+    props.ctx.editorServer.onEvent(dispatch);
   }, [dispatch, props.ctx.editorServer]);
 
-  const gameCanvasContainerRef = useExternalCanvas(props.ctx.canvas);
-  const minimapContainerRef = useExternalCanvas(props.editor.minimap.canvas as HTMLCanvasElement);
+  const minimapRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    props.editor.minimap = minimapRef.current;
+  }, [minimapRef.current]);
 
-  const editorStateStorage: PanelGroupStorage = useMemo(
-    () => ({
-      getItem(name: string): string | null {
-        return state.editor.panels[name];
-      },
-      setItem(name: string, value: string): void {
-        state.editor.panels[name] = value;
-      },
-    }),
-    [state.editor]
-  );
+  const gameCanvasContainerRef = useExternalCanvas(props.ctx.canvas, props.editor.active);
 
   const gameContainer = (
-    <div className="flex grow overflow-hidden" ref={gameCanvasContainerRef}></div>
+    <div className="flex grow overflow-hidden border-2 border-gray-600" ref={gameCanvasContainerRef}></div>
   );
 
   return state.editor.active ? (
-    <div className="flex flex-col grow">
+    <div className="flex flex-col grow max-w-full">
       <div className="flex p-2 bg-gray-900 flex-row-reverse">
         <EditorButton
           onClick={() => {
@@ -135,28 +119,21 @@ function EditorComponent(props: EditorClientState) {
           text="Close Editor"
         />
       </div>
-      <PanelGroup
-        direction="horizontal"
-        autoSaveId="editor"
-        storage={editorStateStorage}
-        className="bg-gray-900"
-      >
-        <Panel defaultSize={10} minSize={10} collapsible={true}>
-          left
-        </Panel>
-        <PanelResizeHandle className="p-1 border-1 border-dashed border-color-gray-600 bg-gray-800" />
-        <Panel className="flex">{gameContainer}</Panel>
-        <PanelResizeHandle className="w-2 bg-gray-800" />
-        <Panel defaultSize={20} minSize={20}>
-          <div className="flex grow" ref={minimapContainerRef}></div>
-          right
-        </Panel>
-      </PanelGroup>
-    </div>
+      <div className="flex grow relative">
+        {gameContainer}
+        <div className="absolute top-2 right-2" >
+          <div
+            className="border-2 border-gray-600 bg-gray-900 overflow-hidden aspect-square"
+            style={{ width: "20vw" }}>
+            <canvas ref={minimapRef} />
+          </div>
+        </div>
+      </div>
+    </div >
   ) : (
     <>
       <EditorButton
-        className="absolute top-0 right-0 z-10 mt-2 mr-2"
+        className="absolute top-2 right-2 z-10"
         onClick={() => {
           dispatch({ type: "TOGGLE_EDITOR" });
         }}

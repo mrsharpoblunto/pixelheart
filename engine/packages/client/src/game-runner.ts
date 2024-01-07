@@ -662,7 +662,10 @@ class Renderer {
     { width, height }: { width: number, height: number },
     pixelMultiplier: number,
     cb: () => void
-  ): ImageBitmap {
+  ): ImageBitmap | null {
+    if (!width || !height) {
+      return null;
+    }
     this.#offscreenCanvas.width = width * pixelMultiplier;
     this.#offscreenCanvas.height = height * pixelMultiplier;
     const { color } = this.#gBuffer.use({ width, height }, (textures) => {
@@ -676,7 +679,7 @@ class Renderer {
     this.#frameBuffer!.bind(cb);
     this.gl.viewport(0, 0, width * pixelMultiplier, height * pixelMultiplier);
     this.#backBufferProgram.use((s) => {
-    s.setUniforms({ u_texture: color });
+      s.setUniforms({ u_texture: color });
       this.#quad.bind(
         s,
         { position: "a_position" },

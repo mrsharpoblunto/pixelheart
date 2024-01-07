@@ -43,9 +43,6 @@ devDependencies:
   react-dom:
     specifier: ^18.2.0
     version: 18.2.0(react@18.2.0)
-  react-resizable-panels:
-    specifier: ^1.0.3
-    version: 1.0.3(react-dom@18.2.0)(react@18.2.0)
 
 packages:
 
@@ -316,16 +313,6 @@ packages:
       loose-envify: 1.4.0
       react: 18.2.0
       scheduler: 0.23.0
-    dev: true
-
-  /react-resizable-panels@1.0.3(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-d54mBF/T6S51ZAU7s8SjLMa9hnLIhBHi35GJkdzC+gsEOpm8IEQ5odJid1AWi8neGfGm2HDANGo8Ndc6C8ISdw==}
-    peerDependencies:
-      react: ^16.14.0 || ^17.0.0 || ^18.0.0
-      react-dom: ^16.14.0 || ^17.0.0 || ^18.0.0
-    dependencies:
-      react: 18.2.0
-      react-dom: 18.2.0(react@18.2.0)
     dev: true
 
   /react@18.2.0:

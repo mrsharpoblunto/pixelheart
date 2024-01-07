@@ -1,17 +1,17 @@
-import { 
+import {
   GameContext,
-  Quad, 
+  Quad,
   SpriteViewProjection,
   InstanceBuffer,
   ShaderProgram,
 } from "@pixelheart/client";
 
-import { mat3, ReadonlyVec4 } from "@pixelheart/client/gl-matrix";
+import { vec2, mat3, vec4, ReadonlyVec4 } from "@pixelheart/client/gl-matrix";
 
 import fragmentShader from "./shaders/solid.frag.js";
 import vertexShader from "./shaders/solid.vert.js";
 
-type SpriteInstance = { mvp: mat3; color: ReadonlyVec4 };
+type SpriteInstance = { m: mat3; bounds: ReadonlyVec4, fillColor: ReadonlyVec4, borderColor: ReadonlyVec4 };
 
 export class SolidEffect {
   #gl: WebGL2RenderingContext;
@@ -19,32 +19,43 @@ export class SolidEffect {
   #instanceBuffer: InstanceBuffer<typeof vertexShader, SpriteInstance>;
   #quad: Quad;
   #pending: Array<SpriteInstance>;
-
   constructor(ctx: GameContext) {
     this.#gl = ctx.gl;
     this.#program = new ShaderProgram(ctx.gl, vertexShader, fragmentShader);
     this.#instanceBuffer = new InstanceBuffer(this.#gl, this.#program, {
-      a_mvp: (instance) => instance.mvp,
-      a_color: (instance) => instance.color,
+      a_m: (instance) => instance.m,
+      a_bounds: (instance) => instance.bounds,
+      a_fillColor: (instance) => instance.fillColor,
+      a_borderColor: (instance) => instance.borderColor,
     });
     this.#quad = new Quad(this.#gl);
     this.#pending = [];
+
   }
 
   use(scope: (s: SolidEffect) => void) {
     this.#program.use(() => {
+      this.#program.setUniforms({
+        u_border: vec2.fromValues(0, 0),
+        u_vp: SpriteViewProjection,
+      });
       scope(this);
       this.#end();
     });
   }
 
-  draw(bounds: ReadonlyVec4, color: ReadonlyVec4): SolidEffect {
-    const mvp = mat3.create();
-    mat3.translate(mvp, mvp, [bounds[3], bounds[0]]);
-    mat3.scale(mvp, mvp, [bounds[1] - bounds[3], bounds[2] - bounds[0]]);
-    mat3.multiply(mvp, SpriteViewProjection, mvp);
+  setBorder(screen: { width: number, height: number }, width: number) {
+    this.#program.setUniforms({
+      u_border: vec2.fromValues(width / screen.width, width / screen.height),
+    });
+  }
 
-    this.#pending.push({ mvp, color });
+  draw(bounds: ReadonlyVec4, fillColor: ReadonlyVec4, borderColor?: ReadonlyVec4): SolidEffect {
+    const m = mat3.create();
+    mat3.translate(m, m, [bounds[3], bounds[0]]);
+    mat3.scale(m, m, [bounds[1] - bounds[3], bounds[2] - bounds[0]]);
+
+    this.#pending.push({ m, bounds: vec4.clone(bounds), fillColor, borderColor: borderColor || fillColor });
     return this;
   }
 
