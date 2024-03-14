@@ -100,17 +100,13 @@ function EditorComponent(props: EditorClientState) {
 
   const minimapRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    props.editor.minimap = minimapRef.current;
-  }, [minimapRef.current]);
+      props.editor.minimap = minimapRef.current;
+  });
 
   const gameCanvasContainerRef = useExternalCanvas(props.ctx.canvas, props.editor.active);
 
-  const gameContainer = (
-    <div className="flex grow overflow-hidden border-2 border-gray-600" ref={gameCanvasContainerRef}></div>
-  );
-
   return state.editor.active ? (
-    <div className="flex flex-col grow max-w-full">
+    <div className="flex flex-col w-full">
       <div className="flex p-2 bg-gray-900 flex-row-reverse">
         <EditorButton
           onClick={() => {
@@ -119,9 +115,8 @@ function EditorComponent(props: EditorClientState) {
           text="Close Editor"
         />
       </div>
-      <div className="flex grow relative">
-        {gameContainer}
-        <div className="absolute top-2 right-2" >
+      <div className="flex grow overflow-hidden relative border-2 border-gray-600" ref={gameCanvasContainerRef}>
+        <div className="absolute top-2 right-2 z-10" >
           <div
             className="border-2 border-gray-600 bg-gray-900 overflow-hidden aspect-square"
             style={{ width: "20vw" }}>
@@ -139,7 +134,7 @@ function EditorComponent(props: EditorClientState) {
         }}
         text="Open Editor"
       />
-      {gameContainer}
+      <div className="flex grow overflow-hidden w-full" ref={gameCanvasContainerRef}></div>
     </>
   );
 }
