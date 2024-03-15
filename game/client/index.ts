@@ -63,10 +63,16 @@ export interface GameState {
   waterEffect: WaterEffect;
   blurEffect: NearestBlurEffect;
   moveTouch: { id: number; startPosition: ReadonlyVec2 } | null;
+  directionalLighting: Array<{
+    ambient: vec3;
+    direction: vec3;
+    diffuse: vec3;
+  }>;
+  day: number;
 }
 
 export default class Game implements GameClient<GameState, PersistentState> {
-  constructor() { }
+  constructor() {}
 
   onStart(ctx: GameContext, previousState?: PersistentState): GameState {
     if (
@@ -105,13 +111,13 @@ export default class Game implements GameClient<GameState, PersistentState> {
             ),
             position: previousState
               ? vec2.fromValues(
-                previousState.character.position[0],
-                previousState.character.position[1]
-              )
+                  previousState.character.position[0],
+                  previousState.character.position[1]
+                )
               : vec2.fromValues(
-                overworldMap.startPosition.x * coords.TILE_SIZE,
-                overworldMap.startPosition.y * coords.TILE_SIZE
-              ),
+                  overworldMap.startPosition.x * coords.TILE_SIZE,
+                  overworldMap.startPosition.y * coords.TILE_SIZE
+                ),
             relativePosition: vec2.create(),
             boundingBox: vec4.fromValues(
               c.walk_u.height - 14,
@@ -131,6 +137,8 @@ export default class Game implements GameClient<GameState, PersistentState> {
         absolutePosition: vec2.create(),
       },
       moveTouch: null,
+      directionalLighting: [],
+      day: 0,
     };
 
     return state;
@@ -302,44 +310,44 @@ export default class Game implements GameClient<GameState, PersistentState> {
         r.map.data.read(
           Math.floor(
             (movement[0] - renderOffset[0] + r.character.boundingBox[3]) /
-            coords.TILE_SIZE
+              coords.TILE_SIZE
           ),
           Math.floor(
             (movement[1] - renderOffset[1] + r.character.boundingBox[0]) /
-            coords.TILE_SIZE
+              coords.TILE_SIZE
           )
         ).walkable &&
         // top right
         r.map.data.read(
           Math.floor(
             (movement[0] - renderOffset[0] + r.character.boundingBox[1]) /
-            coords.TILE_SIZE
+              coords.TILE_SIZE
           ),
           Math.floor(
             (movement[1] - renderOffset[1] + r.character.boundingBox[0]) /
-            coords.TILE_SIZE
+              coords.TILE_SIZE
           )
         ).walkable &&
         // bottom left
         r.map.data.read(
           Math.floor(
             (movement[0] - renderOffset[0] + r.character.boundingBox[3]) /
-            coords.TILE_SIZE
+              coords.TILE_SIZE
           ),
           Math.floor(
             (movement[1] - renderOffset[1] + r.character.boundingBox[2]) /
-            coords.TILE_SIZE
+              coords.TILE_SIZE
           )
         ).walkable &&
         // bottom right
         r.map.data.read(
           Math.floor(
             (movement[0] - renderOffset[0] + r.character.boundingBox[1]) /
-            coords.TILE_SIZE
+              coords.TILE_SIZE
           ),
           Math.floor(
             (movement[1] - renderOffset[1] + r.character.boundingBox[2]) /
-            coords.TILE_SIZE
+              coords.TILE_SIZE
           )
         ).walkable;
 
@@ -362,19 +370,19 @@ export default class Game implements GameClient<GameState, PersistentState> {
         r.character.position[0] < ctx.screen.width / 2
           ? r.character.position[0]
           : r.character.position[0] >
-            r.map.data.width * coords.TILE_SIZE - ctx.screen.width / 2
+              r.map.data.width * coords.TILE_SIZE - ctx.screen.width / 2
             ? r.character.position[0] -
-            r.map.data.width * coords.TILE_SIZE +
-            ctx.screen.width
+              r.map.data.width * coords.TILE_SIZE +
+              ctx.screen.width
             : ctx.screen.width / 2;
       r.character.relativePosition[1] =
         r.character.position[1] < ctx.screen.height / 2
           ? r.character.position[1]
           : r.character.position[1] >
-            r.map.data.height * coords.TILE_SIZE - ctx.screen.height / 2
+              r.map.data.height * coords.TILE_SIZE - ctx.screen.height / 2
             ? r.character.position[1] -
-            r.map.data.height * coords.TILE_SIZE +
-            ctx.screen.height
+              r.map.data.height * coords.TILE_SIZE +
+              ctx.screen.height
             : ctx.screen.height / 2;
 
       // Record the scroll offset of the screen
@@ -386,6 +394,52 @@ export default class Game implements GameClient<GameState, PersistentState> {
 
       r.map.data.updateScreenBuffer(ctx, state.screen.absolutePosition);
     });
+
+    let sin = Math.sin(state.animationTimer);
+    sin = Math.min(1.0, sin + 0.5);
+
+    state.day =
+      state.animationTimer < MAX_TIME * 0.25
+        ? math.smoothstep(0, MAX_TIME * 0.25, state.animationTimer)
+        : state.animationTimer < MAX_TIME * 0.5
+          ? 1.0
+          : state.animationTimer < MAX_TIME * 0.75
+            ? 1.0 -
+              math.smoothstep(
+                MAX_TIME * 0.5,
+                MAX_TIME * 0.75,
+                state.animationTimer
+              )
+            : 0.0;
+    const sunDirection = Math.cos(
+      (Math.min(state.animationTimer, MAX_TIME * 0.75) * Math.PI) /
+        (MAX_TIME * 0.75)
+    );
+
+    state.directionalLighting = [
+      {
+        ambient: vec3.fromValues(
+          0.2 + state.day * 0.3,
+          0.2 + state.day * 0.3,
+          0.4 + state.day * 0.1
+        ),
+        direction: vec3.fromValues(sunDirection, state.day * 0.3 + 0.2, -1.0),
+        diffuse: vec3.fromValues(
+          Math.pow(state.day, 0.25) * (1 - state.day) + state.day * 0.5,
+          state.day * 0.5,
+          state.day * 0.45
+        ),
+      },
+      {
+        ambient: vec3.create(),
+        direction: vec3.fromValues(0.0, (1 - state.day) * 0.5, -1.0),
+        diffuse: vec3.fromValues(
+          (1 - state.day) * 0.2,
+          (1 - state.day) * 0.2,
+          (1 - state.day) * 0.2
+        ),
+      },
+    ];
   }
 
   onDraw(ctx: GameContext, state: GameState, _delta: number) {
@@ -397,51 +451,15 @@ export default class Game implements GameClient<GameState, PersistentState> {
       state.screen.absolutePosition
     );
 
-    let sin = Math.sin(state.animationTimer);
-    sin = Math.min(1.0, sin + 0.5);
-
-    const day =
-      state.animationTimer < MAX_TIME * 0.25
-        ? math.smoothstep(0, MAX_TIME * 0.25, state.animationTimer)
-        : state.animationTimer < MAX_TIME * 0.5
-          ? 1.0
-          : state.animationTimer < MAX_TIME * 0.75
-            ? 1.0 -
-            math.smoothstep(MAX_TIME * 0.5, MAX_TIME * 0.75, state.animationTimer)
-            : 0.0;
-    const sunDirection = Math.cos(
-      (Math.min(state.animationTimer, MAX_TIME * 0.75) * Math.PI) /
-      (MAX_TIME * 0.75)
-    );
-
+    for (const l of state.directionalLighting) {
+      state.spriteEffect.addDirectionalLight(l);
+    }
     state.spriteEffect
-      .addDirectionalLight({
-        ambient: vec3.fromValues(
-          0.2 + day * 0.3,
-          0.2 + day * 0.3,
-          0.4 + day * 0.1
-        ),
-        direction: vec3.fromValues(sunDirection, day * 0.3 + 0.2, -1.0),
-        diffuse: vec3.fromValues(
-          Math.pow(day, 0.25) * (1 - day) + day * 0.5,
-          day * 0.5,
-          day * 0.45
-        ),
-      })
-      .addDirectionalLight({
-        ambient: vec3.create(),
-        direction: vec3.fromValues(0.0, (1 - day) * 0.5, -1.0),
-        diffuse: vec3.fromValues(
-          (1 - day) * 0.2,
-          (1 - day) * 0.2,
-          (1 - day) * 0.2
-        ),
-      })
       .addPointLight({
         diffuse: vec3.fromValues(
-          0.6 * (1 - day),
-          0.6 * (1 - day),
-          0.3 * (1 - day)
+          0.6 * (1 - state.day),
+          0.6 * (1 - state.day),
+          0.3 * (1 - state.day)
         ),
         position: vec3.fromValues(
           ctx.mouse.position[0] / ctx.screen.width,
@@ -457,20 +475,14 @@ export default class Game implements GameClient<GameState, PersistentState> {
         },
         (s, pass) => {
           state.resources.ifReady((r) => {
-            const tileWidth = (ctx.screen.width + (2 * coords.TILE_SIZE)) / coords.TILE_SIZE;
-            const tileHeight = (ctx.screen.height + (2 * coords.TILE_SIZE)) / coords.TILE_SIZE;
+            const tileWidth =
+              (ctx.screen.width + 2 * coords.TILE_SIZE) / coords.TILE_SIZE;
+            const tileHeight =
+              (ctx.screen.height + 2 * coords.TILE_SIZE) / coords.TILE_SIZE;
             if (pass === 0) {
               // overdraw the screen by 1 tile at each edge to prevent tile pop-in
-              for (
-                let x = -1;
-                x <= tileWidth;
-                ++x
-              ) {
-                for (
-                  let y = -1;
-                  y <= tileHeight;
-                  ++y
-                ) {
+              for (let x = -1; x <= tileWidth; ++x) {
+                for (let y = -1; y <= tileHeight; ++y) {
                   const mapX = x + ssp[0];
                   const mapY = y + ssp[1];
 

@@ -7,13 +7,18 @@ import {
   EditorContext,
   MapContainer,
   MapTileSource,
-  TEXTURE,
   SpriteSheet,
+  TEXTURE,
   coords,
   loadSpriteSheetSync,
 } from "@pixelheart/client";
 import { vec2, vec4 } from "@pixelheart/client/gl-matrix";
-import { SolidEffect, SimpleSpriteEffect, SimpleSpriteTextures, DeferredSpriteTextures } from "@pixelheart/effects";
+import {
+  DeferredSpriteTextures,
+  SimpleSpriteEffect,
+  SimpleSpriteTextures,
+  SolidEffect,
+} from "@pixelheart/effects";
 
 import { GameState } from "../../client/index.js";
 import { renderEditor } from "./editor.js";
@@ -23,12 +28,12 @@ export type EditorEvents = BaseEvents;
 export type EditorActions =
   | BaseActions
   | {
-    type: "TILE_CHANGE";
-    x: number;
-    y: number;
-    map: string;
-    value: MapTileSource;
-  };
+      type: "TILE_CHANGE";
+      x: number;
+      y: number;
+      map: string;
+      value: MapTileSource;
+    };
 
 export interface PersistentEditorState {
   version: number;
@@ -40,6 +45,7 @@ export interface EditorState {
   newValue: string | null;
   pendingChanges: Map<string, EditorActions>;
   minimap: HTMLCanvasElement | null;
+  tiles: Map<string, HTMLCanvasElement>;
   minimapSprite: SpriteSheet<SimpleSpriteTextures> | null;
   spriteEffect: SimpleSpriteEffect;
   solidEffect: SolidEffect;
@@ -49,13 +55,13 @@ const CURRENT_SERIALIZATION_VERSION = 2;
 
 export default class Editor
   implements
-  EditorClient<
-    GameState,
-    EditorState,
-    PersistentEditorState,
-    EditorActions,
-    EditorEvents
-  >
+    EditorClient<
+      GameState,
+      EditorState,
+      PersistentEditorState,
+      EditorActions,
+      EditorEvents
+    >
 {
   #edges: Set<string>;
   #root: Root | null = null;
@@ -96,6 +102,7 @@ export default class Editor
       newValue: null,
       pendingChanges: new Map(),
       minimap: null,
+      tiles: new Map(),
       minimapSprite: null,
       solidEffect: new SolidEffect(ctx),
       spriteEffect: new SimpleSpriteEffect(ctx),
@@ -360,8 +367,8 @@ export default class Editor
         sprite === ""
           ? 0
           : map.spriteConfig.sprites[
-            sprite as keyof typeof map.spriteConfig.sprites
-          ].index;
+              sprite as keyof typeof map.spriteConfig.sprites
+            ].index;
       map.data.write(x, y, { ...action.value, index });
     }
   }
@@ -391,7 +398,7 @@ export default class Editor
             ...ctx.screen,
           }),
           vec4.fromValues(1.0, 0, 0, 0.5),
-          vec4.fromValues(1.0, 1.0, 1.0, 1.0),
+          vec4.fromValues(1.0, 1.0, 1.0, 1.0)
         );
 
         // character bounding box
@@ -404,17 +411,17 @@ export default class Editor
             vec4.create(),
             vec4.fromValues(
               Math.floor(r.character.relativePosition[1]) -
-              offset[1] +
-              r.character.boundingBox[0],
+                offset[1] +
+                r.character.boundingBox[0],
               Math.floor(r.character.relativePosition[0]) -
-              offset[0] +
-              r.character.boundingBox[1],
+                offset[0] +
+                r.character.boundingBox[1],
               Math.floor(r.character.relativePosition[1]) -
-              offset[1] +
-              r.character.boundingBox[2],
+                offset[1] +
+                r.character.boundingBox[2],
               Math.floor(r.character.relativePosition[0]) -
-              offset[0] +
-              r.character.boundingBox[3]
+                offset[0] +
+                r.character.boundingBox[3]
             )
           ),
           vec4.fromValues(0.0, 0, 1.0, 0.5)
@@ -428,7 +435,10 @@ export default class Editor
     state: GameState,
     editor: EditorState,
     delta: number,
-    renderScope: (renderTarget: ImageBitmapRenderingContext, cb: () => void) => void
+    renderScope: (
+      renderTarget: ImageBitmapRenderingContext,
+      cb: () => void
+    ) => void
   ) {
     if (!editor.active) {
       return;
@@ -454,11 +464,13 @@ export default class Editor
       minimap.height = r.map.data.height * scale;
 
       renderScope(target, () => {
-        const minimapSprite = editor.minimapSprite = editor.minimapSprite || loadSpriteSheetSync(
-          ctx,
-          r.map.spriteConfig,
-          r.map.sprite[TEXTURE].diffuseTexture
-        );
+        const minimapSprite = (editor.minimapSprite =
+          editor.minimapSprite ||
+          loadSpriteSheetSync(
+            ctx,
+            r.map.spriteConfig,
+            r.map.sprite[TEXTURE].diffuseTexture
+          ));
 
         // draw the ocean
         editor.solidEffect.use((s) => {
@@ -476,7 +488,12 @@ export default class Editor
               const tile = r.map.data.read(x, y);
               if (tile.index > 0) {
                 const sprite = r.map.spriteConfig.indexes[tile.index];
-                const position = vec4.fromValues(y * yScale, (x + 1) * xScale, (y + 1) * yScale, x * xScale);
+                const position = vec4.fromValues(
+                  y * yScale,
+                  (x + 1) * xScale,
+                  (y + 1) * yScale,
+                  x * xScale
+                );
                 minimapSprite[sprite].draw(s, position);
               }
             }
@@ -491,20 +508,81 @@ export default class Editor
             state.screen.absolutePosition[0]
           );
           vec4.scale(position, position, 1.0 / coords.TILE_SIZE);
-          vec4.multiply(position, position, vec4.fromValues(
-            1.0 / r.map.data.height,
-            1.0 / r.map.data.width,
-            1.0 / r.map.data.height,
-            1.0 / r.map.data.width
-          ));
+          vec4.multiply(
+            position,
+            position,
+            vec4.fromValues(
+              1.0 / r.map.data.height,
+              1.0 / r.map.data.width,
+              1.0 / r.map.data.height,
+              1.0 / r.map.data.width
+            )
+          );
           s.setBorder(minimap, 2);
           s.draw(
             position,
             vec4.fromValues(1.0, 1.0, 1.0, 0.2),
-            vec4.fromValues(1.0, 1.0, 1.0, 1.0),
+            vec4.fromValues(1.0, 1.0, 1.0, 1.0)
           );
         });
       });
+
+      // render editor tiles
+      for (let [tileId, tileCanvas] of editor.tiles) {
+        tileCanvas.width = coords.TILE_SIZE * 4;
+        tileCanvas.height = coords.TILE_SIZE * 4;
+
+        const target = tileCanvas.getContext("bitmaprenderer");
+        if (!target) {
+          continue;
+        }
+
+        renderScope(target, () => {
+          ctx.gl.texParameteri(
+            ctx.gl.TEXTURE_2D,
+            ctx.gl.TEXTURE_MIN_FILTER,
+            ctx.gl.NEAREST
+          );
+          ctx.gl.texParameteri(
+            ctx.gl.TEXTURE_2D,
+            ctx.gl.TEXTURE_MAG_FILTER,
+            ctx.gl.NEAREST
+          );
+
+          // editor tiles apply the same lighting as the
+          // game engine
+          for (const l of state.directionalLighting) {
+            state.spriteEffect.addDirectionalLight(l);
+          }
+          state.spriteEffect.use(
+            {
+              width: tileCanvas.width,
+              height: tileCanvas.height,
+            },
+            (s, _pass) => {
+              r.map.sprite[tileId].draw(s, vec4.fromValues(0.0, 1.0, 1.0, 0.0));
+            },
+            (_mask) => {}
+          );
+
+          // draw the accumulated deferred lighting texture to the screen
+          state.simpleSpriteEffect.use((s) => {
+            const lightingTexture = state.spriteEffect.getLightingTexture();
+            if (lightingTexture) {
+              s.setTextures(lightingTexture);
+              s.draw(
+                vec4.fromValues(1.0, 1.0, 0, 0),
+                vec4.fromValues(
+                  0,
+                  lightingTexture.width,
+                  lightingTexture.height,
+                  0
+                )
+              );
+            }
+          });
+        });
+      }
     });
   }
 }

@@ -1,4 +1,5 @@
 import { ReadonlyVec4, vec2, vec4 } from "gl-matrix";
+
 import {
   BaseActions,
   BaseEvents,
@@ -6,13 +7,12 @@ import {
   EditorClient,
   EditorContext,
 } from "./editor.js";
-import { Quad } from "./geometry.js";
 import { GameClient } from "./game.js";
+import { Quad } from "./geometry.js";
 import { FrameBuffer, GBuffer, reloadShader } from "./gl-utils.js";
+import { ShaderProgram } from "./gl-utils.js";
 import { reloadImage } from "./images.js";
 import { reloadSprite } from "./sprite.js";
-import { ShaderProgram } from "./gl-utils.js";
-
 
 const QuadVert: {
   src: string;
@@ -32,7 +32,7 @@ void main() {
   inAttributes: { a_position: { type: "vec2" } },
   outAttributes: { v_texCoord: { type: "vec2" } },
   uniforms: {},
-}
+};
 
 const BackBufferFrag: {
   src: string;
@@ -53,7 +53,7 @@ void main() {
   inAttributes: { v_texCoord: { type: "vec2" } },
   outAttributes: { outColor: { type: "vec4" } },
   uniforms: { u_texture: "sampler2D" },
-}
+};
 
 interface GameProps<
   State,
@@ -61,7 +61,7 @@ interface GameProps<
   EditorState,
   PersistentEditorState,
   Actions extends BaseActions,
-  Events extends BaseEvents
+  Events extends BaseEvents,
 > {
   container: HTMLElement;
   fixedUpdate: number;
@@ -87,7 +87,7 @@ export default function GameRunner<
   EditorState extends Object,
   PersistentEditorState extends Object,
   Actions extends BaseActions,
-  Events extends BaseEvents
+  Events extends BaseEvents,
 >(
   props: GameProps<
     State,
@@ -107,7 +107,9 @@ export default function GameRunner<
   const canvas = document.createElement("canvas");
   canvas.style.position = "relative";
 
-  const target = canvas.getContext("bitmaprenderer") as ImageBitmapRenderingContext;
+  const target = canvas.getContext(
+    "bitmaprenderer"
+  ) as ImageBitmapRenderingContext;
   const renderer = new Renderer();
 
   const contextScreen = {
@@ -323,22 +325,22 @@ export default function GameRunner<
 
     const editorState = editor
       ? (() => {
-        try {
-          editor?.onEnd(props.container);
-          return editor?.onStart(
-            context,
-            gameState,
-            props.container,
-            editorSaveState
-              ? (JSON.parse(editorSaveState) as PersistentEditorState)
-              : undefined
-          );
-        } catch (ex) {
-          console.warn(ex);
-          editor?.onEnd(props.container);
-          return editor?.onStart(context, gameState, props.container);
-        }
-      })()
+          try {
+            editor?.onEnd(props.container);
+            return editor?.onStart(
+              context,
+              gameState,
+              props.container,
+              editorSaveState
+                ? (JSON.parse(editorSaveState) as PersistentEditorState)
+                : undefined
+            );
+          } catch (ex) {
+            console.warn(ex);
+            editor?.onEnd(props.container);
+            return editor?.onStart(context, gameState, props.container);
+          }
+        })()
       : null;
 
     return {
@@ -451,10 +453,15 @@ export default function GameRunner<
   let accumulatedTime = 0;
   let nextFrame: number | null = null;
 
-  const renderToTarget = (renderTarget: ImageBitmapRenderingContext, callback: () => void) => {
+  const renderToTarget = (
+    renderTarget: ImageBitmapRenderingContext,
+    callback: () => void
+  ) => {
     const width = renderTarget.canvas.width;
     const height = renderTarget.canvas.height;
-    renderTarget.transferFromImageBitmap(renderer.use({ width, height }, callback));
+    renderTarget.transferFromImageBitmap(
+      renderer.use({ width, height }, callback)
+    );
   };
 
   const render = () => {
@@ -481,22 +488,31 @@ export default function GameRunner<
         accumulatedTime -= props.fixedUpdate;
       }
 
-
       if (!contextLost) {
-        const scene = renderer.useScaled(context.screen, pixelMultiplier, () => {
-          game.onDraw(context, result.gameState, frameTime);
-          if (result.editorState) {
-            editor?.onDraw(
-              context,
-              result.gameState,
-              result.editorState,
-              frameTime
-            );
+        const scene = renderer.useScaled(
+          context.screen,
+          pixelMultiplier,
+          () => {
+            game.onDraw(context, result.gameState, frameTime);
+            if (result.editorState) {
+              editor?.onDraw(
+                context,
+                result.gameState,
+                result.editorState,
+                frameTime
+              );
+            }
           }
-        });
+        );
         target.transferFromImageBitmap(scene);
         if (result.editorState) {
-          editor?.onDrawExtra(context, result.gameState, result.editorState, frameTime, renderToTarget);
+          editor?.onDrawExtra(
+            context,
+            result.gameState,
+            result.editorState,
+            frameTime,
+            renderToTarget
+          );
         }
       }
     }
@@ -573,19 +589,23 @@ export default function GameRunner<
     }
 
     const xOffset =
-      (contextScreen.width - (parent.clientWidth / pixelMultiplier)) / 2;
+      (contextScreen.width - parent.clientWidth / pixelMultiplier) / 2;
     const yOffset =
-      (contextScreen.height - (parent.clientHeight / pixelMultiplier)) / 2;
+      (contextScreen.height - parent.clientHeight / pixelMultiplier) / 2;
 
     contextSafeScreen.offsetLeft = Math.ceil(xOffset);
     contextSafeScreen.offsetTop = Math.ceil(yOffset);
-    contextSafeScreen.width = contextScreen.width - (contextSafeScreen.offsetLeft * 2);
-    contextSafeScreen.height = contextScreen.height - (contextSafeScreen.offsetTop * 2);
+    contextSafeScreen.width =
+      contextScreen.width - contextSafeScreen.offsetLeft * 2;
+    contextSafeScreen.height =
+      contextScreen.height - contextSafeScreen.offsetTop * 2;
 
     canvas.style.top = -(pixelMultiplier * yOffset) + "px";
     canvas.style.left = -(pixelMultiplier * xOffset) + "px";
-    canvas.style.width = canvas.style.minWidth = pixelMultiplier * contextScreen.width + "px";
-    canvas.style.height = canvas.style.minHeight = pixelMultiplier * contextScreen.height + "px";
+    canvas.style.width = canvas.style.minWidth =
+      pixelMultiplier * contextScreen.width + "px";
+    canvas.style.height = canvas.style.minHeight =
+      pixelMultiplier * contextScreen.height + "px";
   };
 
   const resizeObserver = new ResizeObserver((entries) => {
@@ -625,7 +645,7 @@ class Renderer {
   #quad: Quad;
   #backBufferProgram: ShaderProgram<typeof QuadVert, typeof BackBufferFrag>;
   #frameBuffer: FrameBuffer<{
-    outAttributes: { o_color: { type: "vec4", location: 0 } },
+    outAttributes: { o_color: { type: "vec4"; location: 0 } };
   }> | null;
   #offscreenCanvas: OffscreenCanvas;
 
@@ -650,16 +670,20 @@ class Renderer {
         format: this.gl.RGBA,
         type: this.gl.UNSIGNED_BYTE,
         opts: {
-          filter: this.gl.NEAREST
-        }
+          filter: this.gl.NEAREST,
+        },
       },
     });
     this.#quad = new Quad(this.gl);
-    this.#backBufferProgram = new ShaderProgram(this.gl, QuadVert, BackBufferFrag);
+    this.#backBufferProgram = new ShaderProgram(
+      this.gl,
+      QuadVert,
+      BackBufferFrag
+    );
   }
 
   useScaled(
-    { width, height }: { width: number, height: number },
+    { width, height }: { width: number; height: number },
     pixelMultiplier: number,
     cb: () => void
   ): ImageBitmap | null {
@@ -669,33 +693,34 @@ class Renderer {
     this.#offscreenCanvas.width = width * pixelMultiplier;
     this.#offscreenCanvas.height = height * pixelMultiplier;
     const { color } = this.#gBuffer.use({ width, height }, (textures) => {
-      this.#frameBuffer = new FrameBuffer(this.gl, {
-        outAttributes: { o_color: { type: "vec4", location: 0 } },
-      }, {
-        o_color: textures.color,
-      });
+      this.#frameBuffer = new FrameBuffer(
+        this.gl,
+        {
+          outAttributes: { o_color: { type: "vec4", location: 0 } },
+        },
+        {
+          o_color: textures.color,
+        }
+      );
     });
     this.gl.viewport(0, 0, width, height);
     this.#frameBuffer!.bind(cb);
     this.gl.viewport(0, 0, width * pixelMultiplier, height * pixelMultiplier);
     this.#backBufferProgram.use((s) => {
       s.setUniforms({ u_texture: color });
-      this.#quad.bind(
-        s,
-        { position: "a_position" },
-        (q) => q.draw()
-      );
+      this.#quad.bind(s, { position: "a_position" }, (q) => q.draw());
     });
     return this.#offscreenCanvas.transferToImageBitmap();
   }
 
-  use({ width, height }: { width: number, height: number }, cb: () => void): ImageBitmap {
+  use(
+    { width, height }: { width: number; height: number },
+    cb: () => void
+  ): ImageBitmap {
     this.#offscreenCanvas.width = width;
     this.#offscreenCanvas.height = height;
     this.gl.viewport(0, 0, width, height);
     cb();
     return this.#offscreenCanvas.transferToImageBitmap();
   }
-
-
 }
