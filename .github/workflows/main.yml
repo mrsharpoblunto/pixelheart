@@ -21,22 +21,22 @@ jobs:
         with:
           version: 8
 
-      - name: CommonInstall
+      - name: Installing common packages
         run: pnpm install
 
-      - name: EngineInstall
+      - name: Installing engine packages
         run: cd engine && pnpm install
 
-      - name: EngineBuild
+      - name: Building engine
         run: NODE_ENV=production cd engine && pnpm run build
 
-      - name: GameInstall
+      - name: Installing game packages
         run: cd game && pnpm install
 
-      - name: GameBuild
-        run: cd game && pnpm run build -- --production
+      - name: Building game
+        run: cd game && pnpm run build --production
 
-      - name: Deploy to gh-pages
+      - name: Deploying game to gh-pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
