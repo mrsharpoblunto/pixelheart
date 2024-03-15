@@ -21,18 +21,21 @@ jobs:
         with:
           version: 8
 
-      - name: Install
+      - name: CommonInstall
         run: pnpm install
+
+      - name: EngineInstall
+        run: cd engine && pnpm install
 
       - name: GameInstall
         run: cd game && pnpm install
 
-      - name: Build
-        run: pnpm run build -- --production
+      - name: GameBuild
+        run: cd game && pnpm run build -- --production
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: www
+          publish_dir: game/www
           cname: pixelheart.io
