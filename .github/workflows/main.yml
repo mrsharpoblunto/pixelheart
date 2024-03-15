@@ -27,6 +27,9 @@ jobs:
       - name: EngineInstall
         run: cd engine && pnpm install
 
+      - name: EngineBuild
+        run: NODE_ENV=production cd engine && pnpm run build
+
       - name: GameInstall
         run: cd game && pnpm install
 
