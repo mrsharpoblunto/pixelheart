@@ -573,19 +573,19 @@ export default function GameRunner<
     }
 
     const xOffset =
-      (contextScreen.width * pixelMultiplier - parent.clientWidth) / (2 * pixelMultiplier);
+      (contextScreen.width - (parent.clientWidth / pixelMultiplier)) / 2;
     const yOffset =
-      (contextScreen.height * pixelMultiplier - parent.clientHeight) / (2 * pixelMultiplier);
+      (contextScreen.height - (parent.clientHeight / pixelMultiplier)) / 2;
 
-    contextSafeScreen.offsetLeft = xOffset;
-    contextSafeScreen.offsetTop = yOffset;
-    contextSafeScreen.width = contextScreen.width - xOffset * 2;
-    contextSafeScreen.height = contextScreen.height - yOffset * 2;
+    contextSafeScreen.offsetLeft = Math.ceil(xOffset);
+    contextSafeScreen.offsetTop = Math.ceil(yOffset);
+    contextSafeScreen.width = contextScreen.width - (contextSafeScreen.offsetLeft * 2);
+    contextSafeScreen.height = contextScreen.height - (contextSafeScreen.offsetTop * 2);
 
     canvas.style.top = -(pixelMultiplier * yOffset) + "px";
     canvas.style.left = -(pixelMultiplier * xOffset) + "px";
-    canvas.style.width = pixelMultiplier * contextScreen.width + "px";
-    canvas.style.height = pixelMultiplier * contextScreen.height + "px";
+    canvas.style.width = canvas.style.minWidth = pixelMultiplier * contextScreen.width + "px";
+    canvas.style.height = canvas.style.minHeight = pixelMultiplier * contextScreen.height + "px";
   };
 
   const resizeObserver = new ResizeObserver((entries) => {
