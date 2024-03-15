@@ -16,14 +16,19 @@ jobs:
           persist-credentials: false
           submodules: false
 
+      - name: Prerequisites
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
       - name: Install
-        run: npm install
+        run: pnpm install
 
       - name: GameInstall
-        run: cd game && npm install
+        run: cd game && pnpm install
 
       - name: Build
-        run: npm run dist:build
+        run: pnpm run dist:build
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v3
