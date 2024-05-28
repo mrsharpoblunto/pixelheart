@@ -1,6 +1,7 @@
 import {
   CSSProperties,
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -22,10 +23,14 @@ export interface CanvasListProps {
   itemTemplate: React.ForwardRefExoticComponent<
     React.PropsWithoutRef<{
       id: string;
+      onClick: () => void;
       isVisible: boolean;
+      isSelected: boolean;
     }> &
       React.RefAttributes<HTMLCanvasElement>
   >;
+  onItemClick: (id: string) => void;
+  selectedItem: string | null;
   items: Array<string>;
 }
 
@@ -38,8 +43,10 @@ export function VirtualizedCanvasList(props: CanvasListProps) {
           <VirtualizedCanvasListItem
             key={i}
             id={i}
+            onClick={props.onItemClick}
             render={props.itemTemplate}
             parentRef={containerRef}
+            isSelected={i === props.selectedItem}
           />
         ))}
       </ul>
@@ -53,9 +60,13 @@ interface CanvasListItemProps {
     React.PropsWithoutRef<{
       id: string;
       isVisible: boolean;
+      isSelected: boolean;
+      onClick: () => void;
     }> &
       React.RefAttributes<HTMLCanvasElement>
   >;
+  onClick: (id: string) => void;
+  isSelected: boolean;
   parentRef: React.MutableRefObject<HTMLUListElement | null>;
 }
 
@@ -90,5 +101,15 @@ function VirtualizedCanvasListItem(props: CanvasListItemProps) {
     };
   }, [props.parentRef, canvasRef]);
 
-  return <props.render id={props.id} isVisible={isVisible} ref={canvasRef} />;
+  const onClick = useCallback(() => props.onClick(props.id), [props.id]);
+
+  return (
+    <props.render
+      id={props.id}
+      onClick={onClick}
+      isVisible={isVisible}
+      isSelected={props.isSelected}
+      ref={canvasRef}
+    />
+  );
 }

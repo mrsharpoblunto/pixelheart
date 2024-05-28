@@ -94,6 +94,7 @@ function useExternalCanvas(canvas: HTMLCanvasElement, active: boolean) {
 function EditorComponent(props: EditorClientState) {
   const [state, dispatch] = useReducer(reducer, props);
   const [tiles, setTiles] = useState<Array<string>>([]);
+  const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
     // make sure editor server events are dispatched to the reducer
@@ -146,6 +147,8 @@ function EditorComponent(props: EditorClientState) {
           canvases={props.editor.tiles}
           items={tiles}
           itemTemplate={TileComponent}
+          onItemClick={(id: string) => setSelected(id)}
+          selectedItem={selected}
         />
       </div>
     </div>
@@ -168,20 +171,32 @@ function EditorComponent(props: EditorClientState) {
 
 const TileComponent = React.forwardRef(
   (
-    { id, isVisible }: { id: string; isVisible: boolean },
+    {
+      isSelected,
+      onClick,
+    }: {
+      id: string;
+      isVisible: boolean;
+      isSelected: boolean;
+      onClick: () => void;
+    },
     canvasRef: React.ForwardedRef<HTMLCanvasElement>
   ) => {
+    const className =
+      "border-2 grow-0 border-gray-900 hover:bg-gray-600 hover:border-white" +
+      (isSelected ? " bg-gray-600" : "");
     return (
       <li
         style={{
           padding: coords.TILE_SIZE / 2 - 2,
         }}
-        className="border-2 grow-0 border-gray-900 hover:bg-gray-600 hover:border-white"
+        className={className}
+        onClick={onClick}
       >
         <canvas
           style={{
-            width: coords.TILE_SIZE * 4,
-            height: coords.TILE_SIZE * 4,
+            width: coords.TILE_SIZE * 2,
+            height: coords.TILE_SIZE * 2,
           }}
           ref={canvasRef}
         />
