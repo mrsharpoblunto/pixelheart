@@ -551,7 +551,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
       if (lightingTexture) {
         s.setTextures(lightingTexture);
         s.draw(
-          vec4.fromValues(1.0, 1.0, 0, 0),
+          vec4.fromValues(0.0, 1.0, 1.0, 0.0),
           vec4.fromValues(0, lightingTexture.width, lightingTexture.height, 0)
         );
       }

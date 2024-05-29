@@ -22,18 +22,19 @@ import {
 
 import { GameState } from "../../client/index.js";
 import { renderEditor } from "./editor.js";
+import { TILE_SIZE } from "node_modules/@pixelheart/client/dist/coordinates.js";
 
 export type EditorEvents = BaseEvents;
 
 export type EditorActions =
   | BaseActions
   | {
-      type: "TILE_CHANGE";
-      x: number;
-      y: number;
-      map: string;
-      value: MapTileSource;
-    };
+    type: "TILE_CHANGE";
+    x: number;
+    y: number;
+    map: string;
+    value: MapTileSource;
+  };
 
 export interface PersistentEditorState {
   version: number;
@@ -42,7 +43,7 @@ export interface PersistentEditorState {
 
 export interface EditorState {
   active: boolean;
-  newValue: string | null;
+  selectedTile: string | null;
   pendingChanges: Map<string, EditorActions>;
   minimap: HTMLCanvasElement | null;
   tiles: Map<string, HTMLCanvasElement>;
@@ -55,13 +56,13 @@ const CURRENT_SERIALIZATION_VERSION = 2;
 
 export default class Editor
   implements
-    EditorClient<
-      GameState,
-      EditorState,
-      PersistentEditorState,
-      EditorActions,
-      EditorEvents
-    >
+  EditorClient<
+    GameState,
+    EditorState,
+    PersistentEditorState,
+    EditorActions,
+    EditorEvents
+  >
 {
   #edges: Set<string>;
   #root: Root | null = null;
@@ -99,7 +100,7 @@ export default class Editor
 
     const editorState = {
       active: previousState ? previousState.active : false,
-      newValue: null,
+      selectedTile: null,
       pendingChanges: new Map(),
       minimap: null,
       tiles: new Map(),
@@ -148,19 +149,12 @@ export default class Editor
           state.screen
         );
 
-        if (editor.newValue === null) {
-          const oldValue = r.map.data.read(ap[0], ap[1]);
-          const oldSprite = r.map.spriteConfig.indexes[oldValue.index];
-          editor.newValue = oldSprite === "" ? "grass" : "";
-        }
-
         this.#changeMapTile(editor, r.map, {
-          sprite: editor.newValue,
+          sprite: editor.selectedTile || "",
           x: ap[0],
           y: ap[1],
         });
       } else {
-        editor.newValue = null;
         for (let a of editor.pendingChanges.values()) {
           ctx.editorServer.send(a);
         }
@@ -367,8 +361,8 @@ export default class Editor
         sprite === ""
           ? 0
           : map.spriteConfig.sprites[
-              sprite as keyof typeof map.spriteConfig.sprites
-            ].index;
+            sprite as keyof typeof map.spriteConfig.sprites
+          ].index;
       map.data.write(x, y, { ...action.value, index });
     }
   }
@@ -389,15 +383,19 @@ export default class Editor
         state.screen
       );
 
+      const cursorPos = coords.toScreenSpaceFromAbsoluteTile(vec4.create(), ap, {
+        ...state.screen,
+        ...ctx.screen,
+      });
+
+      const selectedTile = editor.selectedTile;
+
       state.solidEffect.use((s) => {
         // editor cursor
         s.setBorder(ctx.screen, 1);
         s.draw(
-          coords.toScreenSpaceFromAbsoluteTile(vec4.create(), ap, {
-            ...state.screen,
-            ...ctx.screen,
-          }),
-          vec4.fromValues(1.0, 0, 0, 0.5),
+          cursorPos,
+          vec4.fromValues(1.0, 0, 0, editor.selectedTile ? 0.0 : 0.5),
           vec4.fromValues(1.0, 1.0, 1.0, 1.0)
         );
 
@@ -411,22 +409,56 @@ export default class Editor
             vec4.create(),
             vec4.fromValues(
               Math.floor(r.character.relativePosition[1]) -
-                offset[1] +
-                r.character.boundingBox[0],
+              offset[1] +
+              r.character.boundingBox[0],
               Math.floor(r.character.relativePosition[0]) -
-                offset[0] +
-                r.character.boundingBox[1],
+              offset[0] +
+              r.character.boundingBox[1],
               Math.floor(r.character.relativePosition[1]) -
-                offset[1] +
-                r.character.boundingBox[2],
+              offset[1] +
+              r.character.boundingBox[2],
               Math.floor(r.character.relativePosition[0]) -
-                offset[0] +
-                r.character.boundingBox[3]
+              offset[0] +
+              r.character.boundingBox[3]
             )
           ),
           vec4.fromValues(0.0, 0, 1.0, 0.5)
         );
       });
+
+      if (selectedTile) {
+        // editor tiles apply the same lighting as the
+        // game engine
+        for (const l of state.directionalLighting) {
+          state.spriteEffect.addDirectionalLight(l);
+        }
+        state.spriteEffect.use({
+          width: TILE_SIZE,
+          height: TILE_SIZE,
+        }, (s) => {
+          //editor.spriteEffect.use((s) => {
+          //editor.minimapSprite![selectedTile].draw(s, cursorPos);
+          r.map.sprite[selectedTile].draw(s, vec4.fromValues(0.0, 1.0, 1.0, 0.0));
+        });
+        // draw the accumulated deferred lighting texture to the screen
+        state.simpleSpriteEffect.use((s) => {
+          const lightingTexture = state.spriteEffect.getLightingTexture();
+          if (lightingTexture) {
+            s.setTextures(lightingTexture);
+            //s.setAlpha(0.9);
+            const cp = vec4.div(vec4.create(), cursorPos, vec4.fromValues(1.0, 1.0, 1.0, 1.0));
+            s.draw(
+              cp,
+              vec4.fromValues(
+                0,
+                lightingTexture.width,
+                lightingTexture.height,
+                0
+              )
+            );
+          }
+        });
+      }
     });
   }
 
@@ -559,10 +591,9 @@ export default class Editor
               width: tileCanvas.width,
               height: tileCanvas.height,
             },
-            (s, _pass) => {
+            (s) => {
               r.map.sprite[tileId].draw(s, vec4.fromValues(0.0, 1.0, 1.0, 0.0));
-            },
-            (_mask) => {}
+            }
           );
 
           // draw the accumulated deferred lighting texture to the screen
@@ -571,7 +602,7 @@ export default class Editor
             if (lightingTexture) {
               s.setTextures(lightingTexture);
               s.draw(
-                vec4.fromValues(1.0, 1.0, 0, 0),
+                vec4.fromValues(0.0, 1.0, 1.0, 0.0),
                 vec4.fromValues(
                   0,
                   lightingTexture.width,

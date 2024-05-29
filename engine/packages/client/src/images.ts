@@ -127,6 +127,7 @@ function loadTextureFromImage(
   ctx.gl.activeTexture(ctx.gl.TEXTURE0);
   ctx.gl.bindTexture(ctx.gl.TEXTURE_2D, texture);
   ctx.gl.pixelStorei(ctx.gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  ctx.gl.pixelStorei(ctx.gl.UNPACK_FLIP_Y_WEBGL, true);
   ctx.gl.texParameteri(
     ctx.gl.TEXTURE_2D,
     ctx.gl.TEXTURE_WRAP_S,

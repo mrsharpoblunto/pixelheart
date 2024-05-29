@@ -17,8 +17,8 @@ interface EditorClientState {
 type EditorUIActions =
   | EditorEvents
   | {
-      type: "TOGGLE_EDITOR";
-    };
+    type: "TOGGLE_EDITOR";
+  };
 
 export function renderEditor(
   root: Root,
@@ -105,6 +105,10 @@ function EditorComponent(props: EditorClientState) {
   useEffect(() => {
     props.editor.minimap = minimapRef.current;
   });
+
+  useEffect(() => {
+    props.editor.selectedTile = selected;
+  }, [selected]);
 
   const gameCanvasContainerRef = useExternalCanvas(
     props.ctx.canvas,

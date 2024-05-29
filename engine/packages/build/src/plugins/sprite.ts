@@ -284,7 +284,12 @@ export default class SpritePlugin implements BuildPlugin {
           sprites: [...sheet.sprites]
             .map(([name, sprite], i) => ({
               name,
-              sprite: { ...sprite, index: i + 1 },
+              // flip y coordinates to match WebGL's convention
+              sprite: { ...sprite, frames: sprite.frames.map(f=>({
+                ...f,
+                top: sheet.height - f.top,
+                bottom: sheet.height - f.bottom,
+              })), index: i + 1 },
             }))
             .reduce((p, { name, sprite }) => {
               p[name] = sprite;

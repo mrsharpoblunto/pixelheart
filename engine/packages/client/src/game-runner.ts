@@ -106,6 +106,7 @@ export default function GameRunner<
   const editor = props.editor;
   const canvas = document.createElement("canvas");
   canvas.style.position = "relative";
+  canvas.style.transform = "scaleY(-1)";
 
   const target = canvas.getContext(
     "bitmaprenderer"
@@ -325,22 +326,22 @@ export default function GameRunner<
 
     const editorState = editor
       ? (() => {
-          try {
-            editor?.onEnd(props.container);
-            return editor?.onStart(
-              context,
-              gameState,
-              props.container,
-              editorSaveState
-                ? (JSON.parse(editorSaveState) as PersistentEditorState)
-                : undefined
-            );
-          } catch (ex) {
-            console.warn(ex);
-            editor?.onEnd(props.container);
-            return editor?.onStart(context, gameState, props.container);
-          }
-        })()
+        try {
+          editor?.onEnd(props.container);
+          return editor?.onStart(
+            context,
+            gameState,
+            props.container,
+            editorSaveState
+              ? (JSON.parse(editorSaveState) as PersistentEditorState)
+              : undefined
+          );
+        } catch (ex) {
+          console.warn(ex);
+          editor?.onEnd(props.container);
+          return editor?.onStart(context, gameState, props.container);
+        }
+      })()
       : null;
 
     return {
@@ -459,6 +460,9 @@ export default function GameRunner<
   ) => {
     const width = renderTarget.canvas.width;
     const height = renderTarget.canvas.height;
+    if ("style" in renderTarget.canvas) {
+      renderTarget.canvas.style.transform = "scaleY(-1)";
+    }
     renderTarget.transferFromImageBitmap(
       renderer.use({ width, height }, callback)
     );

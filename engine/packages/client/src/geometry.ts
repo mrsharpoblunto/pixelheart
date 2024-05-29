@@ -9,7 +9,6 @@ import {
 } from "./gl-utils.js";
 
 const VP = mat3.create();
-mat3.scale(VP, VP, [1.0, -1.0]);
 mat3.translate(VP, VP, [-1.0, -1.0]);
 mat3.scale(VP, VP, [2.0, 2.0]);
 
@@ -28,9 +27,7 @@ export class Quad implements Geometry {
 
   constructor(gl: WebGL2RenderingContext) {
     this.#gl = gl;
-    this.#vaoHash = "";
-    this.#vaoInstances = null;
-    this.#vao = this.#gl.createVertexArray()!;
+    this.#vaoHash = ""; this.#vaoInstances = null; this.#vao = this.#gl.createVertexArray()!;
 
     const vertices = new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]);
     this.#vertexBuffer = gl.createBuffer()!;

@@ -34,12 +34,7 @@ export type DeferredSpriteSheet = SpriteSheet<DeferredSpriteTextures>;
 export class DeferredSpriteAnimator extends SpriteAnimator<DeferredSpriteTextures> { }
 
 const BLACK: vec3 = vec3.fromValues(0, 0, 0);
-const FULL_MVP = mat3.create();
-mat3.scale(FULL_MVP, FULL_MVP, [1, -1]);
-mat3.mul(FULL_MVP, FULL_MVP, SpriteViewProjection);
 const FULL_UV = mat3.create();
-mat3.translate(FULL_UV, FULL_UV, [0, 0]);
-mat3.scale(FULL_UV, FULL_UV, [1, 1]);
 
 export async function deferredTextureLoader(
   ctx: GameContext,
@@ -173,8 +168,8 @@ export class DeferredSpriteEffect
       width: number;
       height: number;
     },
-    fillScope: (s: DeferredSpriteEffect, pass: number) => void,
-    maskScope: (mask: GPUTexture) => void
+    fillScope: (s: DeferredSpriteEffect, pass?: number) => void,
+    maskScope?: (mask: GPUTexture) => void
   ) {
     const g = this.#gBuffer.use(opts, (gBuffer) => {
       this.#frameBuffers = {
@@ -183,7 +178,7 @@ export class DeferredSpriteEffect
           o_albedo: gBuffer.albedo,
           o_specular: gBuffer.specular,
           o_lighting: gBuffer.lighting,
-          o_mask: gBuffer.mask,
+          o_mask: maskScope ? gBuffer.mask : null,
         }),
         noMaskFrameBuffer: new FrameBuffer(this.#gl, this.#gBufferProgram, {
           o_normal: gBuffer.normal,
@@ -211,14 +206,16 @@ export class DeferredSpriteEffect
       });
     });
 
-    // finally, render the mask overlay & top layer of sprites
-    f.noMaskFrameBuffer.bind(() => {
-      maskScope(g.mask);
-      this.#gBufferProgram.use(() => {
-        fillScope(this, 1);
-        this.#end();
+    if (maskScope) {
+      // finally, render the mask overlay & top layer of sprites
+      f.noMaskFrameBuffer.bind(() => {
+        maskScope(g.mask);
+        this.#gBufferProgram.use(() => {
+          fillScope(this, 1);
+          this.#end();
+        });
       });
-    });
+    }
 
     f.lightingFrameBuffer.bind(() => {
       const previousBlend = this.#gl.getParameter(this.#gl.BLEND);
@@ -277,7 +274,7 @@ export class DeferredSpriteEffect
     light: ScreenSpaceDirectionalLight
   ): DeferredSpriteEffect {
     this.#pendingDirectionalLights.push({
-      mvp: FULL_MVP,
+      mvp: SpriteViewProjection,
       uv: FULL_UV,
       ambient: light.ambient,
       diffuse: light.diffuse,
@@ -307,12 +304,9 @@ export class DeferredSpriteEffect
     const uv = mat3.create();
     mat3.translate(uv, uv, [
       light.position[0] - intersectingRadius,
-      // OpenGL has the origin at the bottom left, so we need to flip the Y axis
-      // to match the UV coordinates which have the origin at the top left
-      1.0 - light.position[1] + intersectingRadius,
+      light.position[1] - intersectingRadius,
     ]);
     mat3.scale(uv, uv, [intersectingRadius * 2, intersectingRadius * 2]);
-    mat3.scale(uv, uv, [1, -1]);
 
     this.#pendingPointLights.push({
       mvp,
@@ -321,7 +315,7 @@ export class DeferredSpriteEffect
       diffuse: light.diffuse,
       direction: vec3.fromValues(
         light.position[0],
-        1.0 - light.position[1],
+        light.position[1],
         light.position[2]
       ),
       radius: light.radius,

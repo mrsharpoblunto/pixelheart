@@ -90,7 +90,7 @@ void main() {
 
   //raytrace and colorize
 	vec3 o = c.yyx, r = 1.*c.xyy, u = 1.*c.yxy+c.yyx, d = normalize(cross(u,r)),
-  ro = o+(v_texCoord.x + u_offset.x) *r+(v_texCoord.y - u_offset.y)*u;
+  ro = o+(v_texCoord.x + u_offset.x) *r+(v_texCoord.y + u_offset.y)*u;
     
   vec3 l = (c.yyx-3.*c.yxy),
       p = mat3(c.yxy, c.yyx, 1./d.z, -d.x/d.z, -d.y/d.z)*ro,
