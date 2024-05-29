@@ -13,6 +13,7 @@ in vec2 v_texCoord;
 uniform sampler2D u_mask;
 uniform sampler2D u_depth;
 uniform float u_time;
+uniform vec2 u_scale;
 uniform vec2 u_offset;
 uniform vec3 u_normal;
 uniform vec3 u_tangent;
@@ -23,6 +24,7 @@ const float pi = acos(-1.);
 const vec2 c = vec2(1.,0.);
 const int nwaves = 12;
 const float MAX_TIME = 1000.0;// TODO define this somewhere else
+const float WAVE_SCALE = 0.06;
 
 float rand(vec2 a0)
 {
@@ -82,6 +84,8 @@ void gerst(in vec2 xy, in float depth, in float t, out vec3 val, out vec3 deriv)
 }
 
 void main() {
+  vec2 vt = v_texCoord;
+  vt *= u_scale * WAVE_SCALE;
   vec4 mask = texture(u_mask, v_texCoord);
   vec4 depthSample = texture(u_depth, v_texCoord);
   float depth = smoothstep(0.0,1.0,depthSample.a);
@@ -90,7 +94,7 @@ void main() {
 
   //raytrace and colorize
 	vec3 o = c.yyx, r = 1.*c.xyy, u = 1.*c.yxy+c.yyx, d = normalize(cross(u,r)),
-  ro = o+(v_texCoord.x + u_offset.x) *r+(v_texCoord.y + u_offset.y)*u;
+  ro = o+(vt.x + u_offset.x) *r+(vt.y + u_offset.y)*u;
     
   vec3 l = (c.yyx-3.*c.yxy),
       p = mat3(c.yxy, c.yyx, 1./d.z, -d.x/d.z, -d.y/d.z)*ro,
@@ -101,7 +105,7 @@ void main() {
   vec3 tn = normalize(cross(n.x * u_normal + u_binormal, n.y * u_normal + u_tangent)) * u_toTangentSpace;
   o_albedo = vec4(50.0/255.0 + depth * 0.5,124.0/255.0 + depth * 0.5,val.z/255.0 + 224.0/255.0 + depth, transparency);
   if (depth < 0.99) {
-    vec4 ds = texture(u_depth, v_texCoord - n.xy*4.0);
+    vec4 ds = texture(u_depth, vt - n.xy*4.0);
     if (ds.r > 0.001) {
       o_albedo = vec4(ds.rgb * depth/2.0 + o_albedo.rgb * (1.0 - depth/2.0), transparency);
     }

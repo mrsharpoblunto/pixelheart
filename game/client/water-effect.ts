@@ -6,6 +6,7 @@ import {
   Quad,
   ShaderProgram,
   TEXTURE,
+  coords,
   Tangent,
   ToTangentSpace,
 } from "@pixelheart/client";
@@ -28,6 +29,7 @@ export class WaterEffect {
   draw(
     time: number,
     offset: vec2,
+    screen: { width: number, height: number },
     mask: GPUTexture,
     depth: GPUTexture
   ): WaterEffect {
@@ -38,6 +40,7 @@ export class WaterEffect {
         u_binormal: Binormal,
         u_toTangentSpace: ToTangentSpace,
         u_time: time,
+        u_scale: vec2.fromValues(screen.width / coords.TILE_SIZE, screen.height / coords.TILE_SIZE),
         u_offset: offset,
         u_mask: mask[TEXTURE],
         u_depth: depth[TEXTURE],

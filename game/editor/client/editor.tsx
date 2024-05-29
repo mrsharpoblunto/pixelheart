@@ -4,7 +4,7 @@ import { Root } from "react-dom/client";
 import { EditorContext, coords } from "@pixelheart/client";
 
 import { GameState } from "../../client/index.js";
-import { EditorActions, EditorEvents, EditorState } from "./index.js";
+import { EditorActions, EditorEvents, EditorState, IsEdgeTile } from "./index.js";
 import { VirtualizedCanvasList } from "./virtual-canvas-list.js";
 
 interface EditorClientState {
@@ -118,8 +118,7 @@ function EditorComponent(props: EditorClientState) {
   useEffect(() => {
     // TODO need to notify when map is reloaded to reset this
     props.game.resources.whenReady().then((resources) => {
-      // TODO filter out _direction alts for tiles...
-      setTiles(Object.keys(resources.map.spriteConfig.sprites));
+      setTiles(Object.keys(resources.map.spriteConfig.sprites).filter(s => !IsEdgeTile(s)));
     });
   }, [props.game.resources]);
 

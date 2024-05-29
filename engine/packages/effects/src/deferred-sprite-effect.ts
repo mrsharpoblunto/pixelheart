@@ -195,9 +195,11 @@ export class DeferredSpriteEffect
 
     const f = this.#frameBuffers!;
 
+    const vp = this.#gl.getParameter(this.#gl.VIEWPORT);
+    this.#gl.viewport(0, 0, this.#gBuffer.width, this.#gBuffer.height);
+
     // render the base sprite layer
     f.maskFrameBuffer.bind(() => {
-      this.#gl.viewport(0, 0, this.#gBuffer.width, this.#gBuffer.height);
       this.#gl.clear(this.#gl.COLOR_BUFFER_BIT | this.#gl.DEPTH_BUFFER_BIT);
       this.#gBufferProgram.use(() => {
         // only the base layer textures contribute to the mask
@@ -268,6 +270,8 @@ export class DeferredSpriteEffect
       }
       this.#gl.blendFunc(previousBlendSrcFunc, previousBlendDestFunc);
     });
+
+    this.#gl.viewport(vp[0], vp[1], vp[2], vp[3]);
   }
 
   addDirectionalLight(

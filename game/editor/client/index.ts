@@ -14,6 +14,7 @@ import {
 } from "@pixelheart/client";
 import { vec2, vec4 } from "@pixelheart/client/gl-matrix";
 import {
+  DeferredSpriteEffect,
   DeferredSpriteTextures,
   SimpleSpriteEffect,
   SimpleSpriteTextures,
@@ -54,6 +55,33 @@ export interface EditorState {
 
 const CURRENT_SERIALIZATION_VERSION = 2;
 
+export const TileEdgeSuffixes = new Set();
+for (let e of [
+  "tl",
+  "tr",
+  "bl",
+  "br",
+  "t",
+  "b",
+  "l",
+  "r",
+  "i_tl",
+  "i_tr",
+  "i_bl",
+  "i_br",
+]) {
+  TileEdgeSuffixes.add(e);
+}
+
+export function IsEdgeTile(sprite: string): boolean {
+  const splitIndex = sprite.indexOf("_");
+  if (splitIndex !== -1) {
+    const spriteSuffix = sprite.substring(splitIndex + 1);
+    return TileEdgeSuffixes.has(spriteSuffix)
+  }
+  return false;
+}
+
 export default class Editor
   implements
   EditorClient<
@@ -64,23 +92,9 @@ export default class Editor
     EditorEvents
   >
 {
-  #edges: Set<string>;
   #root: Root | null = null;
 
   constructor() {
-    this.#edges = new Set<string>();
-    this.#edges.add("tl");
-    this.#edges.add("tr");
-    this.#edges.add("bl");
-    this.#edges.add("br");
-    this.#edges.add("t");
-    this.#edges.add("b");
-    this.#edges.add("l");
-    this.#edges.add("r");
-    this.#edges.add("i_tl");
-    this.#edges.add("i_tr");
-    this.#edges.add("i_bl");
-    this.#edges.add("i_br");
   }
 
   onStart(
@@ -191,7 +205,7 @@ export default class Editor
           const spriteSuffix = sprite.substring(splitIndex + 1);
           if (
             map.spriteConfig.sprites.hasOwnProperty(baseSprite) &&
-            this.#edges.has(spriteSuffix)
+            TileEdgeSuffixes.has(spriteSuffix)
           ) {
             const index =
               map.spriteConfig.sprites[
@@ -390,6 +404,36 @@ export default class Editor
 
       const selectedTile = editor.selectedTile;
 
+      if (selectedTile) {
+        // editor tiles apply the same lighting as the
+        // game engine
+        for (const l of state.directionalLighting) {
+          state.spriteEffect.addDirectionalLight(l);
+        }
+        state.spriteEffect.use({
+          width: TILE_SIZE,
+          height: TILE_SIZE,
+        }, (s) => {
+          r.map.sprite[selectedTile].draw(s, vec4.fromValues(0.0, 1.0, 1.0, 0.0));
+        });
+        // draw the accumulated deferred lighting texture to the screen
+        state.simpleSpriteEffect.use((s) => {
+          const lightingTexture = state.spriteEffect.getLightingTexture();
+          if (lightingTexture) {
+            s.setTextures(lightingTexture);
+            s.draw(
+              cursorPos,
+              vec4.fromValues(
+                0,
+                lightingTexture.width,
+                lightingTexture.height,
+                0
+              )
+            );
+          }
+        });
+      }
+
       state.solidEffect.use((s) => {
         // editor cursor
         s.setBorder(ctx.screen, 1);
@@ -426,39 +470,6 @@ export default class Editor
         );
       });
 
-      if (selectedTile) {
-        // editor tiles apply the same lighting as the
-        // game engine
-        for (const l of state.directionalLighting) {
-          state.spriteEffect.addDirectionalLight(l);
-        }
-        state.spriteEffect.use({
-          width: TILE_SIZE,
-          height: TILE_SIZE,
-        }, (s) => {
-          //editor.spriteEffect.use((s) => {
-          //editor.minimapSprite![selectedTile].draw(s, cursorPos);
-          r.map.sprite[selectedTile].draw(s, vec4.fromValues(0.0, 1.0, 1.0, 0.0));
-        });
-        // draw the accumulated deferred lighting texture to the screen
-        state.simpleSpriteEffect.use((s) => {
-          const lightingTexture = state.spriteEffect.getLightingTexture();
-          if (lightingTexture) {
-            s.setTextures(lightingTexture);
-            //s.setAlpha(0.9);
-            const cp = vec4.div(vec4.create(), cursorPos, vec4.fromValues(1.0, 1.0, 1.0, 1.0));
-            s.draw(
-              cp,
-              vec4.fromValues(
-                0,
-                lightingTexture.width,
-                lightingTexture.height,
-                0
-              )
-            );
-          }
-        });
-      }
     });
   }
 
