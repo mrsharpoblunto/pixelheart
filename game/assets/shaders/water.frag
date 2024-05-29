@@ -84,17 +84,19 @@ void gerst(in vec2 xy, in float depth, in float t, out vec3 val, out vec3 deriv)
 }
 
 void main() {
-  vec2 vt = v_texCoord;
-  vt *= u_scale * WAVE_SCALE;
+  vec2 vt = v_texCoord * u_scale * WAVE_SCALE;
+  vec2 ut = u_offset * u_scale * WAVE_SCALE;
+
   vec4 mask = texture(u_mask, v_texCoord);
   vec4 depthSample = texture(u_depth, v_texCoord);
   float depth = smoothstep(0.0,1.0,depthSample.a);
+
 
   float transparency = 1.0 - mask.a;
 
   //raytrace and colorize
 	vec3 o = c.yyx, r = 1.*c.xyy, u = 1.*c.yxy+c.yyx, d = normalize(cross(u,r)),
-  ro = o+(vt.x + u_offset.x) *r+(vt.y + u_offset.y)*u;
+  ro = o+(vt.x + ut.x) *r+(vt.y + ut.y)*u;
     
   vec3 l = (c.yyx-3.*c.yxy),
       p = mat3(c.yxy, c.yyx, 1./d.z, -d.x/d.z, -d.y/d.z)*ro,
