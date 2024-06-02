@@ -4,13 +4,16 @@ import { Root } from "react-dom/client";
 import { EditorContext, coords } from "@pixelheart/client";
 
 import { GameState } from "../../client/index.js";
-import { EditorActions, EditorEvents, EditorState, IsEdgeTile } from "./index.js";
+import { EditorActions, EditorEvents, EditorState, EditorTool, IsEdgeTile } from "./index.js";
 import { VirtualizedCanvasList } from "./virtual-canvas-list.js";
+import { DrawIcon, EraseIcon } from "./tool-icons.js";
+
 
 interface EditorClientState {
   game: GameState;
   editor: EditorState;
   ctx: EditorContext<EditorActions, EditorEvents>;
+  tiles: Array<string>;
 }
 
 // receive editor events as well as client initiated actions
@@ -18,6 +21,18 @@ type EditorUIActions =
   | EditorEvents
   | {
     type: "TOGGLE_EDITOR";
+  }
+  | {
+    type: "SELECT_TOOL";
+    tool: EditorTool;
+  }
+  | {
+    type: "SELECT_TILE";
+    tile: string | null;
+  }
+  | {
+    type: "LOAD_TILES";
+    tiles: Array<string>;
   };
 
 export function renderEditor(
@@ -26,7 +41,7 @@ export function renderEditor(
   state: GameState,
   editorState: EditorState
 ) {
-  root.render(<EditorComponent ctx={ctx} game={state} editor={editorState} />);
+  root.render(<EditorComponent tiles={[]} ctx={ctx} game={state} editor={editorState} />);
 }
 
 function reducer(
@@ -43,6 +58,31 @@ function reducer(
           active: !state.editor.active,
         }),
       };
+    case "SELECT_TOOL":
+      return {
+        ...state,
+        editor: Object.assign(state.editor, {
+          selectedTool: action.tool,
+        }),
+      };
+    case "SELECT_TILE":
+      return {
+        ...state,
+        editor: Object.assign(state.editor, {
+          selectedTile: action.tile,
+        })
+      };
+    case "LOAD_TILES":
+      const tiles = action.tiles;
+      const selectedTile = (!state.editor.selectedTile || tiles.indexOf(state.editor.selectedTile) < 0) ? tiles[0] : state.editor.selectedTile;
+      return {
+        ...state,
+        tiles,
+        editor: Object.assign(state.editor, {
+          selectedTile,
+        }),
+
+      };
   }
   return state;
 }
@@ -50,17 +90,22 @@ function reducer(
 function EditorButton(props: {
   className?: string;
   onClick: () => void;
-  text: string;
+  text?: string;
+  label?: string;
+  selected?: boolean;
+  children?: React.ReactNode;
 }) {
   return (
     <button
       className={
-        (props.className ?? "") +
-        " border-2 border-gray-600 rounded-sm bg-gray-700 text-xs text-white font-bold h-6 pl-1 pr-1 hover:bg-gray-600 hover:border-gray-500 transition ease-in-out"
+        (props.className ?? "") + (props.selected ? " border-white bg-gray-600" : " border-gray-600 bg-gray-700 hover:bg-gray-600 hover:border-gray-500") +
+        " mr-2 border-2 rounded-sm text-xs text-white font-bold h-6 pl-1 pr-1 transition ease-in-out"
       }
       onClick={props.onClick}
+      aria-label={props.label || props.text}
+      title={props.label}
     >
-      {props.text}
+      {props.text || props.children}
     </button>
   );
 }
@@ -93,38 +138,52 @@ function useExternalCanvas(canvas: HTMLCanvasElement, active: boolean) {
 
 function EditorComponent(props: EditorClientState) {
   const [state, dispatch] = useReducer(reducer, props);
-  const [tiles, setTiles] = useState<Array<string>>([]);
-  const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
     // make sure editor server events are dispatched to the reducer
-    props.ctx.editorServer.onEvent(dispatch);
-  }, [dispatch, props.ctx.editorServer]);
-
-  const minimapRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    props.editor.minimap = minimapRef.current;
-  });
-
-  useEffect(() => {
-    props.editor.selectedTile = selected;
-  }, [selected]);
-
-  const gameCanvasContainerRef = useExternalCanvas(
-    props.ctx.canvas,
-    props.editor.active
-  );
+    state.ctx.editorServer.onEvent(dispatch);
+  }, [dispatch, state.ctx.editorServer]);
 
   useEffect(() => {
     // TODO need to notify when map is reloaded to reset this
-    props.game.resources.whenReady().then((resources) => {
-      setTiles(Object.keys(resources.map.spriteConfig.sprites).filter(s => !IsEdgeTile(s)));
+    state.game.resources.whenReady().then((resources) => {
+      dispatch({
+        type: "LOAD_TILES",
+        tiles: Object.keys(resources.map.spriteConfig.sprites).filter(s => !IsEdgeTile(s)),
+      });
     });
-  }, [props.game.resources]);
+  }, [state.game.resources]);
+
+  const minimapRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    state.editor.minimap = minimapRef.current;
+  });
+
+  const gameCanvasContainerRef = useExternalCanvas(
+    state.ctx.canvas,
+    state.editor.active
+  );
 
   return state.editor.active ? (
     <div className="flex flex-col w-full">
-      <div className="flex p-2 bg-gray-900 flex-row-reverse">
+      <div className="flex pl-2 pt-2 pb-2 bg-gray-900 flex-row">
+        <div className="grow">
+          <EditorButton onClick={() => {
+            dispatch({ type: "SELECT_TOOL", tool: "DRAW" });
+          }}
+            selected={state.editor.selectedTool === "DRAW"}
+            label="Draw">
+            <DrawIcon />
+          </EditorButton>
+          <EditorButton
+            selected={state.editor.selectedTool === "ERASE"}
+            onClick={() => {
+              dispatch({ type: "SELECT_TOOL", tool: "ERASE" });
+            }}
+            label="Erase">
+            <EraseIcon />
+          </EditorButton>
+        </div>
         <EditorButton
           onClick={() => {
             dispatch({ type: "TOGGLE_EDITOR" });
@@ -144,15 +203,19 @@ function EditorComponent(props: EditorClientState) {
             <canvas ref={minimapRef} />
           </div>
         </div>
-        <VirtualizedCanvasList
-          className="content-start absolute box-content flex flex-row flex-wrap top-2 left-2 z-10 border-2 border-gray-600 bg-gray-900 overflow-y-scroll bottom-2"
-          style={{ width: coords.TILE_SIZE * (4 * 2 + 2) }}
-          canvases={props.editor.tiles}
-          items={tiles}
-          itemTemplate={TileComponent}
-          onItemClick={(id: string) => setSelected(id)}
-          selectedItem={selected}
-        />
+        {state.editor.selectedTool === "DRAW" ?
+          <VirtualizedCanvasList
+            className="content-start absolute box-content flex flex-row flex-wrap top-2 left-2 z-10 border-2 border-gray-600 bg-gray-900 overflow-y-scroll bottom-2"
+            style={{ width: coords.TILE_SIZE * (4 * 2 + 2) }}
+            canvases={state.editor.tiles}
+            items={state.tiles}
+            itemTemplate={TileComponent}
+            onItemClick={(id: string) => dispatch({
+              type: "SELECT_TILE",
+              tile: id,
+            })}
+            selectedItem={state.editor.selectedTile}
+          /> : null}
       </div>
     </div>
   ) : (

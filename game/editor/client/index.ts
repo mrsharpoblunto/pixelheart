@@ -40,11 +40,17 @@ export type EditorActions =
 export interface PersistentEditorState {
   version: number;
   active: boolean;
+  selectedTool: EditorTool;
+  selectedTile: string | null;
 }
+
+export type EditorTool = "DRAW" | "ERASE";
 
 export interface EditorState {
   active: boolean;
+  selectedTool: EditorTool;
   selectedTile: string | null;
+  currentSelection: vec4 | null;
   pendingChanges: Map<string, EditorActions>;
   minimap: HTMLCanvasElement | null;
   tiles: Map<string, HTMLCanvasElement>;
@@ -114,7 +120,9 @@ export default class Editor
 
     const editorState = {
       active: previousState ? previousState.active : false,
-      selectedTile: null,
+      selectedTile: previousState ? previousState.selectedTile : null,
+      selectedTool: previousState ? previousState.selectedTool : "DRAW" as EditorTool,
+      currentSelection: null,
       pendingChanges: new Map(),
       minimap: null,
       tiles: new Map(),
@@ -138,6 +146,8 @@ export default class Editor
     return {
       version: CURRENT_SERIALIZATION_VERSION,
       active: editor.active,
+      selectedTool: editor.selectedTool,
+      selectedTile: editor.selectedTile,
     };
   }
 
@@ -156,19 +166,53 @@ export default class Editor
     }
 
     state.resources.ifReady((r) => {
-      if (ctx.mouse.down[0]) {
-        const ap = coords.pickAbsoluteTileFromRelative(
-          vec4.create(),
-          ctx.mouse.position,
-          state.screen
-        );
+      const ap = coords.pickAbsoluteTileFromRelative(
+        vec4.create(),
+        ctx.mouse.position,
+        state.screen
+      );
 
-        this.#changeMapTile(editor, r.map, {
-          sprite: editor.selectedTile || "",
-          x: ap[0],
-          y: ap[1],
-        });
-      } else {
+      // TODO change this behavior to select a rectangle while the mouse is down
+      // and then apply once its released
+      if (ctx.mouse.down[0]) {
+        if (!editor.currentSelection) {
+          editor.currentSelection = ap;
+        }
+      } else if (editor.currentSelection) {
+        const lx = Math.min(ap[0], editor.currentSelection[0]);
+        const hx = Math.max(ap[0], editor.currentSelection[0]);
+        const ly = Math.min(ap[1], editor.currentSelection[1]);
+        const hy = Math.max(ap[1], editor.currentSelection[1]);
+
+        switch (editor.selectedTool) {
+          case "ERASE":
+            for (let x = lx; x <= hx; ++x) {
+              for (let y = ly; y <= hy; ++y) {
+                this.#changeMapTile(editor, r.map, {
+                  sprite: "",
+                  x,
+                  y,
+                });
+              }
+            }
+            break;
+
+          case "DRAW":
+            if (editor.selectedTile) {
+              for (let x = lx; x <= hx; ++x) {
+                for (let y = ly; y <= hy; ++y) {
+                  this.#changeMapTile(editor, r.map, {
+                    sprite: editor.selectedTile,
+                    x,
+                    y,
+                  });
+                }
+              }
+            }
+            break;
+        }
+
+        editor.currentSelection = null;
         for (let a of editor.pendingChanges.values()) {
           ctx.editorServer.send(a);
         }
@@ -397,52 +441,101 @@ export default class Editor
         state.screen
       );
 
+      const startAp = editor.currentSelection ?? ap;
+
       const cursorPos = coords.toScreenSpaceFromAbsoluteTile(vec4.create(), ap, {
         ...state.screen,
         ...ctx.screen,
       });
 
-      const selectedTile = editor.selectedTile;
+      const cursorStartPos = coords.toScreenSpaceFromAbsoluteTile(vec4.create(), startAp, {
+        ...state.screen,
+        ...ctx.screen,
+      });
 
-      if (selectedTile) {
-        // editor tiles apply the same lighting as the
-        // game engine
-        for (const l of state.directionalLighting) {
-          state.spriteEffect.addDirectionalLight(l);
-        }
-        state.spriteEffect.use({
-          width: TILE_SIZE,
-          height: TILE_SIZE,
-        }, (s) => {
-          r.map.sprite[selectedTile].draw(s, vec4.fromValues(0.0, 1.0, 1.0, 0.0));
-        });
-        // draw the accumulated deferred lighting texture to the screen
-        state.simpleSpriteEffect.use((s) => {
-          const lightingTexture = state.spriteEffect.getLightingTexture();
-          if (lightingTexture) {
-            s.setTextures(lightingTexture);
-            s.draw(
-              cursorPos,
-              vec4.fromValues(
-                0,
-                lightingTexture.width,
-                lightingTexture.height,
-                0
-              )
-            );
+      switch (editor.selectedTool) {
+        case "DRAW": {
+          const selectedTile = editor.selectedTile;
+          if (selectedTile) {
+            // editor tiles apply the same lighting as the game engine
+            for (const l of state.directionalLighting) {
+              state.spriteEffect.addDirectionalLight(l);
+            }
+            state.spriteEffect.use({
+              width: TILE_SIZE,
+              height: TILE_SIZE,
+            }, (s) => {
+              r.map.sprite[selectedTile].draw(s, vec4.fromValues(0.0, 1.0, 1.0, 0.0));
+            });
+            // draw the accumulated deferred lighting texture to the screen
+            state.simpleSpriteEffect.use((s) => {
+              const lightingTexture = state.spriteEffect.getLightingTexture();
+              if (lightingTexture) {
+                s.setTextures(lightingTexture);
+                s.setAlpha(0.8);
+
+                const xd = cursorPos[1] - cursorPos[3];
+                const yd = cursorPos[2] - cursorPos[0];
+                const lx = Math.min(cursorPos[3], cursorStartPos[3]);
+                const ly = Math.min(cursorPos[0], cursorStartPos[0]);
+                const width = Math.abs(ap[0] - startAp[0]);
+                const height = Math.abs(ap[1] - startAp[1]);
+
+                for (let x = 0; x <= width; ++x) {
+                  for (let y = 0; y <= height; ++y) {
+                    s.draw(
+                      vec4.fromValues(
+                        (y * yd) + ly,
+                        (x * xd) + lx + xd,
+                        (y * yd) + ly + yd,
+                        (x * xd) + lx
+                      ),
+                      vec4.fromValues(
+                        0,
+                        lightingTexture.width,
+                        lightingTexture.height,
+                        0
+                      )
+                    );
+                  }
+                }
+              }
+            });
           }
-        });
+          state.solidEffect.use((s) => {
+            s.setBorder(ctx.screen, 1);
+            s.draw(
+              vec4.fromValues(
+                Math.min(cursorPos[0], cursorStartPos[0]),
+                Math.max(cursorPos[1], cursorStartPos[1]),
+                Math.max(cursorPos[2], cursorStartPos[2]),
+                Math.min(cursorPos[3], cursorStartPos[3])
+              ),
+              vec4.fromValues(1.0, 0, 0, 0.0),
+              vec4.fromValues(1.0, 1.0, 1.0, 1.0)
+            );
+          });
+        }
+          break;
+
+        case "ERASE":
+          state.solidEffect.use((s) => {
+            s.setBorder(ctx.screen, 1);
+            s.draw(
+              vec4.fromValues(
+                Math.min(cursorPos[0], cursorStartPos[0]),
+                Math.max(cursorPos[1], cursorStartPos[1]),
+                Math.max(cursorPos[2], cursorStartPos[2]),
+                Math.min(cursorPos[3], cursorStartPos[3])
+              ),
+              vec4.fromValues(1.0, 0, 0, 0.5),
+              vec4.fromValues(1.0, 1.0, 1.0, 1.0)
+            );
+          });
+          break;
       }
 
       state.solidEffect.use((s) => {
-        // editor cursor
-        s.setBorder(ctx.screen, 1);
-        s.draw(
-          cursorPos,
-          vec4.fromValues(1.0, 0, 0, editor.selectedTile ? 0.0 : 0.5),
-          vec4.fromValues(1.0, 1.0, 1.0, 1.0)
-        );
-
         // character bounding box
         const offset = vec2.fromValues(
           r.character.animator.getSprite().width / 2,
