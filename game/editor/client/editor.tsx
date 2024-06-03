@@ -1,4 +1,4 @@
-import React, { useEffect, useReducer, useRef, useState } from "react";
+import React, { useEffect, useReducer, useCallback, useRef, useState } from "react";
 import { Root } from "react-dom/client";
 
 import { EditorContext, coords } from "@pixelheart/client";
@@ -6,7 +6,7 @@ import { EditorContext, coords } from "@pixelheart/client";
 import { GameState } from "../../client/index.js";
 import { EditorActions, EditorEvents, EditorState, EditorTool, IsEdgeTile } from "./index.js";
 import { VirtualizedCanvasList } from "./virtual-canvas-list.js";
-import { DrawIcon, EraseIcon } from "./tool-icons.js";
+import { UndoIcon, RedoIcon, DrawIcon, EraseIcon } from "./tool-icons.js";
 
 
 interface EditorClientState {
@@ -90,16 +90,35 @@ function reducer(
 function EditorButton(props: {
   className?: string;
   onClick: () => void;
+  shortcutKey?: (e: KeyboardEvent) => boolean,
   text?: string;
   label?: string;
   selected?: boolean;
+  disabled?: boolean;
   children?: React.ReactNode;
 }) {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (props.shortcutKey?.(e)) {
+      e.preventDefault();
+      props.onClick();
+    }
+  };
+
+  useEffect(() => {
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [props.shortcutKey, props.onClick]);
+
   return (
     <button
       className={
-        (props.className ?? "") + (props.selected ? " border-white bg-gray-600" : " border-gray-600 bg-gray-700 hover:bg-gray-600 hover:border-gray-500") +
-        " mr-2 border-2 rounded-sm text-xs text-white font-bold h-6 pl-1 pr-1 transition ease-in-out"
+        (props.className ?? "") +
+        (props.selected ? " border-white bg-gray-600" : " border-gray-600") +
+        (props.disabled ? " text-gray-600 bg-gray-800" : " text-white bg-gray-700") +
+        (!props.selected && !props.disabled ? " hover-gray-600 hover:border-gray-500" : "") +
+        " mr-2 border-2 rounded-sm text-xs font-bold h-6 pl-1 pr-1 transition ease-in-out"
       }
       onClick={props.onClick}
       aria-label={props.label || props.text}
@@ -166,7 +185,7 @@ function EditorComponent(props: EditorClientState) {
 
   return state.editor.active ? (
     <div className="flex flex-col w-full">
-      <div className="flex pl-2 pt-2 pb-2 bg-gray-900 flex-row">
+      <div className="flex pl-2 pt-2 pb-2 bg-gray-900 flex-row border-b-2 border-gray-600">
         <div className="grow">
           <EditorButton onClick={() => {
             dispatch({ type: "SELECT_TOOL", tool: "DRAW" });
@@ -183,6 +202,22 @@ function EditorComponent(props: EditorClientState) {
             label="Erase">
             <EraseIcon />
           </EditorButton>
+          <EditorButton
+            onClick={() => {
+            }}
+            disabled={true}
+            shortcutKey={(e: KeyboardEvent) => e.ctrlKey && e.key === "z"}
+            label="Undo">
+            <UndoIcon />
+          </EditorButton>
+          <EditorButton
+            onClick={() => {
+            }}
+            disabled={true}
+            shortcutKey={(e: KeyboardEvent) => e.ctrlKey && e.key === "y"}
+            label="Redo">
+            <RedoIcon />
+          </EditorButton>
         </div>
         <EditorButton
           onClick={() => {
@@ -192,21 +227,20 @@ function EditorComponent(props: EditorClientState) {
         />
       </div>
       <div
-        className="flex grow overflow-hidden relative border-2 border-gray-600"
+        className="flex grow overflow-hidden relative"
         ref={gameCanvasContainerRef}
       >
         <div className="absolute top-2 right-2 z-10">
           <div
-            className="border-2 border-gray-600 bg-gray-900 overflow-hidden aspect-square"
-            style={{ width: "20vw" }}
+            className="border-2 border-gray-600 bg-gray-900 overflow-hidden aspect-square opacity-90"
+            style={{ maxWidth: "20vw" }}
           >
             <canvas ref={minimapRef} />
           </div>
         </div>
         {state.editor.selectedTool === "DRAW" ?
           <VirtualizedCanvasList
-            className="content-start absolute box-content flex flex-row flex-wrap top-2 left-2 z-10 border-2 border-gray-600 bg-gray-900 overflow-y-scroll bottom-2"
-            style={{ width: coords.TILE_SIZE * (4 * 2 + 2) }}
+            className="content-start absolute grid grid-cols-3 gap-0 top-2 left-2 z-10 border-2 border-gray-600 bg-gray-900 bottom-2 opacity-90 overflow-y-auto"
             canvases={state.editor.tiles}
             items={state.tiles}
             itemTemplate={TileComponent}
@@ -221,7 +255,7 @@ function EditorComponent(props: EditorClientState) {
   ) : (
     <>
       <EditorButton
-        className="absolute top-2 right-2 z-10"
+        className="absolute top-2 right-0 z-10"
         onClick={() => {
           dispatch({ type: "TOGGLE_EDITOR" });
         }}
