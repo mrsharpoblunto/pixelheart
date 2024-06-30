@@ -7,6 +7,7 @@ import {
   EditorContext,
   MapContainer,
   MapTileSource,
+  MapTile,
   SpriteSheet,
   TEXTURE,
   coords,
@@ -14,7 +15,6 @@ import {
 } from "@pixelheart/client";
 import { vec2, vec4 } from "@pixelheart/client/gl-matrix";
 import {
-  DeferredSpriteEffect,
   DeferredSpriteTextures,
   SimpleSpriteEffect,
   SimpleSpriteTextures,
@@ -25,33 +25,57 @@ import { GameState } from "../../client/index.js";
 import { renderEditor } from "./editor.js";
 import { TILE_SIZE } from "node_modules/@pixelheart/client/dist/coordinates.js";
 
-export type EditorEvents = BaseEvents;
+export type MapTileChange = {
+  x: number,
+  y: number,
+  value: Partial<MapTileSource>
+};
+
+export type EditMapTilesAction = {
+  type: "EDIT_MAP_TILES";
+  tiles: Array<MapTileChange>;
+  map: string;
+};
+
+export type MapTileChangeApply = {
+  x: number,
+  y: number,
+  value: MapTile
+};
+
+export type EditMapTilesEvent = {
+  type: "EDIT_MAP_TILES_APPLY";
+  tiles: Array<MapTileChangeApply>;
+  map: string;
+};
+
+export type EditorEvents = BaseEvents | EditMapTilesEvent;
 
 export type EditorActions =
   | BaseActions
-  | {
-    type: "TILE_CHANGE";
-    x: number;
-    y: number;
-    map: string;
-    value: MapTileSource;
-  };
+  | EditMapTilesAction;
 
 export interface PersistentEditorState {
   version: number;
   active: boolean;
-  selectedTool: EditorTool;
+  selectedTool: EditorSelectableTool;
   selectedTile: string | null;
 }
 
-export type EditorTool = "DRAW" | "ERASE";
+export type EditorSelectableTool = "DRAW" | "ERASE";
+export type EditorInvokableTool = "UNDO" | "REDO";
 
 export interface EditorState {
   active: boolean;
-  selectedTool: EditorTool;
+  selectedTool: EditorSelectableTool;
   selectedTile: string | null;
+  pendingToolInvocations: Array<EditorInvokableTool>;
+  undoStack: Array<{
+    toPrevious: Array<MapTileChange>,
+    toNext: Array<MapTileChange>
+  }>;
+  undoStackHead: number;
   currentSelection: vec4 | null;
-  pendingChanges: Map<string, EditorActions>;
   minimap: HTMLCanvasElement | null;
   tiles: Map<string, HTMLCanvasElement>;
   minimapSprite: SpriteSheet<SimpleSpriteTextures> | null;
@@ -99,8 +123,10 @@ export default class Editor
   >
 {
   #root: Root | null = null;
+  #pendingEvents: Array<EditorEvents>;
 
   constructor() {
+    this.#pendingEvents = [];
   }
 
   onStart(
@@ -121,9 +147,11 @@ export default class Editor
     const editorState = {
       active: previousState ? previousState.active : false,
       selectedTile: previousState ? previousState.selectedTile : null,
-      selectedTool: previousState ? previousState.selectedTool : "DRAW" as EditorTool,
+      selectedTool: previousState ? previousState.selectedTool : "DRAW" as EditorSelectableTool,
+      pendingToolInvocations: [],
+      undoStack: [],
+      undoStackHead: -1,
       currentSelection: null,
-      pendingChanges: new Map(),
       minimap: null,
       tiles: new Map(),
       minimapSprite: null,
@@ -134,12 +162,20 @@ export default class Editor
     this.#root = createRoot(container);
     renderEditor(this.#root, ctx, state, editorState);
 
+    ctx.editorServer.listen(this.#onEvent);
+
     return editorState;
   }
 
-  onEnd(_container: HTMLElement): void {
+  onEnd(ctx: EditorContext<EditorActions, EditorEvents>, _container: HTMLElement): void {
+    ctx.editorServer.disconnect(this.#onEvent);
     this.#root?.unmount();
     this.#root = null;
+  }
+
+  #onEvent = (evt: EditorEvents) => {
+    // queue socket events so we can process them on the main event loop
+    this.#pendingEvents.push(evt);
   }
 
   onSave(editor: EditorState): PersistentEditorState | null {
@@ -155,7 +191,7 @@ export default class Editor
     ctx: EditorContext<EditorActions, EditorEvents>,
     state: GameState,
     editor: EditorState,
-    fixedDelta: number
+    _fixedDelta: number
   ) {
     if (ctx.keys.pressed.has("m") && ctx.keys.down.has("Control")) {
       editor.active = !editor.active;
@@ -166,14 +202,62 @@ export default class Editor
     }
 
     state.resources.ifReady((r) => {
+
+      // process all editor server events
+      if (this.#pendingEvents.length) {
+        for (let evt of this.#pendingEvents) {
+          switch (evt.type) {
+            case "EDIT_MAP_TILES_APPLY": {
+              if (evt.map === r.map.name) {
+                for (let change of evt.tiles) {
+                  r.map.data.write(change.x, change.y, change.value);
+                }
+              }
+              break;
+            }
+          }
+        }
+        this.#pendingEvents.length = 0;
+      }
+
+      // process all tool invocations
+      if (editor.pendingToolInvocations.length) {
+        for (let action of editor.pendingToolInvocations) {
+          switch (action) {
+            case "UNDO": {
+              if (editor.undoStackHead >= 0) {
+                const action: EditMapTilesAction = {
+                  type: "EDIT_MAP_TILES",
+                  tiles: editor.undoStack[editor.undoStackHead].toPrevious,
+                  map: r.map.name,
+                };
+                ctx.editorServer.send(action);
+                --editor.undoStackHead;
+              }
+              break;
+            }
+            case "REDO": {
+              if (editor.undoStack.length > editor.undoStackHead + 1) {
+                ++editor.undoStackHead;
+                const action: EditMapTilesAction = {
+                  type: "EDIT_MAP_TILES",
+                  tiles: editor.undoStack[editor.undoStackHead].toNext,
+                  map: r.map.name,
+                };
+                ctx.editorServer.send(action);
+              }
+            }
+          }
+        }
+        editor.pendingToolInvocations.length = 0;
+      }
+
       const ap = coords.pickAbsoluteTileFromRelative(
         vec4.create(),
         ctx.mouse.position,
         state.screen
       );
 
-      // TODO change this behavior to select a rectangle while the mouse is down
-      // and then apply once its released
       if (ctx.mouse.down[0]) {
         if (!editor.currentSelection) {
           editor.currentSelection = ap;
@@ -186,54 +270,129 @@ export default class Editor
 
         switch (editor.selectedTool) {
           case "ERASE":
+            const dedupedActions = new Map<string, MapTileChange>();
             for (let x = lx; x <= hx; ++x) {
               for (let y = ly; y <= hy; ++y) {
-                this.#changeMapTile(editor, r.map, {
-                  sprite: "",
-                  x,
-                  y,
+                this.#changeMapTile(dedupedActions, r.map, {
+                  x, y,
+                  value: { sprite: "" },
                 });
               }
+            }
+            const action: EditMapTilesAction = {
+              type: "EDIT_MAP_TILES",
+              tiles: Array.from(dedupedActions.values()),
+              map: r.map.name,
+            };
+            if (this.#recordMapTileUndo(editor, action.tiles, r.map)) {
+              ctx.editorServer.send(action);
             }
             break;
 
           case "DRAW":
-            if (editor.selectedTile) {
+            const sprite = editor.selectedTile;
+            if (sprite) {
+              const dedupedActions = new Map<string, MapTileChange>();
               for (let x = lx; x <= hx; ++x) {
                 for (let y = ly; y <= hy; ++y) {
-                  this.#changeMapTile(editor, r.map, {
-                    sprite: editor.selectedTile,
-                    x,
-                    y,
-                  });
+                  this.#changeMapTile(dedupedActions, r.map, { x, y, value: { sprite } });
                 }
+              }
+              const action: EditMapTilesAction = {
+                type: "EDIT_MAP_TILES",
+                tiles: Array.from(dedupedActions.values()),
+                map: r.map.name,
+              };
+              if (this.#recordMapTileUndo(editor, action.tiles, r.map)) {
+                ctx.editorServer.send(action);
               }
             }
             break;
         }
 
         editor.currentSelection = null;
-        for (let a of editor.pendingChanges.values()) {
-          ctx.editorServer.send(a);
-        }
-        editor.pendingChanges.clear();
       }
     });
   }
 
-  #changeMapTile(
-    state: EditorState,
-    map: MapContainer<DeferredSpriteTextures>,
-    change: {
-      sprite: string;
-      x: number;
-      y: number;
-    }
+  #recordMapTileUndo(
+    editor: EditorState,
+    changes: Array<MapTileChange>,
+    map: MapContainer<DeferredSpriteTextures>
   ) {
-    this.#queueMapTileAction(state, map, change);
+    const undoChanges: Array<MapTileChange> = [];
+
+    for (const c of changes) {
+      const tile = map.data.read(c.x, c.y);
+      const sprite = tile.index ? map.spriteConfig.indexes[tile.index] : "";
+      const { index: _, ...source } = tile;
+
+      const value = { ...source, sprite };
+
+      if (
+        JSON.stringify({ ...source, ...c.value }) ===
+        JSON.stringify(value)) {
+        continue;
+      }
+
+      undoChanges.push({
+        x: c.x,
+        y: c.y,
+        value,
+      });
+    }
+
+    if (undoChanges.length === 0) {
+      // if the total set of changes introduces no actual changes to the tiles
+      // then we'll ignore it
+      return false;
+    }
+
+    const stackEntry = {
+      toNext: changes,
+      toPrevious: undoChanges
+    };
+
+    ++editor.undoStackHead;
+    if (editor.undoStackHead < editor.undoStack.length) {
+      editor.undoStack.length = Math.max(editor.undoStackHead, 0);
+    }
+    editor.undoStack.push(stackEntry);
+    return true;
+  }
+
+  #changeMapTile(
+    context: Map<string, MapTileChange>,
+    map: MapContainer<DeferredSpriteTextures>,
+    change: MapTileChange,
+  ) {
+    const applyChange = (
+      c: MapTileChange
+    ) => {
+      const { x, y } = c;
+      let existingChange = context.get(`${x},${y}`);
+      if (!existingChange) {
+        existingChange = { x, y, value: { ...c.value } };
+        context.set(`${x},${y}`, existingChange);
+      }
+
+      Object.assign(existingChange.value, c.value);
+    };
+
+    const getTileSprite = (x: number, y: number) => {
+      let existingChange = context.get(`${x},${y}`);
+      if (!existingChange) {
+        const tileIndex = map.data.read(x, y).index;
+        return map.spriteConfig.indexes[tileIndex];
+      } else {
+        return existingChange.value.sprite || "";
+      }
+    };
+
+    applyChange(change);
 
     const toRecheck = new Array<{
-      sprite: string;
+      value: { sprite: string };
       x: number;
       y: number;
     }>();
@@ -241,8 +400,7 @@ export default class Editor
     // reset all adjacent edge tiles to their base sprite
     for (let offsetX = -1; offsetX <= 1; ++offsetX) {
       for (let offsetY = -1; offsetY <= 1; ++offsetY) {
-        const tile = map.data.read(change.x + offsetX, change.y + offsetY);
-        const sprite = map.spriteConfig.indexes[tile.index];
+        const sprite = getTileSprite(change.x + offsetX, change.y + offsetY);
         const splitIndex = sprite.indexOf("_");
         if (splitIndex !== -1) {
           const baseSprite = sprite.substring(0, splitIndex);
@@ -251,27 +409,19 @@ export default class Editor
             map.spriteConfig.sprites.hasOwnProperty(baseSprite) &&
             TileEdgeSuffixes.has(spriteSuffix)
           ) {
-            const index =
-              map.spriteConfig.sprites[
-                baseSprite as keyof typeof map.spriteConfig.sprites
-              ].index;
-            tile.index = index;
-            this.#queueMapTileAction(state, map, {
-              sprite: baseSprite,
+            const c = {
               x: change.x + offsetX,
               y: change.y + offsetY,
-            });
-            toRecheck.push({
-              x: change.x + offsetX,
-              y: change.y + offsetY,
-              sprite: baseSprite,
-            });
+              value: { sprite: baseSprite },
+            };
+            applyChange(c);
+            toRecheck.push(c);
           }
         } else {
           toRecheck.push({
             x: change.x + offsetX,
             y: change.y + offsetY,
-            sprite,
+            value: { sprite },
           });
         }
       }
@@ -280,148 +430,99 @@ export default class Editor
     const newEdges = Array<{
       x: number;
       y: number;
-      sprite: string;
+      value: { sprite: string };
     }>();
 
     // convert any tiles that should be to edges (if a suitable sprite exists)
     for (let check of toRecheck) {
-      const top = map.data.read(check.x, check.y - 1).index === 0;
-      const left = map.data.read(check.x - 1, check.y).index === 0;
-      const bottom = map.data.read(check.x, check.y + 1).index === 0;
-      const right = map.data.read(check.x + 1, check.y).index === 0;
-      const topLeft = map.data.read(check.x - 1, check.y - 1).index === 0;
-      const topRight = map.data.read(check.x + 1, check.y - 1).index === 0;
-      const bottomLeft = map.data.read(check.x - 1, check.y + 1).index === 0;
-      const bottomRight = map.data.read(check.x + 1, check.y + 1).index === 0;
+      const top = getTileSprite(check.x, check.y - 1) === "";
+      const left = getTileSprite(check.x - 1, check.y) === "";
+      const bottom = getTileSprite(check.x, check.y + 1) === "";
+      const right = getTileSprite(check.x + 1, check.y) === "";
+      const topLeft = getTileSprite(check.x - 1, check.y - 1) === "";
+      const topRight = getTileSprite(check.x + 1, check.y - 1) === "";
+      const bottomLeft = getTileSprite(check.x - 1, check.y + 1) === "";
+      const bottomRight = getTileSprite(check.x + 1, check.y + 1) === "";
 
       if (top && left) {
         newEdges.push({
           x: check.x,
           y: check.y,
-          sprite: check.sprite + "_tl",
+          value: { sprite: check.value.sprite + "_tl" },
         });
       } else if (top && right) {
         newEdges.push({
           x: check.x,
           y: check.y,
-          sprite: check.sprite + "_tr",
+          value: { sprite: check.value.sprite + "_tr" },
         });
       } else if (top && !left && !right) {
         newEdges.push({
           x: check.x,
           y: check.y,
-          sprite: check.sprite + "_t",
+          value: { sprite: check.value.sprite + "_t" },
         });
       } else if (topLeft && !left && !top) {
         newEdges.push({
           x: check.x,
           y: check.y,
-          sprite: check.sprite + "_i_tl",
+          value: { sprite: check.value.sprite + "_i_tl" },
         });
       } else if (topRight && !right && !top) {
         newEdges.push({
           x: check.x,
           y: check.y,
-          sprite: check.sprite + "_i_tr",
+          value: { sprite: check.value.sprite + "_i_tr" },
         });
       } else if (left && !top && !bottom) {
         newEdges.push({
           x: check.x,
           y: check.y,
-          sprite: check.sprite + "_l",
+          value: { sprite: check.value.sprite + "_l" },
         });
       } else if (bottom && left) {
         newEdges.push({
           x: check.x,
           y: check.y,
-          sprite: check.sprite + "_bl",
+          value: { sprite: check.value.sprite + "_bl" },
         });
       } else if (bottom && right) {
         newEdges.push({
           x: check.x,
           y: check.y,
-          sprite: check.sprite + "_br",
+          value: { sprite: check.value.sprite + "_br" },
         });
       } else if (bottom && !left && !right) {
         newEdges.push({
           x: check.x,
           y: check.y,
-          sprite: check.sprite + "_b",
+          value: { sprite: check.value.sprite + "_b" },
         });
       } else if (bottomLeft && !left && !bottom) {
         newEdges.push({
           x: check.x,
           y: check.y,
-          sprite: check.sprite + "_i_bl",
+          value: { sprite: check.value.sprite + "_i_bl" },
         });
       } else if (bottomRight && !right && !bottom) {
         newEdges.push({
           x: check.x,
           y: check.y,
-          sprite: check.sprite + "_i_br",
+          value: { sprite: check.value.sprite + "_i_br" },
         });
       } else if (right && !top && !bottom) {
         newEdges.push({
           x: check.x,
           y: check.y,
-          sprite: check.sprite + "_r",
+          value: { sprite: check.value.sprite + "_r" },
         });
       }
     }
 
     for (let edge of newEdges) {
-      if (map.spriteConfig.sprites.hasOwnProperty(edge.sprite)) {
-        this.#queueMapTileAction(state, map, edge);
+      if (map.spriteConfig.sprites.hasOwnProperty(edge.value.sprite)) {
+        applyChange(edge);
       }
-    }
-  }
-
-  #queueMapTileAction(
-    state: EditorState,
-    map: MapContainer<DeferredSpriteTextures>,
-    {
-      sprite,
-      x,
-      y,
-    }: {
-      sprite: string;
-      x: number;
-      y: number;
-    }
-  ) {
-    let action = state.pendingChanges.get(`${x},${y}`);
-    if (!action) {
-      action = {
-        type: "TILE_CHANGE",
-        x: x,
-        y: y,
-        map: "overworld",
-        value: {
-          sprite: "",
-          animated: false,
-          walkable: false,
-          triggerId: 0,
-          spatialHash: false,
-        },
-      };
-      state.pendingChanges.set(`${x},${y}`, action);
-    }
-
-    if (action.type === "TILE_CHANGE") {
-      Object.assign(action.value, {
-        sprite,
-        animated: false,
-        walkable: sprite !== "",
-        triggerId: 0,
-        spatialHash: sprite !== "",
-      });
-      const index =
-        sprite === ""
-          ? 0
-          : map.spriteConfig.sprites[
-            sprite as keyof typeof map.spriteConfig.sprites
-          ].index;
-      map.data.write(x, y, { ...action.value, index });
     }
   }
 

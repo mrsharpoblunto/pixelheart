@@ -6,7 +6,7 @@ import {
   coords,
   loadMapContainer,
   loadSpriteSheet,
-  math,
+  math
 } from "@pixelheart/client";
 import { ReadonlyVec2, vec2, vec3, vec4 } from "@pixelheart/client/gl-matrix";
 import {

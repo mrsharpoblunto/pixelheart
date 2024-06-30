@@ -6,20 +6,19 @@ import { CPUReadableTexture } from "./images.js";
 import { loadCPUReadableTextureFromUrl } from "./images.js";
 import { SpriteSheet, SpriteSheetConfig, loadSpriteSheet } from "./sprite.js";
 
-export interface MapTile {
-  index: number; // 0-255
+export interface MapTileBase {
   walkable: boolean;
   spatialHash: boolean;
   animated: boolean;
   triggerId: number;
 }
 
-export interface MapTileSource {
+export interface MapTile extends MapTileBase {
+  index: number; // 0-255
+}
+
+export interface MapTileSource extends MapTileBase {
   sprite: string;
-  walkable: boolean;
-  spatialHash: boolean;
-  animated: boolean;
-  triggerId: number;
 }
 
 export function decodeMapTile(
@@ -48,6 +47,7 @@ export function encodeMapTile(
     (value.animated ? 4 : 0);
 }
 export interface MapContainer<T> {
+  name: string;
   data: MapData;
   sprite: SpriteSheet<T>;
   spriteConfig: SpriteSheetConfig;
@@ -56,7 +56,7 @@ export interface MapContainer<T> {
 export async function loadMapContainer<T>(
   ctx: GameContext,
   tileSize: number,
-  map: { spriteSheet: SpriteSheetConfig; url: string },
+  map: { spriteSheet: SpriteSheetConfig; name: string, url: string },
   loader: (ctx: GameContext, sheet: SpriteSheetConfig) => Promise<T>
 ): Promise<MapContainer<T>> {
   const [sprite, m] = await Promise.all([
@@ -65,6 +65,7 @@ export async function loadMapContainer<T>(
   ]);
   return {
     data: new MapData(ctx, tileSize, m),
+    name: map.name,
     sprite,
     spriteConfig: map.spriteSheet,
   };

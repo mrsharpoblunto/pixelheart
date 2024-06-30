@@ -25,7 +25,8 @@ export type BaseEvents =
 
 export interface EditorConnection<Actions, Events> {
   send: (data: Actions) => void;
-  onEvent(cb: (data: Events) => void): void;
+  listen(cb: (data: Events) => void): void;
+  disconnect(cb: (data: Events) => void): void;
 }
 
 export interface EditorContext<
@@ -51,7 +52,7 @@ export interface EditorClient<
     container: HTMLElement,
     previousState?: PersistentEditorState
   ): EditorState;
-  onEnd(container: HTMLElement): void;
+  onEnd(ctx: EditorContext<Actions, Events>, container: HTMLElement): void;
   onSave(editor: EditorState): PersistentEditorState | null;
   onUpdate(
     ctx: EditorContext<Actions, Events>,
@@ -135,7 +136,15 @@ export class ClientEditorConnection<
     }
   }
 
-  onEvent(cb: (event: Events) => void) {
+  listen(cb: (event: Events) => void) {
     this.#eventHandlers.push(cb);
+  }
+
+  disconnect(cb: (event: Events) => void) {
+    for (let i = this.#eventHandlers.length - 1; i >= 0; --i) {
+      if (cb === this.#eventHandlers[i]) {
+        this.#eventHandlers.splice(i, 1);
+      }
+    }
   }
 }

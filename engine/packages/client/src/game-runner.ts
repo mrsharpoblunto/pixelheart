@@ -327,7 +327,7 @@ export default function GameRunner<
     const editorState = editor
       ? (() => {
         try {
-          editor?.onEnd(props.container);
+          editor?.onEnd(context, props.container);
           return editor?.onStart(
             context,
             gameState,
@@ -338,7 +338,7 @@ export default function GameRunner<
           );
         } catch (ex) {
           console.warn(ex);
-          editor?.onEnd(props.container);
+          editor?.onEnd(context, props.container);
           return editor?.onStart(context, gameState, props.container);
         }
       })()
@@ -350,7 +350,7 @@ export default function GameRunner<
     };
   };
 
-  context.editorServer.onEvent((e) => {
+  context.editorServer.listen((e) => {
     switch (e.type) {
       case "RELOAD_SHADER": {
         reloadShader(e.shader, e.src);

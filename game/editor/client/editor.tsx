@@ -4,7 +4,14 @@ import { Root } from "react-dom/client";
 import { EditorContext, coords } from "@pixelheart/client";
 
 import { GameState } from "../../client/index.js";
-import { EditorActions, EditorEvents, EditorState, EditorTool, IsEdgeTile } from "./index.js";
+import {
+  EditorActions,
+  EditorEvents,
+  EditorState,
+  EditorSelectableTool,
+  EditorInvokableTool,
+  IsEdgeTile
+} from "./index.js";
 import { VirtualizedCanvasList } from "./virtual-canvas-list.js";
 import { UndoIcon, RedoIcon, DrawIcon, EraseIcon } from "./tool-icons.js";
 
@@ -24,7 +31,11 @@ type EditorUIActions =
   }
   | {
     type: "SELECT_TOOL";
-    tool: EditorTool;
+    tool: EditorSelectableTool;
+  }
+  | {
+    type: "INVOKE_TOOL";
+    tool: EditorInvokableTool;
   }
   | {
     type: "SELECT_TILE";
@@ -65,6 +76,13 @@ function reducer(
           selectedTool: action.tool,
         }),
       };
+    case "INVOKE_TOOL":
+      return {
+        ...state,
+        editor: Object.assign(state.editor, {
+          pendingToolInvocations: [...state.editor.pendingToolInvocations, action.tool],
+        })
+      };
     case "SELECT_TILE":
       return {
         ...state,
@@ -81,8 +99,15 @@ function reducer(
         editor: Object.assign(state.editor, {
           selectedTile,
         }),
-
       };
+    case "EDIT_MAP_TILES_APPLY":
+      // applying tile changes means this editor may have initiated the changes
+      // which means we may have some undo/redo stack changes to reflect in the UI
+      // so we need to mutate state for that to cause a re-render
+      return {
+        ...state,
+      };
+
   }
   return state;
 }
@@ -160,7 +185,10 @@ function EditorComponent(props: EditorClientState) {
 
   useEffect(() => {
     // make sure editor server events are dispatched to the reducer
-    state.ctx.editorServer.onEvent(dispatch);
+    state.ctx.editorServer.listen(dispatch);
+    return () => {
+      state.ctx.editorServer.disconnect(dispatch);
+    };
   }, [dispatch, state.ctx.editorServer]);
 
   useEffect(() => {
@@ -204,16 +232,20 @@ function EditorComponent(props: EditorClientState) {
           </EditorButton>
           <EditorButton
             onClick={() => {
+              dispatch({ type: "INVOKE_TOOL", tool: "UNDO" });
             }}
-            disabled={true}
+            disabled={state.editor.undoStackHead < 0}
             shortcutKey={(e: KeyboardEvent) => e.ctrlKey && e.key === "z"}
             label="Undo">
             <UndoIcon />
           </EditorButton>
           <EditorButton
             onClick={() => {
+              dispatch({ type: "INVOKE_TOOL", tool: "REDO" });
             }}
-            disabled={true}
+            disabled={
+              state.editor.undoStack.length <= state.editor.undoStackHead + 1
+            }
             shortcutKey={(e: KeyboardEvent) => e.ctrlKey && e.key === "y"}
             label="Redo">
             <RedoIcon />

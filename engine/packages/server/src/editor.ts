@@ -36,8 +36,15 @@ export class EditorServerConnection<
   send(action: Actions) {
     this.#socket?.send(JSON.stringify(action));
   }
-  onEvent(cb: (event: Events) => void) {
+  listen(cb: (event: Events) => void) {
     this.#eventHandlers.push(cb);
+  }
+  disconnect(cb: (event: Events) => void) {
+    for (let i = this.#eventHandlers.length - 1;i >=0;--i) {
+      if (cb === this.#eventHandlers[i]) {
+        this.#eventHandlers.splice(i, 1);
+      }
+    }
   }
 }
 

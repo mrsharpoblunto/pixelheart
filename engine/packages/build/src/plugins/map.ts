@@ -255,6 +255,7 @@ export default class MapPlugin implements BuildPlugin {
     const Map = {...${JSON.stringify({
         ...result.metadata,
         url: `/maps/${map}.png?v=${mapHash}`,
+        name: map,
       })}, spriteSheet: SpriteSheet,
     };
 export default Map;`
