@@ -23,6 +23,7 @@ import {
 
 import { GameState } from "../../client/index.js";
 import { renderEditor } from "./editor.js";
+import UndoStack from "./undo-stack.js";
 import { TILE_SIZE } from "node_modules/@pixelheart/client/dist/coordinates.js";
 
 export type MapTileChange = {
@@ -70,11 +71,7 @@ export interface EditorState {
   selectedTool: EditorSelectableTool;
   selectedTile: string | null;
   pendingToolInvocations: Array<EditorInvokableTool>;
-  undoStack: Array<{
-    toPrevious: Array<MapTileChange>,
-    toNext: Array<MapTileChange>
-  }>;
-  undoStackHead: number;
+  undoStack: UndoStack<Array<MapTileChange>>;
   currentSelection: vec4 | null;
   minimap: HTMLCanvasElement | null;
   tiles: Map<string, HTMLCanvasElement>;
@@ -149,8 +146,7 @@ export default class Editor
       selectedTile: previousState ? previousState.selectedTile : null,
       selectedTool: previousState ? previousState.selectedTool : "DRAW" as EditorSelectableTool,
       pendingToolInvocations: [],
-      undoStack: [],
-      undoStackHead: -1,
+      undoStack: new UndoStack<Array<MapTileChange>>(),
       currentSelection: null,
       minimap: null,
       tiles: new Map(),
@@ -225,23 +221,23 @@ export default class Editor
         for (let action of editor.pendingToolInvocations) {
           switch (action) {
             case "UNDO": {
-              if (editor.undoStackHead >= 0) {
+              const tiles = editor.undoStack.undo();
+              if (tiles) {
                 const action: EditMapTilesAction = {
                   type: "EDIT_MAP_TILES",
-                  tiles: editor.undoStack[editor.undoStackHead].toPrevious,
+                  tiles,
                   map: r.map.name,
                 };
                 ctx.editorServer.send(action);
-                --editor.undoStackHead;
               }
               break;
             }
             case "REDO": {
-              if (editor.undoStack.length > editor.undoStackHead + 1) {
-                ++editor.undoStackHead;
+              const tiles = editor.undoStack.redo();
+              if (tiles) {
                 const action: EditMapTilesAction = {
                   type: "EDIT_MAP_TILES",
-                  tiles: editor.undoStack[editor.undoStackHead].toNext,
+                  tiles,
                   map: r.map.name,
                 };
                 ctx.editorServer.send(action);
@@ -348,16 +344,7 @@ export default class Editor
       return false;
     }
 
-    const stackEntry = {
-      toNext: changes,
-      toPrevious: undoChanges
-    };
-
-    ++editor.undoStackHead;
-    if (editor.undoStackHead < editor.undoStack.length) {
-      editor.undoStack.length = Math.max(editor.undoStackHead, 0);
-    }
-    editor.undoStack.push(stackEntry);
+    editor.undoStack.push(undoChanges, changes);
     return true;
   }
 

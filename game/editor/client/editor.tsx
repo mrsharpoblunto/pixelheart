@@ -234,7 +234,7 @@ function EditorComponent(props: EditorClientState) {
             onClick={() => {
               dispatch({ type: "INVOKE_TOOL", tool: "UNDO" });
             }}
-            disabled={state.editor.undoStackHead < 0}
+            disabled={!state.editor.undoStack.canUndo}
             shortcutKey={(e: KeyboardEvent) => e.ctrlKey && e.key === "z"}
             label="Undo">
             <UndoIcon />
@@ -244,7 +244,7 @@ function EditorComponent(props: EditorClientState) {
               dispatch({ type: "INVOKE_TOOL", tool: "REDO" });
             }}
             disabled={
-              state.editor.undoStack.length <= state.editor.undoStackHead + 1
+              !state.editor.undoStack.canRedo
             }
             shortcutKey={(e: KeyboardEvent) => e.ctrlKey && e.key === "y"}
             label="Redo">
