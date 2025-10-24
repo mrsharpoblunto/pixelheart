@@ -19,7 +19,7 @@ jobs:
       - name: Prerequisites
         uses: pnpm/action-setup@v3
         with:
-          version: 8
+          version: 10
 
       - name: Installing common packages
         run: pnpm install
