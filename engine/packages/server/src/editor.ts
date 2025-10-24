@@ -1,8 +1,8 @@
 import watcher from "@parcel/watcher";
 import chalk from "chalk";
-import { existsSync } from "fs";
 import { spawn } from "child_process";
 import { EventEmitter } from "events";
+import { existsSync } from "fs";
 import path from "path";
 import url from "url";
 import { WebSocket, WebSocketServer } from "ws";
@@ -13,7 +13,7 @@ const dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
 export class EditorServerConnection<
   Actions extends EditorMutation,
-  Events extends EditorMutation
+  Events extends EditorMutation,
 > implements EditorConnection<Actions, Events>
 {
   #eventHandlers: Array<(event: Events) => void>;
@@ -22,7 +22,7 @@ export class EditorServerConnection<
   constructor() {
     this.#eventHandlers = [];
     this.#socket = new WebSocket(
-      `ws://localhost:${process.env["PIXELHEART_SERVER_PORT"]}`
+      `ws://localhost:${process.env["PIXELHEART_SERVER_PORT"]}`,
     );
     this.#socket.on("message", (e) => {
       for (const handler of this.#eventHandlers) {
@@ -40,7 +40,7 @@ export class EditorServerConnection<
     this.#eventHandlers.push(cb);
   }
   disconnect(cb: (event: Events) => void) {
-    for (let i = this.#eventHandlers.length - 1;i >=0;--i) {
+    for (let i = this.#eventHandlers.length - 1; i >= 0; --i) {
       if (cb === this.#eventHandlers[i]) {
         this.#eventHandlers.splice(i, 1);
       }
@@ -111,7 +111,7 @@ export class EditorServerHost extends EventEmitter {
   }
 
   start(gameEditorServerPath: string, gameOutputPath: string) {
-    this.#gameOutputPath = gameOutputPath
+    this.#gameOutputPath = gameOutputPath;
 
     if (!existsSync(gameEditorServerPath)) {
       this.#log(chalk.yellow(`Server path ${gameEditorServerPath} not found`));
@@ -130,7 +130,7 @@ export class EditorServerHost extends EventEmitter {
       },
       {
         ignore: ["client/**"],
-      }
+      },
     );
 
     this.#createEditor(gameEditorServerPath);
@@ -159,9 +159,7 @@ export class EditorServerHost extends EventEmitter {
         client != this.#editorSocket &&
         client.readyState === WebSocket.OPEN
       ) {
-        this.#log(
-          `Sending ${chalk.green(event.type)} event.`
-        );
+        this.#log(`Sending ${chalk.green(event.type)} event.`);
         client.send(JSON.stringify(event));
       }
     });
@@ -177,12 +175,14 @@ export class EditorServerHost extends EventEmitter {
     const serverEntrypoint = path.join(p, "index.ts");
 
     if (!existsSync(serverEntrypoint)) {
-      this.#log(chalk.yellow(`Server entrypoint ${serverEntrypoint} not found`));
+      this.#log(
+        chalk.yellow(`Server entrypoint ${serverEntrypoint} not found`),
+      );
       return;
     }
 
     const editor = spawn(
-      path.join(dirname, "../node_modules/.bin/ts-node-esm"),
+      path.join(dirname, "../node_modules/.bin/tsx"),
       [serverEntrypoint],
       {
         env: {
@@ -190,7 +190,7 @@ export class EditorServerHost extends EventEmitter {
           PIXELHEART_SERVER_PORT: this.#port.toString(),
         },
         cwd: p,
-      }
+      },
     );
 
     editor.stdout.on("data", (data) => {

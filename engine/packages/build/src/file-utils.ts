@@ -7,7 +7,7 @@ export async function getFileHash(file: string): Promise<string> {
     const stream = fs.createReadStream(file);
     stream.on("data", (chunk) => hash.update(chunk));
     await new Promise((resolve, reject) => {
-      stream.on("end", resolve);
+      stream.on("end", () => resolve(undefined));
       stream.on("error", reject);
     });
     return hash.digest("hex");

@@ -7,12 +7,17 @@ import url from "url";
 import { MapTile, MapTileSource, encodeMapTile } from "@pixelheart/client";
 import {
   EditorServerConnection,
-  MapMetadata,
+  type MapMetadata,
   loadJson,
   loadMapMetadata,
 } from "@pixelheart/server";
 
-import { EditMapTilesAction, EditMapTilesEvent, EditorActions, EditorEvents } from "../client/index.js";
+import {
+  type EditMapTilesAction,
+  type EditMapTilesEvent,
+  type EditorActions,
+  type EditorEvents,
+} from "../client/index.js";
 
 interface WorkingMapData {
   lastAccess: number;
@@ -48,18 +53,20 @@ class EditorServer {
     this.#outputRoot = null;
     this.#connection = new EditorServerConnection();
     this.#mapCache = new Map<string, WorkingMapData>();
-    this.#mapUpdateInterval = setInterval(() => this.#savePendingMapChanges(), 1000);
+    this.#mapUpdateInterval = setInterval(
+      () => this.#savePendingMapChanges(),
+      1000,
+    );
     this.#connection.listen(async (a) => {
       switch (a.type) {
         case "INIT":
           this.#outputRoot = a.outputRoot;
           break;
-        case "RESTART":
-          {
-            clearInterval(this.#mapUpdateInterval);
-            await this.#savePendingMapChanges();
-            process.exit(0);
-          }
+        case "RESTART": {
+          clearInterval(this.#mapUpdateInterval);
+          await this.#savePendingMapChanges();
+          process.exit(0);
+        }
         case "EDIT_MAP_TILES":
           {
             const event = await this.#applyMapTileChanges(a);
@@ -94,7 +101,10 @@ class EditorServer {
           })
             .png()
             .toFile(value.image.path);
-          await fs.writeFile(value.src.path, JSON.stringify(value.src.data, null, 2));
+          await fs.writeFile(
+            value.src.path,
+            JSON.stringify(value.src.data, null, 2),
+          );
           console.log(`Saved map ${chalk.green(key)}`);
         } catch (err) {
           console.error(`Failed to update map ${key} - ${err}`);
@@ -103,7 +113,9 @@ class EditorServer {
     }
   }
 
-  async #applyMapTileChanges(action: EditMapTilesAction): Promise<EditMapTilesEvent | null> {
+  async #applyMapTileChanges(
+    action: EditMapTilesAction,
+  ): Promise<EditMapTilesEvent | null> {
     const event: EditMapTilesEvent = {
       map: action.map,
       tiles: [],
@@ -123,12 +135,12 @@ class EditorServer {
         "..",
         "client",
         "sprites",
-        `${map.src.meta.spriteSheet}.json`
-      )
+        `${map.src.meta.spriteSheet}.json`,
+      ),
     );
     if (!revIndex.ok) {
       console.error(
-        `Failed to load sprite sheet ${map.src.meta.spriteSheet} for map ${action.map}`
+        `Failed to load sprite sheet ${map.src.meta.spriteSheet} for map ${action.map}`,
       );
       return null;
     }
@@ -163,7 +175,7 @@ class EditorServer {
       event.tiles.push({
         x: change.x,
         y: change.y,
-        value
+        value,
       });
 
       if (value.index) {

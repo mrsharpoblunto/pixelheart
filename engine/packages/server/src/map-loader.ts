@@ -25,9 +25,9 @@ export type MapMetadata = JTDDataType<typeof mapSchema>;
 
 function validateMapMetadata(metadata: Object):
   | {
-    ok: true;
-    metadata: MapMetadata;
-  }
+      ok: true;
+      metadata: MapMetadata;
+    }
   | { ok: false; errors: ErrorObject<string, Record<string, any>, unknown>[] } {
   if (validate(metadata)) {
     return { ok: true, metadata: metadata as MapMetadata };
@@ -38,7 +38,7 @@ function validateMapMetadata(metadata: Object):
 
 export async function loadMapMetadata(
   mapAssetsRoot: string,
-  map: string
+  map: string,
 ): Promise<
   | { ok: true; metadata: MapMetadata }
   | { ok: false; errors: ErrorObject<string, Record<string, any>, unknown>[] }

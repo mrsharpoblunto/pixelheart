@@ -46,7 +46,7 @@ export default class MapPlugin implements BuildPlugin {
           force: true,
         }),
       ]);
-    } catch (e) { }
+    } catch (e) {}
   }
 
   async build(ctx: BuildContext) {
@@ -66,8 +66,7 @@ export default class MapPlugin implements BuildPlugin {
         // doesn't exist
         !dest ||
         // or is older than the source
-        srcStat.mtimeMs >
-        (await fs.stat(path.join(paths.output, dest))).mtimeMs
+        srcStat.mtimeMs > (await fs.stat(path.join(paths.output, dest))).mtimeMs
       ) {
         await this.#processMap(ctx, src);
       }
@@ -78,8 +77,8 @@ export default class MapPlugin implements BuildPlugin {
     ctx: BuildContext,
     subscribe: (
       path: string,
-      cb: (err: Error | null, events: Array<BuildWatchEvent>) => any
-    ) => Promise<void>
+      cb: (err: Error | null, events: Array<BuildWatchEvent>) => any,
+    ) => Promise<void>,
   ) {
     const paths = this.#getPaths(ctx);
     await subscribe(paths.spriteSrc, async (_err, events) => {
@@ -92,7 +91,7 @@ export default class MapPlugin implements BuildPlugin {
 
   async #processMapSpriteEvents(
     ctx: BuildContext,
-    events: Array<BuildWatchEvent>
+    events: Array<BuildWatchEvent>,
   ) {
     const paths = this.#getPaths(ctx);
     // if a sprite rev index.json changes, rebuild any maps
@@ -161,10 +160,11 @@ export default class MapPlugin implements BuildPlugin {
     const result = await loadMapMetadata(paths.maps, map);
     if (!result.ok) {
       if (result.errors.length > 0) {
-        ctx.error("map",
+        ctx.error(
+          "map",
           `Invalid map metadata: ${result.errors
             .map((e) => e.message)
-            .join(", ")}`
+            .join(", ")}`,
         );
       } else {
         ctx.error("map", `Invalid map metadata: invalid JSON`);
@@ -172,9 +172,11 @@ export default class MapPlugin implements BuildPlugin {
       return;
     }
 
-    ctx.log("map",
-      `Generating ${result.metadata.width}x${result.metadata.height
-      } map using sprite sheet ${chalk.green(result.metadata.spriteSheet)}...`
+    ctx.log(
+      "map",
+      `Generating ${result.metadata.width}x${
+        result.metadata.height
+      } map using sprite sheet ${chalk.green(result.metadata.spriteSheet)}...`,
     );
 
     const dataPath = path.join(paths.maps, map, "data.json");
@@ -182,26 +184,27 @@ export default class MapPlugin implements BuildPlugin {
 
     const mapData = data.ok
       ? (data.data as unknown as {
-        [x: string]: { [y: string]: { [z: string]: MapTileSource } };
-      })
+          [x: string]: { [y: string]: { [z: string]: MapTileSource } };
+        })
       : {};
     if (!data.ok) {
       await fs.writeFile(dataPath, JSON.stringify(mapData, null, 2));
     }
 
     const spriteRevIndex = await loadJson(
-      path.join(paths.spriteSrc, `${result.metadata.spriteSheet}.json`)
+      path.join(paths.spriteSrc, `${result.metadata.spriteSheet}.json`),
     );
 
     if (!spriteRevIndex.ok) {
-      return ctx.error("map",
-        `Invalid sprite sheet: ${result.metadata.spriteSheet}`
+      return ctx.error(
+        "map",
+        `Invalid sprite sheet: ${result.metadata.spriteSheet}`,
       );
     }
 
     // TODO account for the number of layers in the map
     const mapBuffer = Buffer.alloc(
-      result.metadata.width * result.metadata.height * 3
+      result.metadata.width * result.metadata.height * 3,
     );
     for (let x = 0; x < result.metadata.width; x++) {
       for (let y = 0; y < result.metadata.height; y++) {
@@ -210,10 +213,11 @@ export default class MapPlugin implements BuildPlugin {
           if (tile) {
             const index = spriteRevIndex.data[tile.sprite];
             if (!index) {
-              return ctx.error("map",
+              return ctx.error(
+                "map",
                 `Invalid sprite at (${x},${y}): ${chalk.green(
-                  result.metadata.spriteSheet
-                )}:${chalk.blue(tile.sprite)}`
+                  result.metadata.spriteSheet,
+                )}:${chalk.blue(tile.sprite)}`,
               );
             }
             encodeMapTile(mapBuffer, (x + y * result.metadata.width) * 3, {
@@ -253,12 +257,13 @@ export default class MapPlugin implements BuildPlugin {
       `
     import SpriteSheet from "../sprites/${result.metadata.spriteSheet}.js";
     const Map = {...${JSON.stringify({
-        ...result.metadata,
-        url: `/maps/${map}.png?v=${mapHash}`,
-        name: map,
-      })}, spriteSheet: SpriteSheet,
+      ...result.metadata,
+      version: mapHash,
+      url: `/maps/${map}.png?v=${mapHash}`,
+      name: map,
+    })}, spriteSheet: SpriteSheet,
     };
-export default Map;`
+export default Map;`,
     );
   }
 }

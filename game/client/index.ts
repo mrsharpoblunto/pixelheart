@@ -6,7 +6,7 @@ import {
   coords,
   loadMapContainer,
   loadSpriteSheet,
-  math
+  math,
 } from "@pixelheart/client";
 import { ReadonlyVec2, vec2, vec3, vec4 } from "@pixelheart/client/gl-matrix";
 import {
@@ -34,6 +34,7 @@ const MAX_TIME = 1000;
 
 export interface PersistentState {
   version: number;
+  mapVersion?: string;
   character: {
     position: [number, number];
     direction: string;
@@ -72,7 +73,7 @@ export interface GameState {
 }
 
 export default class Game implements GameClient<GameState, PersistentState> {
-  constructor() { }
+  constructor() {}
 
   onStart(ctx: GameContext, previousState?: PersistentState): GameState {
     if (
@@ -94,36 +95,37 @@ export default class Game implements GameClient<GameState, PersistentState> {
           ctx,
           coords.TILE_SIZE,
           overworldMap,
-          deferredTextureLoader
+          deferredTextureLoader,
         ),
         character: (async () => {
           const c = await loadSpriteSheet(
             ctx,
             characterSprite,
-            deferredTextureLoader
+            deferredTextureLoader,
           );
           return {
             sprite: c,
             animator: new DeferredSpriteAnimator(
               c,
               previousState ? previousState.character.direction : "walk_d",
-              8 / 1000
+              8 / 1000,
             ),
-            position: previousState
-              ? vec2.fromValues(
-                previousState.character.position[0],
-                previousState.character.position[1]
-              )
-              : vec2.fromValues(
-                overworldMap.startPosition.x * coords.TILE_SIZE,
-                overworldMap.startPosition.y * coords.TILE_SIZE
-              ),
+            position:
+              previousState && previousState.mapVersion === overworldMap.version
+                ? vec2.fromValues(
+                    previousState.character.position[0],
+                    previousState.character.position[1],
+                  )
+                : vec2.fromValues(
+                    overworldMap.startPosition.x * coords.TILE_SIZE,
+                    overworldMap.startPosition.y * coords.TILE_SIZE,
+                  ),
             relativePosition: vec2.create(),
             boundingBox: vec4.fromValues(
               c.walk_u.height - 14,
               c.walk_u.width - 2,
               c.walk_u.height - 4,
-              2
+              2,
             ),
             speed: 1,
           };
@@ -301,7 +303,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
 
       const renderOffset = vec2.fromValues(
         r.character.animator.getSprite().width / 2,
-        r.character.animator.getSprite().height / 2
+        r.character.animator.getSprite().height / 2,
       );
 
       // check the characters bounding box against the map
@@ -310,55 +312,55 @@ export default class Game implements GameClient<GameState, PersistentState> {
         r.map.data.read(
           Math.floor(
             (movement[0] - renderOffset[0] + r.character.boundingBox[3]) /
-            coords.TILE_SIZE
+              coords.TILE_SIZE,
           ),
           Math.floor(
             (movement[1] - renderOffset[1] + r.character.boundingBox[0]) /
-            coords.TILE_SIZE
-          )
+              coords.TILE_SIZE,
+          ),
         ).walkable &&
         // top right
         r.map.data.read(
           Math.floor(
             (movement[0] - renderOffset[0] + r.character.boundingBox[1]) /
-            coords.TILE_SIZE
+              coords.TILE_SIZE,
           ),
           Math.floor(
             (movement[1] - renderOffset[1] + r.character.boundingBox[0]) /
-            coords.TILE_SIZE
-          )
+              coords.TILE_SIZE,
+          ),
         ).walkable &&
         // bottom left
         r.map.data.read(
           Math.floor(
             (movement[0] - renderOffset[0] + r.character.boundingBox[3]) /
-            coords.TILE_SIZE
+              coords.TILE_SIZE,
           ),
           Math.floor(
             (movement[1] - renderOffset[1] + r.character.boundingBox[2]) /
-            coords.TILE_SIZE
-          )
+              coords.TILE_SIZE,
+          ),
         ).walkable &&
         // bottom right
         r.map.data.read(
           Math.floor(
             (movement[0] - renderOffset[0] + r.character.boundingBox[1]) /
-            coords.TILE_SIZE
+              coords.TILE_SIZE,
           ),
           Math.floor(
             (movement[1] - renderOffset[1] + r.character.boundingBox[2]) /
-            coords.TILE_SIZE
-          )
+              coords.TILE_SIZE,
+          ),
         ).walkable;
 
       if (isWalkable) {
         const renderOffset = vec2.fromValues(
           r.character.animator.getSprite().width / 2,
-          r.character.animator.getSprite().height / 2
+          r.character.animator.getSprite().height / 2,
         );
         const mapSize = vec2.fromValues(
           r.map.data.width * coords.TILE_SIZE,
-          r.map.data.height * coords.TILE_SIZE
+          r.map.data.height * coords.TILE_SIZE,
         );
         vec2.subtract(mapSize, mapSize, renderOffset);
         vec2.min(r.character.position, movement, mapSize);
@@ -370,26 +372,26 @@ export default class Game implements GameClient<GameState, PersistentState> {
         r.character.position[0] < ctx.screen.width / 2
           ? r.character.position[0]
           : r.character.position[0] >
-            r.map.data.width * coords.TILE_SIZE - ctx.screen.width / 2
+              r.map.data.width * coords.TILE_SIZE - ctx.screen.width / 2
             ? r.character.position[0] -
-            r.map.data.width * coords.TILE_SIZE +
-            ctx.screen.width
+              r.map.data.width * coords.TILE_SIZE +
+              ctx.screen.width
             : ctx.screen.width / 2;
       r.character.relativePosition[1] =
         r.character.position[1] < ctx.screen.height / 2
           ? r.character.position[1]
           : r.character.position[1] >
-            r.map.data.height * coords.TILE_SIZE - ctx.screen.height / 2
+              r.map.data.height * coords.TILE_SIZE - ctx.screen.height / 2
             ? r.character.position[1] -
-            r.map.data.height * coords.TILE_SIZE +
-            ctx.screen.height
+              r.map.data.height * coords.TILE_SIZE +
+              ctx.screen.height
             : ctx.screen.height / 2;
 
       // Record the scroll offset of the screen
       vec2.subtract(
         state.screen.absolutePosition,
         r.character.position,
-        r.character.relativePosition
+        r.character.relativePosition,
       );
 
       r.map.data.updateScreenBuffer(ctx, state.screen.absolutePosition);
@@ -405,15 +407,15 @@ export default class Game implements GameClient<GameState, PersistentState> {
           ? 1.0
           : state.animationTimer < MAX_TIME * 0.75
             ? 1.0 -
-            math.smoothstep(
-              MAX_TIME * 0.5,
-              MAX_TIME * 0.75,
-              state.animationTimer
-            )
+              math.smoothstep(
+                MAX_TIME * 0.5,
+                MAX_TIME * 0.75,
+                state.animationTimer,
+              )
             : 0.0;
     const sunDirection = Math.cos(
       (Math.min(state.animationTimer, MAX_TIME * 0.75) * Math.PI) /
-      (MAX_TIME * 0.75)
+        (MAX_TIME * 0.75),
     );
 
     state.directionalLighting = [
@@ -421,13 +423,13 @@ export default class Game implements GameClient<GameState, PersistentState> {
         ambient: vec3.fromValues(
           0.2 + state.day * 0.3,
           0.2 + state.day * 0.3,
-          0.4 + state.day * 0.1
+          0.4 + state.day * 0.1,
         ),
         direction: vec3.fromValues(sunDirection, state.day * 0.3 + 0.2, -1.0),
         diffuse: vec3.fromValues(
           Math.pow(state.day, 0.25) * (1 - state.day) + state.day * 0.5,
           state.day * 0.5,
-          state.day * 0.45
+          state.day * 0.45,
         ),
       },
       {
@@ -436,7 +438,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
         diffuse: vec3.fromValues(
           (1 - state.day) * 0.2,
           (1 - state.day) * 0.2,
-          (1 - state.day) * 0.2
+          (1 - state.day) * 0.2,
         ),
       },
     ];
@@ -448,7 +450,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
 
     const ssp = coords.toAbsoluteTileFromAbsolute(
       vec4.create(),
-      state.screen.absolutePosition
+      state.screen.absolutePosition,
     );
 
     for (const l of state.directionalLighting) {
@@ -459,12 +461,12 @@ export default class Game implements GameClient<GameState, PersistentState> {
         diffuse: vec3.fromValues(
           0.6 * (1 - state.day),
           0.6 * (1 - state.day),
-          0.3 * (1 - state.day)
+          0.3 * (1 - state.day),
         ),
         position: vec3.fromValues(
           ctx.mouse.position[0] / ctx.screen.width,
           ctx.mouse.position[1] / ctx.screen.height,
-          0.1
+          0.1,
         ),
         radius: 0.5,
       })
@@ -492,8 +494,8 @@ export default class Game implements GameClient<GameState, PersistentState> {
                       y * coords.TILE_SIZE - ssp[3],
                       x * coords.TILE_SIZE + coords.TILE_SIZE - ssp[2],
                       y * coords.TILE_SIZE + coords.TILE_SIZE - ssp[3],
-                      x * coords.TILE_SIZE - ssp[2]
-                    )
+                      x * coords.TILE_SIZE - ssp[2],
+                    ),
                   );
 
                   const tile = r.map.data.read(mapX, mapY);
@@ -502,7 +504,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
                     r.map.sprite[tileName].draw(
                       s,
                       position,
-                      tile.spatialHash ? math.hash(mapX, mapY) : undefined
+                      tile.spatialHash ? math.hash(mapX, mapY) : undefined,
                     );
                   }
                 }
@@ -510,7 +512,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
             } else {
               const offset = vec2.fromValues(
                 r.character.animator.getSprite().width / 2,
-                r.character.animator.getSprite().height / 2
+                r.character.animator.getSprite().height / 2,
               );
 
               r.character.animator.draw(
@@ -521,9 +523,9 @@ export default class Game implements GameClient<GameState, PersistentState> {
                     Math.floor(r.character.relativePosition[1]) - offset[1],
                     Math.floor(r.character.relativePosition[0]) + offset[0],
                     Math.floor(r.character.relativePosition[1]) + offset[1],
-                    Math.floor(r.character.relativePosition[0]) - offset[0]
-                  )
-                )
+                    Math.floor(r.character.relativePosition[0]) - offset[0],
+                  ),
+                ),
               );
             }
           });
@@ -533,7 +535,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
           vec2.div(
             pos,
             pos,
-            vec2.fromValues(ctx.screen.width, ctx.screen.height)
+            vec2.fromValues(ctx.screen.width, ctx.screen.height),
           );
           state.blurEffect.draw(mask, 3.0);
           state.waterEffect.draw(
@@ -541,9 +543,9 @@ export default class Game implements GameClient<GameState, PersistentState> {
             pos,
             ctx.screen,
             mask,
-            state.blurEffect.getBlurTexture()
+            state.blurEffect.getBlurTexture(),
           );
-        }
+        },
       );
 
     // draw the accumulated deferred lighting texture to the screen
@@ -553,7 +555,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
         s.setTextures(lightingTexture);
         s.draw(
           vec4.fromValues(0.0, 1.0, 1.0, 0.0),
-          vec4.fromValues(0, lightingTexture.width, lightingTexture.height, 0)
+          vec4.fromValues(0, lightingTexture.width, lightingTexture.height, 0),
         );
       }
 
@@ -569,9 +571,9 @@ export default class Game implements GameClient<GameState, PersistentState> {
                 Math.round(moveTouch.startPosition[1]) - 32,
                 Math.round(moveTouch.startPosition[0]) + 32,
                 Math.round(moveTouch.startPosition[1]) + 32,
-                Math.round(moveTouch.startPosition[0]) - 32
-              )
-            )
+                Math.round(moveTouch.startPosition[0]) - 32,
+              ),
+            ),
           );
         });
       }

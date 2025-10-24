@@ -1,3 +1,4 @@
+import { TILE_SIZE } from "node_modules/@pixelheart/client/dist/coordinates.js";
 import { Root, createRoot } from "react-dom/client";
 
 import {
@@ -6,8 +7,8 @@ import {
   EditorClient,
   EditorContext,
   MapContainer,
-  MapTileSource,
   MapTile,
+  MapTileSource,
   SpriteSheet,
   TEXTURE,
   coords,
@@ -21,15 +22,14 @@ import {
   SolidEffect,
 } from "@pixelheart/effects";
 
-import { GameState } from "../../client/index.js";
+import { type GameState } from "../../client/index.js";
 import { renderEditor } from "./editor.js";
 import UndoStack from "./undo-stack.js";
-import { TILE_SIZE } from "node_modules/@pixelheart/client/dist/coordinates.js";
 
 export type MapTileChange = {
-  x: number,
-  y: number,
-  value: Partial<MapTileSource>
+  x: number;
+  y: number;
+  value: Partial<MapTileSource>;
 };
 
 export type EditMapTilesAction = {
@@ -39,9 +39,9 @@ export type EditMapTilesAction = {
 };
 
 export type MapTileChangeApply = {
-  x: number,
-  y: number,
-  value: MapTile
+  x: number;
+  y: number;
+  value: MapTile;
 };
 
 export type EditMapTilesEvent = {
@@ -52,9 +52,7 @@ export type EditMapTilesEvent = {
 
 export type EditorEvents = BaseEvents | EditMapTilesEvent;
 
-export type EditorActions =
-  | BaseActions
-  | EditMapTilesAction;
+export type EditorActions = BaseActions | EditMapTilesAction;
 
 export interface PersistentEditorState {
   version: number;
@@ -104,20 +102,20 @@ export function IsEdgeTile(sprite: string): boolean {
   const splitIndex = sprite.indexOf("_");
   if (splitIndex !== -1) {
     const spriteSuffix = sprite.substring(splitIndex + 1);
-    return TileEdgeSuffixes.has(spriteSuffix)
+    return TileEdgeSuffixes.has(spriteSuffix);
   }
   return false;
 }
 
 export default class Editor
   implements
-  EditorClient<
-    GameState,
-    EditorState,
-    PersistentEditorState,
-    EditorActions,
-    EditorEvents
-  >
+    EditorClient<
+      GameState,
+      EditorState,
+      PersistentEditorState,
+      EditorActions,
+      EditorEvents
+    >
 {
   #root: Root | null = null;
   #pendingEvents: Array<EditorEvents>;
@@ -130,7 +128,7 @@ export default class Editor
     ctx: EditorContext<EditorActions, EditorEvents>,
     state: GameState,
     container: HTMLElement,
-    previousState?: PersistentEditorState
+    previousState?: PersistentEditorState,
   ): EditorState {
     if (
       previousState &&
@@ -144,7 +142,9 @@ export default class Editor
     const editorState = {
       active: previousState ? previousState.active : false,
       selectedTile: previousState ? previousState.selectedTile : null,
-      selectedTool: previousState ? previousState.selectedTool : "DRAW" as EditorSelectableTool,
+      selectedTool: previousState
+        ? previousState.selectedTool
+        : ("DRAW" as EditorSelectableTool),
       pendingToolInvocations: [],
       undoStack: new UndoStack<Array<MapTileChange>>(),
       currentSelection: null,
@@ -163,7 +163,10 @@ export default class Editor
     return editorState;
   }
 
-  onEnd(ctx: EditorContext<EditorActions, EditorEvents>, _container: HTMLElement): void {
+  onEnd(
+    ctx: EditorContext<EditorActions, EditorEvents>,
+    _container: HTMLElement,
+  ): void {
     ctx.editorServer.disconnect(this.#onEvent);
     this.#root?.unmount();
     this.#root = null;
@@ -172,7 +175,7 @@ export default class Editor
   #onEvent = (evt: EditorEvents) => {
     // queue socket events so we can process them on the main event loop
     this.#pendingEvents.push(evt);
-  }
+  };
 
   onSave(editor: EditorState): PersistentEditorState | null {
     return {
@@ -187,7 +190,7 @@ export default class Editor
     ctx: EditorContext<EditorActions, EditorEvents>,
     state: GameState,
     editor: EditorState,
-    _fixedDelta: number
+    _fixedDelta: number,
   ) {
     if (ctx.keys.pressed.has("m") && ctx.keys.down.has("Control")) {
       editor.active = !editor.active;
@@ -198,7 +201,6 @@ export default class Editor
     }
 
     state.resources.ifReady((r) => {
-
       // process all editor server events
       if (this.#pendingEvents.length) {
         for (let evt of this.#pendingEvents) {
@@ -251,7 +253,7 @@ export default class Editor
       const ap = coords.pickAbsoluteTileFromRelative(
         vec4.create(),
         ctx.mouse.position,
-        state.screen
+        state.screen,
       );
 
       if (ctx.mouse.down[0]) {
@@ -270,7 +272,8 @@ export default class Editor
             for (let x = lx; x <= hx; ++x) {
               for (let y = ly; y <= hy; ++y) {
                 this.#changeMapTile(dedupedActions, r.map, {
-                  x, y,
+                  x,
+                  y,
                   value: { sprite: "" },
                 });
               }
@@ -291,7 +294,11 @@ export default class Editor
               const dedupedActions = new Map<string, MapTileChange>();
               for (let x = lx; x <= hx; ++x) {
                 for (let y = ly; y <= hy; ++y) {
-                  this.#changeMapTile(dedupedActions, r.map, { x, y, value: { sprite } });
+                  this.#changeMapTile(dedupedActions, r.map, {
+                    x,
+                    y,
+                    value: { sprite },
+                  });
                 }
               }
               const action: EditMapTilesAction = {
@@ -314,7 +321,7 @@ export default class Editor
   #recordMapTileUndo(
     editor: EditorState,
     changes: Array<MapTileChange>,
-    map: MapContainer<DeferredSpriteTextures>
+    map: MapContainer<DeferredSpriteTextures>,
   ) {
     const undoChanges: Array<MapTileChange> = [];
 
@@ -325,9 +332,7 @@ export default class Editor
 
       const value = { ...source, sprite };
 
-      if (
-        JSON.stringify({ ...source, ...c.value }) ===
-        JSON.stringify(value)) {
+      if (JSON.stringify({ ...source, ...c.value }) === JSON.stringify(value)) {
         continue;
       }
 
@@ -353,9 +358,7 @@ export default class Editor
     map: MapContainer<DeferredSpriteTextures>,
     change: MapTileChange,
   ) {
-    const applyChange = (
-      c: MapTileChange
-    ) => {
+    const applyChange = (c: MapTileChange) => {
       const { x, y } = c;
       let existingChange = context.get(`${x},${y}`);
       if (!existingChange) {
@@ -517,7 +520,7 @@ export default class Editor
     ctx: EditorContext<EditorActions, EditorEvents>,
     state: GameState,
     editor: EditorState,
-    delta: number
+    delta: number,
   ) {
     if (!editor.active) {
       return;
@@ -526,84 +529,99 @@ export default class Editor
       const ap = coords.pickAbsoluteTileFromRelative(
         vec4.create(),
         ctx.mouse.position,
-        state.screen
+        state.screen,
       );
 
       const startAp = editor.currentSelection ?? ap;
 
-      const cursorPos = coords.toScreenSpaceFromAbsoluteTile(vec4.create(), ap, {
-        ...state.screen,
-        ...ctx.screen,
-      });
+      const cursorPos = coords.toScreenSpaceFromAbsoluteTile(
+        vec4.create(),
+        ap,
+        {
+          ...state.screen,
+          ...ctx.screen,
+        },
+      );
 
-      const cursorStartPos = coords.toScreenSpaceFromAbsoluteTile(vec4.create(), startAp, {
-        ...state.screen,
-        ...ctx.screen,
-      });
+      const cursorStartPos = coords.toScreenSpaceFromAbsoluteTile(
+        vec4.create(),
+        startAp,
+        {
+          ...state.screen,
+          ...ctx.screen,
+        },
+      );
 
       switch (editor.selectedTool) {
-        case "DRAW": {
-          const selectedTile = editor.selectedTile;
-          if (selectedTile) {
-            // editor tiles apply the same lighting as the game engine
-            for (const l of state.directionalLighting) {
-              state.spriteEffect.addDirectionalLight(l);
-            }
-            state.spriteEffect.use({
-              width: TILE_SIZE,
-              height: TILE_SIZE,
-            }, (s) => {
-              r.map.sprite[selectedTile].draw(s, vec4.fromValues(0.0, 1.0, 1.0, 0.0));
-            });
-            // draw the accumulated deferred lighting texture to the screen
-            state.simpleSpriteEffect.use((s) => {
-              const lightingTexture = state.spriteEffect.getLightingTexture();
-              if (lightingTexture) {
-                s.setTextures(lightingTexture);
-                s.setAlpha(0.8);
+        case "DRAW":
+          {
+            const selectedTile = editor.selectedTile;
+            if (selectedTile) {
+              // editor tiles apply the same lighting as the game engine
+              for (const l of state.directionalLighting) {
+                state.spriteEffect.addDirectionalLight(l);
+              }
+              state.spriteEffect.use(
+                {
+                  width: TILE_SIZE,
+                  height: TILE_SIZE,
+                },
+                (s) => {
+                  r.map.sprite[selectedTile].draw(
+                    s,
+                    vec4.fromValues(0.0, 1.0, 1.0, 0.0),
+                  );
+                },
+              );
+              // draw the accumulated deferred lighting texture to the screen
+              state.simpleSpriteEffect.use((s) => {
+                const lightingTexture = state.spriteEffect.getLightingTexture();
+                if (lightingTexture) {
+                  s.setTextures(lightingTexture);
+                  s.setAlpha(0.8);
 
-                const xd = cursorPos[1] - cursorPos[3];
-                const yd = cursorPos[2] - cursorPos[0];
-                const lx = Math.min(cursorPos[3], cursorStartPos[3]);
-                const ly = Math.min(cursorPos[0], cursorStartPos[0]);
-                const width = Math.abs(ap[0] - startAp[0]);
-                const height = Math.abs(ap[1] - startAp[1]);
+                  const xd = cursorPos[1] - cursorPos[3];
+                  const yd = cursorPos[2] - cursorPos[0];
+                  const lx = Math.min(cursorPos[3], cursorStartPos[3]);
+                  const ly = Math.min(cursorPos[0], cursorStartPos[0]);
+                  const width = Math.abs(ap[0] - startAp[0]);
+                  const height = Math.abs(ap[1] - startAp[1]);
 
-                for (let x = 0; x <= width; ++x) {
-                  for (let y = 0; y <= height; ++y) {
-                    s.draw(
-                      vec4.fromValues(
-                        (y * yd) + ly,
-                        (x * xd) + lx + xd,
-                        (y * yd) + ly + yd,
-                        (x * xd) + lx
-                      ),
-                      vec4.fromValues(
-                        0,
-                        lightingTexture.width,
-                        lightingTexture.height,
-                        0
-                      )
-                    );
+                  for (let x = 0; x <= width; ++x) {
+                    for (let y = 0; y <= height; ++y) {
+                      s.draw(
+                        vec4.fromValues(
+                          y * yd + ly,
+                          x * xd + lx + xd,
+                          y * yd + ly + yd,
+                          x * xd + lx,
+                        ),
+                        vec4.fromValues(
+                          0,
+                          lightingTexture.width,
+                          lightingTexture.height,
+                          0,
+                        ),
+                      );
+                    }
                   }
                 }
-              }
+              });
+            }
+            state.solidEffect.use((s) => {
+              s.setBorder(ctx.screen, 1);
+              s.draw(
+                vec4.fromValues(
+                  Math.min(cursorPos[0], cursorStartPos[0]),
+                  Math.max(cursorPos[1], cursorStartPos[1]),
+                  Math.max(cursorPos[2], cursorStartPos[2]),
+                  Math.min(cursorPos[3], cursorStartPos[3]),
+                ),
+                vec4.fromValues(1.0, 0, 0, 0.0),
+                vec4.fromValues(1.0, 1.0, 1.0, 1.0),
+              );
             });
           }
-          state.solidEffect.use((s) => {
-            s.setBorder(ctx.screen, 1);
-            s.draw(
-              vec4.fromValues(
-                Math.min(cursorPos[0], cursorStartPos[0]),
-                Math.max(cursorPos[1], cursorStartPos[1]),
-                Math.max(cursorPos[2], cursorStartPos[2]),
-                Math.min(cursorPos[3], cursorStartPos[3])
-              ),
-              vec4.fromValues(1.0, 0, 0, 0.0),
-              vec4.fromValues(1.0, 1.0, 1.0, 1.0)
-            );
-          });
-        }
           break;
 
         case "ERASE":
@@ -614,10 +632,10 @@ export default class Editor
                 Math.min(cursorPos[0], cursorStartPos[0]),
                 Math.max(cursorPos[1], cursorStartPos[1]),
                 Math.max(cursorPos[2], cursorStartPos[2]),
-                Math.min(cursorPos[3], cursorStartPos[3])
+                Math.min(cursorPos[3], cursorStartPos[3]),
               ),
               vec4.fromValues(1.0, 0, 0, 0.5),
-              vec4.fromValues(1.0, 1.0, 1.0, 1.0)
+              vec4.fromValues(1.0, 1.0, 1.0, 1.0),
             );
           });
           break;
@@ -627,30 +645,29 @@ export default class Editor
         // character bounding box
         const offset = vec2.fromValues(
           r.character.animator.getSprite().width / 2,
-          r.character.animator.getSprite().height / 2
+          r.character.animator.getSprite().height / 2,
         );
         s.draw(
           ctx.screen.toScreenSpace(
             vec4.create(),
             vec4.fromValues(
               Math.floor(r.character.relativePosition[1]) -
-              offset[1] +
-              r.character.boundingBox[0],
+                offset[1] +
+                r.character.boundingBox[0],
               Math.floor(r.character.relativePosition[0]) -
-              offset[0] +
-              r.character.boundingBox[1],
+                offset[0] +
+                r.character.boundingBox[1],
               Math.floor(r.character.relativePosition[1]) -
-              offset[1] +
-              r.character.boundingBox[2],
+                offset[1] +
+                r.character.boundingBox[2],
               Math.floor(r.character.relativePosition[0]) -
-              offset[0] +
-              r.character.boundingBox[3]
-            )
+                offset[0] +
+                r.character.boundingBox[3],
+            ),
           ),
-          vec4.fromValues(0.0, 0, 1.0, 0.5)
+          vec4.fromValues(0.0, 0, 1.0, 0.5),
         );
       });
-
     });
   }
 
@@ -661,8 +678,8 @@ export default class Editor
     delta: number,
     renderScope: (
       renderTarget: ImageBitmapRenderingContext,
-      cb: () => void
-    ) => void
+      cb: () => void,
+    ) => void,
   ) {
     if (!editor.active) {
       return;
@@ -693,14 +710,14 @@ export default class Editor
           loadSpriteSheetSync(
             ctx,
             r.map.spriteConfig,
-            r.map.sprite[TEXTURE].diffuseTexture
+            r.map.sprite[TEXTURE].diffuseTexture,
           ));
 
         // draw the ocean
         editor.solidEffect.use((s) => {
           s.draw(
             vec4.fromValues(0, 0, 1.0, 1.0),
-            vec4.fromValues(50.0 / 255.0, 124.0 / 255.0, 224.0 / 255.0, 1.0)
+            vec4.fromValues(50.0 / 255.0, 124.0 / 255.0, 224.0 / 255.0, 1.0),
           );
         });
         // draw the tiles
@@ -716,7 +733,7 @@ export default class Editor
                   y * yScale,
                   (x + 1) * xScale,
                   (y + 1) * yScale,
-                  x * xScale
+                  x * xScale,
                 );
                 minimapSprite[sprite].draw(s, position);
               }
@@ -729,7 +746,7 @@ export default class Editor
             state.screen.absolutePosition[1],
             state.screen.absolutePosition[0] + ctx.screen.width,
             state.screen.absolutePosition[1] + ctx.screen.height,
-            state.screen.absolutePosition[0]
+            state.screen.absolutePosition[0],
           );
           vec4.scale(position, position, 1.0 / coords.TILE_SIZE);
           vec4.multiply(
@@ -739,14 +756,14 @@ export default class Editor
               1.0 / r.map.data.height,
               1.0 / r.map.data.width,
               1.0 / r.map.data.height,
-              1.0 / r.map.data.width
-            )
+              1.0 / r.map.data.width,
+            ),
           );
           s.setBorder(minimap, 2);
           s.draw(
             position,
             vec4.fromValues(1.0, 1.0, 1.0, 0.2),
-            vec4.fromValues(1.0, 1.0, 1.0, 1.0)
+            vec4.fromValues(1.0, 1.0, 1.0, 1.0),
           );
         });
       });
@@ -765,12 +782,12 @@ export default class Editor
           ctx.gl.texParameteri(
             ctx.gl.TEXTURE_2D,
             ctx.gl.TEXTURE_MIN_FILTER,
-            ctx.gl.NEAREST
+            ctx.gl.NEAREST,
           );
           ctx.gl.texParameteri(
             ctx.gl.TEXTURE_2D,
             ctx.gl.TEXTURE_MAG_FILTER,
-            ctx.gl.NEAREST
+            ctx.gl.NEAREST,
           );
 
           // editor tiles apply the same lighting as the
@@ -785,7 +802,7 @@ export default class Editor
             },
             (s) => {
               r.map.sprite[tileId].draw(s, vec4.fromValues(0.0, 1.0, 1.0, 0.0));
-            }
+            },
           );
 
           // draw the accumulated deferred lighting texture to the screen
@@ -799,8 +816,8 @@ export default class Editor
                   0,
                   lightingTexture.width,
                   lightingTexture.height,
-                  0
-                )
+                  0,
+                ),
               );
             }
           });
