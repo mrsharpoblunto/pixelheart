@@ -151,6 +151,7 @@ export default class Game implements GameClient<GameState, PersistentState> {
     state.resources.ifReady((r) => {
       result = {
         version: CURRENT_SERIALIZATION_VERSION,
+        mapVersion: overworldMap.version,
         character: {
           position: [r.character.position[0], r.character.position[1]],
           direction: r.character.animator.getSpriteName(),
