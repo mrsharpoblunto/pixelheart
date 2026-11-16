@@ -35,10 +35,3 @@ jobs:
 
       - name: Building game
         run: cd game && pnpm run build --production
-
-      - name: Deploying game to gh-pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: game/www
-          cname: pixelheart.io
